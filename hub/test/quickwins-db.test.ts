@@ -142,6 +142,26 @@ describe('retention in slices', () => {
     expect(sliced.query<{ n: number }, []>('SELECT COUNT(*) AS n FROM events').get()?.n).toBe(1);
     expect(sliced.query<{ n: number }, []>('SELECT COUNT(*) AS n FROM questions').get()?.n).toBe(1);
   });
+
+  test('pruneInChunks normalizes a zero or fractional chunk', async () => {
+    const now = 1_800_000_000_000;
+    const old = now - 20 * DAY;
+    const filled = () => {
+      const db = openDb(':memory:');
+      const insert = db.query('INSERT INTO events (ts, session_id, agent_key, floor, event) VALUES (?, ?, ?, ?, ?)');
+      for (let i = 0; i < 5; i += 1) insert.run(old, 's', 'a', 'f', 'Stop');
+      return db;
+    };
+    const count = (db: ReturnType<typeof openDb>) => db.query<{ n: number }, []>('SELECT COUNT(*) AS n FROM events').get()?.n;
+
+    const zero = filled();
+    expect(await pruneInChunks(zero, now, 14, { chunk: 0, yieldLoop: async () => {} })).toBe(5);
+    expect(count(zero)).toBe(0);
+
+    const fraction = filled();
+    expect(await pruneInChunks(fraction, now, 14, { chunk: 2.9, yieldLoop: async () => {} })).toBe(5);
+    expect(count(fraction)).toBe(0);
+  });
 });
 
 describe('stored tool responses', () => {

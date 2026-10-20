@@ -52,11 +52,11 @@ export async function pruneInChunks(
   opts: { chunk?: number; yieldLoop?: () => Promise<void> } = {},
 ): Promise<number> {
   const cutoff = now - retentionDays * DAY_MS;
-  const chunk = opts.chunk ?? PRUNE_CHUNK;
+  const chunk = Math.max(1, Math.floor(opts.chunk ?? PRUNE_CHUNK));
   const yieldLoop = opts.yieldLoop ?? (() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
   let removed = 0;
   for (const [table, where] of RULES) {
-    const statement = db.query(`DELETE FROM ${table} WHERE rowid IN (SELECT rowid FROM ${table} WHERE ${where} LIMIT ${Math.max(1, Math.floor(chunk))})`);
+    const statement = db.query(`DELETE FROM ${table} WHERE rowid IN (SELECT rowid FROM ${table} WHERE ${where} LIMIT ${chunk})`);
     for (;;) {
       const { changes } = statement.run(cutoff);
       removed += changes;
