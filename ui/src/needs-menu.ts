@@ -36,16 +36,17 @@ export function mountNeedsMenu(store: Store, onPick: (need: Need) => void): Need
     return true;
   };
 
-  const open = (): void => {
-    if (items.length === 0) return;
-    menu.hidden = false;
-    trigger.setAttribute('aria-expanded', 'true');
-    items[0]?.node.focus();
-  };
-
   const paintAges = (): void => {
     const now = store.now();
     for (const { need, age } of items) age.textContent = relativeTime(need.since, now);
+  };
+
+  const open = (): void => {
+    if (items.length === 0) return;
+    paintAges();
+    menu.hidden = false;
+    trigger.setAttribute('aria-expanded', 'true');
+    items[0]?.node.focus();
   };
 
   const render = (): void => {
