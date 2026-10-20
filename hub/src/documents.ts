@@ -104,6 +104,7 @@ export class DocumentDesk {
   private timer: ReturnType<typeof setTimeout> | null = null;
   private rewatchTimer: ReturnType<typeof setTimeout> | null = null;
   private watchedRoot: string | null = null;
+  private watchedDirs = new Set<string>();
 
   constructor(private readonly opts: DocumentsOptions) {}
 
@@ -126,15 +127,18 @@ export class DocumentDesk {
 
   watch(): void {
     const root = this.opts.root();
-    if (this.watchedRoot === root && this.watchers.length > 0) return;
-    this.unwatch();
-    this.watchedRoot = root;
+    if (this.watchedRoot !== root) {
+      this.unwatch();
+      this.watchedRoot = root;
+    }
+    // Per directory: one target may already be watched while the other does not exist yet.
     for (const dir of [join(root, PLANS_DIR), join(root, SKILLS_DIR)]) {
-      if (!existsSync(dir)) continue;
+      if (this.watchedDirs.has(dir) || !existsSync(dir)) continue;
       try {
         const watcher = watch(dir, { recursive: true }, () => this.schedule());
         watcher.on('error', () => this.rewatchLater());
         this.watchers.push(watcher);
+        this.watchedDirs.add(dir);
       } catch {}
     }
   }
@@ -152,6 +156,7 @@ export class DocumentDesk {
   unwatch(): void {
     for (const w of this.watchers) w.close();
     this.watchers = [];
+    this.watchedDirs.clear();
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
     if (this.rewatchTimer) clearTimeout(this.rewatchTimer);
