@@ -317,6 +317,41 @@ describe('hub server', () => {
     expect(h.office.snapshot().questions.map((q) => q.id)).not.toContain('srv-q-abort');
   });
 
+  test('the panel can return a pending question to the terminal', async () => {
+    await post(
+      '/events',
+      { session_id: 'srv-rel', cwd: repo, hook_event_name: 'SessionStart' },
+      { ...withKey, 'X-Office-Role': 'office-lead-mobile' },
+    );
+    h.office.heartbeat(true);
+    const pending = post(
+      '/ask',
+      {
+        session_id: 'srv-rel',
+        cwd: repo,
+        hook_event_name: 'PreToolUse',
+        tool_name: 'AskUserQuestion',
+        tool_use_id: 'srv-q-release',
+        tool_input: { questions: [{ question: '¿Lo devuelvo?', options: [{ label: 'Sí' }, { label: 'No' }] }] },
+      },
+      withKey,
+    );
+    await until(() => h.office.desk.has('srv-q-release'));
+
+    const released = await post('/api/answers/srv-q-release', { release: true }, withKey);
+    expect(released.status).toBe(200);
+    expect(await released.json()).toEqual({ ok: true });
+
+    // The hook sees a 200 with an empty body: the question goes back to the terminal.
+    const answer = await pending;
+    expect(answer.status).toBe(200);
+    expect(await answer.text()).toBe('');
+
+    // A second release finds nothing to return.
+    expect((await post('/api/answers/srv-q-release', { release: true }, withKey)).status).toBe(409);
+    expect(h.office.snapshot().questions.map((q) => q.id)).not.toContain('srv-q-release');
+  });
+
   test('/ask answers at once with an empty body when nobody watches', async () => {
     h.clock.advance(60_000);
     const res = await post(
