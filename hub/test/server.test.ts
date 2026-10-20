@@ -335,6 +335,38 @@ describe('hub server', () => {
     expect(await res.text()).toBe('');
   });
 
+  test('/permission holds the hook until the panel allows it', async () => {
+    h.office.heartbeat(true);
+    const pending = post(
+      '/permission',
+      {
+        session_id: 'srv-2',
+        cwd: repo,
+        hook_event_name: 'PermissionRequest',
+        tool_name: 'Bash',
+        tool_use_id: 'srv-p1',
+        tool_input: { command: 'bun run hub' },
+      },
+      withKey,
+    );
+    await until(() => h.office.snapshot().questions.some((q) => q.kind === 'permission'));
+    const question = h.office.snapshot().questions.find((q) => q.kind === 'permission')!;
+    expect(question.detail).toBe('bun run hub');
+    expect((await post(`/api/answers/${question.id}`, { answers: { [question.questions[0]!.question]: 'Permitir' } }, withKey)).status).toBe(200);
+    const decision = (await (await pending).json()) as { hookSpecificOutput: { decision: { behavior: string } } };
+    expect(decision.hookSpecificOutput.decision.behavior).toBe('allow');
+  });
+
+  test('/permission answers at once with an empty body when the event is not a permission request', async () => {
+    const res = await post(
+      '/permission',
+      { session_id: 'srv-2', cwd: repo, hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'ls' } },
+      withKey,
+    );
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe('');
+  });
+
   test('/gate answers pass or block as plain text', async () => {
     const res = await post('/gate', { session_id: 'srv-3', cwd: repo, hook_event_name: 'TaskCompleted', task_id: '1' }, withKey);
     expect(await res.text()).toBe('pass');
