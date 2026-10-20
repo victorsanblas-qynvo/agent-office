@@ -169,7 +169,7 @@ describe('hub server', () => {
     const asPanel = { 'X-Office-Panel': token };
     expect((await fetch(`${base}/api/state`, { headers: asPanel })).status).toBe(200);
     expect((await post('/api/orders', { sessionId: 'nadie', text: 'hola' }, asPanel)).status).toBe(404);
-    for (const path of ['/events', '/hook', '/guard', '/gate', '/gate-message', '/usage', '/chat']) {
+    for (const path of ['/events', '/hook', '/guard', '/gate', '/gate-message', '/usage', '/chat', '/encargo']) {
       expect((await post(path, { session_id: 'x', hook_event_name: 'Stop' }, asPanel)).status, path).toBe(401);
       expect((await post(path, { session_id: 'x', hook_event_name: 'Stop' }, { 'X-Office-Key': token })).status, path).toBe(401);
     }
@@ -379,6 +379,43 @@ describe('hub server', () => {
       withKey,
     );
     expect(await res.text()).toBe('pass');
+  });
+
+  test('/encargo authenticates the caller token and answers the script orders as plain text', async () => {
+    const agent = { ...withKey, 'X-Office-Token': 'tok-encargo', 'X-Office-Role': 'office-lead-mobile', 'X-Office-Name': 'lead-mobile' };
+    expect((await post('/events', { session_id: 'srv-encargo', cwd: repo, hook_event_name: 'SessionStart', source: 'startup' }, agent)).status).toBe(200);
+
+    const form = (fields: Record<string, string>) =>
+      fetch(`${base}/encargo`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', ...agent },
+        body: new URLSearchParams(fields),
+      });
+
+    const estado = await form({ order: 'estado', cwd: repo, slug: '', reason: '' });
+    expect(estado.status).toBe(200);
+    expect(await estado.text()).toBe('No hay encargos abiertos en esta planta.\n');
+
+    // The same fields as JSON take the same path.
+    const asJson = await post('/encargo', { order: 'estado', cwd: repo }, agent);
+    expect(asJson.status).toBe(200);
+    expect(await asJson.text()).toBe('No hay encargos abiertos en esta planta.\n');
+
+    const none = await form({ order: 'carpeta', cwd: repo, slug: '', reason: '' });
+    expect(none.status).toBe(404);
+    expect(await none.text()).toBe('ERROR: no hay ningún encargo abierto en esta planta.\n');
+
+    const outside = await form({ order: 'estado', cwd: join(h.root, 'fuera'), slug: '', reason: '' });
+    expect(outside.status).toBe(404);
+    expect(await outside.text()).toContain('no es de ninguna planta gestionada por la oficina.');
+
+    const noToken = await fetch(`${base}/encargo`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', ...withKey },
+      body: new URLSearchParams({ order: 'estado', cwd: repo }),
+    });
+    expect(noToken.status).toBe(403);
+    expect(await noToken.text()).toContain('no reconozco tu sesión');
   });
 
   test('/api/orders validates its input', async () => {
