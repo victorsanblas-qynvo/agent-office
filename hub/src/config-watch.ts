@@ -2,28 +2,53 @@ import { watch, type FSWatcher } from 'node:fs';
 
 export type WatchTarget = { dir: string; match: (filename: string) => boolean };
 
-export function watchTargets(targets: WatchTarget[], onChange: () => void, debounceMs = 200): () => void {
+export function watchTargets(targets: WatchTarget[], onChange: () => void, debounceMs = 200, retryMs = 1000): () => void {
   let timer: ReturnType<typeof setTimeout> | null = null;
-  const watchers: FSWatcher[] = [];
+  let stopped = false;
+  const retries = new Set<ReturnType<typeof setTimeout>>();
+  const watchers = new Set<FSWatcher>();
   const fire = () => {
+    if (stopped) return;
     if (timer) clearTimeout(timer);
     timer = setTimeout(() => {
       timer = null;
       onChange();
     }, debounceMs);
   };
-  for (const target of targets) {
+  const retry = (target: WatchTarget) => {
+    if (stopped) return;
+    const handle = setTimeout(() => {
+      retries.delete(handle);
+      arm(target);
+    }, retryMs);
+    retries.add(handle);
+  };
+  const arm = (target: WatchTarget) => {
+    if (stopped) return;
+    let watcher: FSWatcher;
     try {
-      const watcher = watch(target.dir, (_event, filename) => {
+      watcher = watch(target.dir, (_event, filename) => {
         if (filename && target.match(String(filename))) fire();
       });
-      watcher.on('error', () => watcher.close());
-      watchers.push(watcher);
-    } catch {}
-  }
+    } catch {
+      retry(target);
+      return;
+    }
+    watchers.add(watcher);
+    watcher.on('error', () => {
+      watchers.delete(watcher);
+      watcher.close();
+      retry(target);
+    });
+  };
+  for (const target of targets) arm(target);
   return () => {
+    stopped = true;
     if (timer) clearTimeout(timer);
-    for (const w of watchers) w.close();
+    for (const handle of retries) clearTimeout(handle);
+    retries.clear();
+    for (const watcher of watchers) watcher.close();
+    watchers.clear();
   };
 }
 

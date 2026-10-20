@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { chmodSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { CONFIG_VERSION, DEFAULT_ROLES, PROFILES_DIR, createIdIfMissing, createKeyIfMissing, defaultConfig, loadConfig, migrateConfig, normalizeConfig, roleSettingsFor, rotateKey, saveConfig, writeHeaders } from '../src/config';
 import { configTargets, watchTargets } from '../src/config-watch';
@@ -202,6 +202,34 @@ describe('config', () => {
     while (calls === 0 && Date.now() - start < 3000) await Bun.sleep(25);
     expect(calls).toBeGreaterThanOrEqual(1);
     stop();
+    cleanup();
+  });
+
+  test('the watcher re-arms a directory that appears after startup', async () => {
+    const { dir, cleanup } = tempDir();
+    const profiles = join(dir, 'profiles');
+    let calls = 0;
+    const stop = watchTargets(configTargets(dir, profiles), () => calls++, 25, 25);
+    mkdirSync(profiles);
+    await Bun.sleep(200);
+    writeFileSync(join(profiles, 'demo.json'), '{}');
+    const start = Date.now();
+    while (calls === 0 && Date.now() - start < 3000) await Bun.sleep(25);
+    expect(calls).toBeGreaterThanOrEqual(1);
+    stop();
+    cleanup();
+  });
+
+  test('stop cancels the pending re-arm of a missing directory', async () => {
+    const { dir, cleanup } = tempDir();
+    const profiles = join(dir, 'profiles');
+    let calls = 0;
+    const stop = watchTargets(configTargets(dir, profiles), () => calls++, 25, 25);
+    stop();
+    mkdirSync(profiles);
+    writeFileSync(join(profiles, 'demo.json'), '{}');
+    await Bun.sleep(300);
+    expect(calls).toBe(0);
     cleanup();
   });
 });
