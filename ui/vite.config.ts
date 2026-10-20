@@ -6,13 +6,23 @@ import { defineConfig, type Plugin } from 'vite';
 import { mintPanelToken } from '../hub/src/panel-auth';
 
 const root = dirname(fileURLToPath(import.meta.url));
+const home = process.env.AGENT_OFFICE_HOME ?? join(homedir(), '.config/agent-office');
+
+function hubPort(): number {
+  try {
+    const port = Number(readFileSync(join(home, 'port'), 'utf8').trim());
+    if (Number.isInteger(port) && port > 0 && port < 65536) return port;
+  } catch {}
+  return 4747;
+}
+
+const hub = `http://127.0.0.1:${hubPort()}`;
 
 function officePanel(): Plugin {
   return {
     name: 'office-panel',
     apply: 'serve',
     transformIndexHtml(html) {
-      const home = process.env.AGENT_OFFICE_HOME ?? join(homedir(), '.config/agent-office');
       let key = '';
       try {
         key = readFileSync(join(home, 'key'), 'utf8').trim();
@@ -58,8 +68,8 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     proxy: {
-      '/api': { target: 'http://127.0.0.1:4747', changeOrigin: true },
-      '/live': { target: 'ws://127.0.0.1:4747', ws: true, changeOrigin: true },
+      '/api': { target: hub, changeOrigin: true },
+      '/live': { target: hub.replace(/^http/, 'ws'), ws: true, changeOrigin: true },
     },
   },
 });
