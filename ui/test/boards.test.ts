@@ -1,10 +1,11 @@
-import { beforeEach, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { BOARD_MAX_LINES, boardData, boardSignature, type BoardInput } from '../src/boards';
 import { applyLang } from '../src/i18n/index';
 import type { UsageSummary } from '../src/types';
 import { agent, doc, floor, order } from './fixtures';
 
 beforeEach(() => applyLang('es'));
+afterEach(() => applyLang('es'));
 
 const NOW = 1_000_000;
 const tokens = (input: number) => ({ turns: 4, input, cacheRead: 0, cacheCreate: 0, output: 0 });

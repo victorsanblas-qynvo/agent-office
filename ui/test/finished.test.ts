@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
-import { t } from '../src/i18n/index';
+import { applyLang, t } from '../src/i18n/index';
 import { NOTIFY_EVENTS, Notifier, type NotifyPrefs } from '../src/notify';
 import { FINISHED_KEY, FinishedQueue, finishedHeading, finishedNotice, readFinishedMode, wantsDesktop, wantsPopup, writeFinishedMode } from '../src/panel/finished';
 import type { Store } from '../src/store';
@@ -33,6 +33,9 @@ Object.assign(globalThis, {
   document: { visibilityState: 'hidden', hasFocus: () => false, documentElement: { lang: 'es' } },
   window: { focus: () => {} },
 });
+
+// The tests share the process with the other files: the texts asserted here are the Spanish ones.
+beforeEach(() => applyLang('es'));
 
 const finished = (id: number, over: Partial<FinishedView> = {}): FinishedView => ({
   id,

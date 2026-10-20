@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
-import { t } from '../src/i18n/index';
+import { applyLang, t } from '../src/i18n/index';
 import { NOTIFY_EVENTS, Notifier, SEEN_LIMIT, type NotifyPrefs } from '../src/notify';
 import type { Store } from '../src/store';
 import type { AgentView, DocumentView, QuestionView, ServerMessage, Snapshot } from '../src/types';
@@ -44,6 +44,9 @@ Object.assign(globalThis, {
   },
   window: { focus: () => {} },
 });
+
+// The tests share the process with the other files: the texts asserted here are the Spanish ones.
+beforeEach(() => applyLang('es'));
 
 const LEAD = 'lead-1';
 const DEV = 'dev-1';

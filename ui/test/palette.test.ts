@@ -1,9 +1,10 @@
-import { beforeEach, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { applyLang } from '../src/i18n/index';
 import { buildEntries, EMPTY_LIMIT, searchEntries, type PaletteContext } from '../src/palette/entries';
 import { agent, doc, floor } from './fixtures';
 
 beforeEach(() => applyLang('es'));
+afterEach(() => applyLang('es'));
 
 const context = (extra: Partial<PaletteContext> = {}): PaletteContext => ({
   agents: [agent('lead-mobile', { roleKind: 'lead' }), agent('tester-mobile', { roleKind: 'tester' })],

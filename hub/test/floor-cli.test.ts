@@ -368,3 +368,93 @@ describe('templates and stacks', () => {
     cleanup();
   });
 });
+
+describe('floor CLI as a command', () => {
+  let ctx: { dir: string; cleanup: () => void };
+  let p: Paths;
+
+  function run(args: string[]): { code: number; out: string; err: string } {
+    const result = Bun.spawnSync([process.execPath, join(import.meta.dir, '..', 'src', 'floor-cli.ts'), ...args], {
+      stdin: 'ignore',
+      stdout: 'pipe',
+      stderr: 'pipe',
+      env: { ...process.env, AGENT_OFFICE_HOME: p.home, AGENT_OFFICE_CLAUDE_HOME: p.claudeHome },
+    });
+    return { code: result.exitCode, out: result.stdout.toString(), err: result.stderr.toString() };
+  }
+
+  beforeEach(() => {
+    ctx = tempDir();
+    p = fakePaths(ctx.dir);
+    saveConfig(p, testConfig({ docsRepo: join(ctx.dir, 'docs'), departments: { redaccion: true, mantenimiento: true } }));
+  });
+  afterEach(() => ctx.cleanup());
+
+  test('list prints the floors and says so when there are none', () => {
+    const empty = run(['list']);
+    expect(empty.code).toBe(0);
+    expect(empty.out).toContain('No hay plantas configuradas');
+
+    writeFloor(p, profiles, planFloor(p, profiles, makeRepo(ctx.dir, 'mobile', { 'pubspec.yaml': 'name: app\n' })));
+    const listed = run(['list']);
+    expect(listed.code).toBe(0);
+    expect(listed.out).toMatch(/mobile\s+gestionada\s+Flutter/);
+  });
+
+  test('add writes the floor and its agents without asking with --yes', () => {
+    const repo = makeRepo(ctx.dir, 'mobile', { 'pubspec.yaml': 'name: app\n' });
+    const result = run(['add', repo, '--yes']);
+
+    expect(result.code).toBe(0);
+    expect(result.out).toContain('Planta mobile (Flutter) gestionada en');
+    expect(result.out).toContain('Arranca su jefe de planta con bun run office');
+    expect(existsSync(agentFile(p, 'lead', 'mobile'))).toBe(true);
+    expect(loadConfig(p).floors.mobile?.managed).toBe(true);
+  });
+
+  test('add takes the slug from --slug', () => {
+    const repo = makeRepo(ctx.dir, 'mobile', { 'pubspec.yaml': 'name: app\n' });
+    const result = run(['add', repo, '--slug', 'app-movil', '--yes']);
+
+    expect(result.code).toBe(0);
+    expect(result.out).toContain('Planta app-movil (Flutter) gestionada en');
+    expect(loadConfig(p).floors['app-movil']?.managed).toBe(true);
+  });
+
+  test('add asks before overwriting and cancels without a terminal', () => {
+    const repo = makeRepo(ctx.dir, 'mobile', { 'pubspec.yaml': 'name: app\n' });
+    writeFloor(p, profiles, planFloor(p, profiles, repo));
+
+    const result = run(['add', repo]);
+    expect(result.code).toBe(1);
+    expect(result.err).toContain('Cancelado');
+  });
+
+  test('add --all regenerates every floor', () => {
+    writeFloor(p, profiles, planFloor(p, profiles, makeRepo(ctx.dir, 'mobile', { 'pubspec.yaml': 'name: app\n' })));
+    const result = run(['add', '--all']);
+
+    expect(result.code).toBe(0);
+    expect(result.out).toContain('mobile: agentes regenerados');
+    expect(result.out).toContain(`agentes escritos en ${p.agentsDir}`);
+  });
+
+  test('remove passes the floor to observed and an unknown one fails', () => {
+    writeFloor(p, profiles, planFloor(p, profiles, makeRepo(ctx.dir, 'mobile', { 'pubspec.yaml': 'name: app\n' })));
+    const removed = run(['remove', 'mobile']);
+
+    expect(removed.code).toBe(0);
+    expect(removed.out).toContain('Planta mobile pasa a observada. Agentes borrados: 3');
+    expect(loadConfig(p).floors.mobile?.managed).toBe(false);
+
+    const missing = run(['remove', 'nope']);
+    expect(missing.code).toBe(1);
+    expect(missing.err).toContain('No hay ninguna planta "nope"');
+  });
+
+  test('without arguments it prints the usage and fails', () => {
+    const result = run([]);
+    expect(result.code).toBe(1);
+    expect(result.out).toContain('Uso:');
+  });
+});
