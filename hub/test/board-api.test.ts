@@ -89,6 +89,36 @@ describe('board routes', () => {
   });
 });
 
+describe('folder retry route', () => {
+  test('a card with a healthy folder cannot be retried', async () => {
+    rig = deliveryRig();
+    const call = api(rig);
+    const card = await newOrder(rig);
+    expect(await call('POST', `/api/board/orders/${card.id}/folder`)).toMatchObject({
+      status: 409,
+      body: { error: { key: 'hub.api.orderBadState' } },
+    });
+  });
+
+  test('an interrupted setup is redone from the panel', async () => {
+    rig = deliveryRig();
+    const call = api(rig);
+    const card = await newOrder(rig);
+    rig.h.db.query("UPDATE orders SET worktree_state = 'error', setup_error = 'interrupted' WHERE id = ?").run(card.id);
+
+    const retried = await call('POST', `/api/board/orders/${card.id}/folder`);
+    expect(retried.status).toBe(200);
+    expect(retried.body.order.worktree).toMatchObject({ state: 'listo', error: null });
+  });
+
+  test('bad and unknown ids answer 400 and 404', async () => {
+    rig = deliveryRig();
+    const call = api(rig);
+    expect(await call('POST', '/api/board/orders/abc/folder')).toMatchObject({ status: 400, body: { error: { key: 'hub.api.badId' } } });
+    expect(await call('POST', '/api/board/orders/9999/folder')).toMatchObject({ status: 404, body: { error: { key: 'hub.api.orderNotFound' } } });
+  });
+});
+
 describe('checks and checkpoints routes', () => {
   test('run, read, cancel, list the checkpoints, confirm the definition', async () => {
     rig = deliveryRig({ configure: checksConfig(['uno', 'exit 0']) });
