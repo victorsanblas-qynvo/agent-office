@@ -427,6 +427,7 @@ export function createApp(opts: ServerOptions, holdRequest: (req: Request) => vo
 
   app.get('/api/replay/:sessionId', requirePanel, async (c) => {
     const { db, deps } = office.replaySource();
+    holdRequest(c.req.raw);
     const built = await buildRecording(db, c.req.param('sessionId') ?? '', deps, { compress: c.req.query('compress') === '1' });
     if (built.ok) return c.json(built.recording);
     if (built.reason === 'too-large') return c.json({ error: { key: 'hub.api.recordingTooLarge', params: { max: MAX_REPLAY_EVENTS } } }, 413);

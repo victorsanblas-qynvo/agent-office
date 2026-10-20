@@ -268,15 +268,21 @@ describe('GET /api/replay/:sessionId', () => {
 
   test('needs the panel credential, answers 404 without events and the recording otherwise', async () => {
     playOffice();
-    const app = createApp({ office: h.office, port: PORT, key: () => KEY, publicDir: h.root }, () => {});
+    let held = 0;
+    const app = createApp({ office: h.office, port: PORT, key: () => KEY, publicDir: h.root }, () => {
+      held += 1;
+    });
     const get = (path: string, auth = true) =>
       app.request(`http://127.0.0.1:${PORT}${path}`, { headers: { host: `127.0.0.1:${PORT}`, ...(auth ? { 'x-office-key': KEY } : {}) } });
     expect((await get(`/api/replay/${LEAD}`, false)).status).toBe(401);
+    expect(held).toBe(0);
     const missing = await get('/api/replay/nada');
     expect(missing.status).toBe(404);
     expect(await missing.json()).toEqual({ error: { key: 'hub.api.noRecording' } });
     const ok = await get(`/api/replay/${LEAD}?compress=1`);
     expect(ok.status).toBe(200);
+    // Building a recording can outlast the server's idle timeout.
+    expect(held).toBe(2);
     const recording = (await ok.json()) as Recording;
     expect(recording.version).toBe(1);
     expect(recording.messages[0].msg.type).toBe('snapshot');
