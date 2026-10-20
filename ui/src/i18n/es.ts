@@ -654,6 +654,7 @@ export const es = {
   'board.checks.runNow': 'Comprobar ahora',
   'board.checks.cancel': 'Cancelar comprobaciones',
   'board.checks.unconfigured': 'Esta planta no tiene comprobaciones configuradas. Se definen en Ajustes, en Proyectos.',
+  'board.checks.loadFailed': 'No se pudieron cargar las comprobaciones: {error}',
   'board.checks.run.running': 'En marcha',
   'board.checks.run.passed': 'En verde',
   'board.checks.run.failed': 'En rojo',

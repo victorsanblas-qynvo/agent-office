@@ -97,8 +97,10 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
     const [checks, checkpoints] = await Promise.all([api.orderChecks(orderId), api.orderCheckpoints(orderId)]);
     if (gone) return;
     loaded = true;
-    if (checks.ok) runs = checks.data.runs;
-    else error = checks.message;
+    if (checks.ok) {
+      runs = checks.data.runs;
+      error = '';
+    } else error = checks.message;
     if (checkpoints.ok) {
       points = checkpoints.data.checkpoints;
       skipped = checkpoints.data.skipped;
@@ -177,8 +179,15 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
     const live = store.checkRuns.get(orderId);
     const shown = live && !runs.some((r) => r.id === live.id) ? [live, ...runs] : runs.map((r) => (live && r.id === live.id ? live : r));
     const body =
-      !loaded && api ? el('p', 'muted', t('board.loading')) : shown.length === 0 ? el('p', 'muted', t(current.checks ? 'board.checks.none' : 'board.checks.unconfigured')) : el('div', 'runs', ...shown.map((run, index) => runBlock(run, now, index === 0)));
-    return el('div', 'order-tab', warning, body);
+      error !== ''
+        ? null
+        : !loaded && api
+          ? el('p', 'muted', t('board.loading'))
+          : shown.length === 0
+            ? el('p', 'muted', t(current.checks ? 'board.checks.none' : 'board.checks.unconfigured'))
+            : el('div', 'runs', ...shown.map((run, index) => runBlock(run, now, index === 0)));
+    const failure = error !== '' ? el('p', 'order-warning', t('board.checks.loadFailed', { error })) : null;
+    return el('div', 'order-tab', warning, failure, body);
   };
 
   const pointsTab = (now: number): HTMLElement => {

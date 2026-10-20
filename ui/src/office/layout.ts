@@ -45,7 +45,6 @@ function leadKindFor(floor: FloorView): RoleKind | null {
   return 'lead';
 }
 
-const ROW_COUNT = 2;
 // Rows of desks as the 3D plan has them: the user's v picks the nearer one.
 const ROW_V = [0.219, 0.544] as const;
 

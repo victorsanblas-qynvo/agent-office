@@ -155,7 +155,7 @@ export class ChecksDesk {
     return { ok: true, run: view, done };
   }
 
-  private async execute(order: OrderRow, runId: number, sha: string, controller: AbortController): Promise<CheckRunView> {
+  private async execute(order: OrderRow, runId: number, _sha: string, controller: AbortController): Promise<CheckRunView> {
     const { db, now } = this.opts;
     const shell = this.opts.shell ?? runShell;
     const cfg = this.opts.config().checksConfig;

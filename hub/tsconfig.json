@@ -6,6 +6,8 @@
     "lib": ["ES2022"],
     "types": ["bun"],
     "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
     "noEmit": true,
     "skipLibCheck": true,
     "verbatimModuleSyntax": true

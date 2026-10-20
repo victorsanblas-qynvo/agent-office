@@ -7,7 +7,7 @@ import type { Store } from '../store';
 import { relativeTime } from '../time';
 import type { OrderStatus, OrderView } from '../types';
 import { checksBadgeNode, folderBadgeNode } from './badges';
-import { COLUMNS, columnsOf, deliveryFloors, neighbours, orderFloors } from './columns';
+import { columnsOf, deliveryFloors, neighbours, orderFloors } from './columns';
 import { mountOrderDetail, type OrderDetail } from './order-detail';
 import { openNewOrder } from './new-order';
 

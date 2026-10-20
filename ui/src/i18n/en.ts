@@ -654,6 +654,7 @@ export const en: Messages = {
   'board.checks.runNow': 'Check now',
   'board.checks.cancel': 'Cancel checks',
   'board.checks.unconfigured': 'This floor has no checks configured. Set them in Settings, under Projects.',
+  'board.checks.loadFailed': 'The checks could not be loaded: {error}',
   'board.checks.run.running': 'Running',
   'board.checks.run.passed': 'Green',
   'board.checks.run.failed': 'Red',

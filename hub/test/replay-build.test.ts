@@ -17,7 +17,7 @@ afterEach(() => h?.cleanup());
 
 function spies() {
   const calls: string[] = [];
-  const git: GitRunner = async (cwd, args) => {
+  const git: GitRunner = async (_cwd, args) => {
     calls.push(`git ${args.join(' ')}`);
     return { code: 1, stdout: '', stderr: '' };
   };

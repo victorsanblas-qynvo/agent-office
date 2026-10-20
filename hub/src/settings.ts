@@ -22,7 +22,7 @@ import {
 } from './config';
 import { ensureDocsRepo } from './docs-repo';
 import { regenerateAgents } from './floor-cli';
-import { checkFilesOf, checksOf, defaultChecks, deliveryOf, gateModeOf, setupOf, type Profiles } from './profiles';
+import { checkFilesOf, defaultChecks, deliveryOf, gateModeOf, setupOf, type Profiles } from './profiles';
 import { record } from './state-machine';
 import type { FloorConfig, HubText, OfficeConfig, RoleId, RoleSettings, SettingsFloor, SettingsResult, SettingsTarget, SettingsView } from './types';
 
