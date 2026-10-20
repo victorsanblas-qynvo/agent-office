@@ -1,7 +1,7 @@
 import { Database } from 'bun:sqlite';
 import { describe, expect, test } from 'bun:test';
 import { join } from 'node:path';
-import { ADDITIVE_SINCE, MIGRATIONS, SCHEMA_VERSION, checkAdditive, migrate, openDb } from '../src/db';
+import { ADDITIVE_SINCE, MIGRATIONS, SCHEMA_VERSION, checkAdditive, dbRegistry, migrate, openDb } from '../src/db';
 import { tempDir } from './helpers';
 
 const tables = (db: Database) =>
@@ -157,6 +157,43 @@ describe('schema', () => {
     old.run(5);
     old.run(6);
     expect(db.query<{ n: number }, []>('SELECT COUNT(*) AS n FROM alerts').get()?.n).toBe(5);
+    db.close();
+  });
+});
+
+describe('floor registry', () => {
+  test('adds floors, finds them by path and lists them by slug', () => {
+    const db = openDb(':memory:');
+    const registry = dbRegistry(db);
+    expect(registry.all()).toEqual([]);
+    expect(registry.byPath('/nada')).toBeNull();
+
+    registry.add({ slug: 'web', path: '/web', stack: 'node' });
+    registry.add({ slug: 'mobile', path: '/mobile', stack: 'flutter' });
+    expect(registry.all()).toEqual([
+      { slug: 'mobile', path: '/mobile', stack: 'flutter' },
+      { slug: 'web', path: '/web', stack: 'node' },
+    ]);
+    expect(registry.byPath('/web')).toEqual({ slug: 'web', path: '/web', stack: 'node' });
+    db.close();
+  });
+
+  test('a repeated slug or path keeps the first record', () => {
+    const db = openDb(':memory:');
+    const registry = dbRegistry(db);
+    registry.add({ slug: 'mobile', path: '/mobile', stack: 'flutter' });
+    registry.add({ slug: 'mobile', path: '/otra', stack: 'node' });
+    registry.add({ slug: 'otra', path: '/mobile', stack: 'node' });
+    expect(registry.all()).toEqual([{ slug: 'mobile', path: '/mobile', stack: 'flutter' }]);
+    db.close();
+  });
+
+  test('the records survive a new registry over the same database', () => {
+    const db = openDb(':memory:');
+    dbRegistry(db).add({ slug: 'mobile', path: '/mobile', stack: 'flutter' });
+    const again = dbRegistry(db);
+    expect(again.byPath('/mobile')).toEqual({ slug: 'mobile', path: '/mobile', stack: 'flutter' });
+    expect(again.all()).toHaveLength(1);
     db.close();
   });
 });
