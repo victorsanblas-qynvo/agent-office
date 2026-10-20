@@ -56,6 +56,7 @@ describe('office-hook.sh', () => {
   let hookAnswer = 'pass';
   let gateAnswer = 'pass';
   let encargoStatus = 200;
+  let syncStatus = 200;
   let delayMs = 0;
   let holdAsk = false;
   const aborted: boolean[] = [];
@@ -80,7 +81,7 @@ describe('office-hook.sh', () => {
         if (path === '/ask') return new Response('{"hookSpecificOutput":{"hookEventName":"PreToolUse"}}');
         if (path === '/chat') return new Response('enviado #1\n');
         if (path === '/encargo') return new Response(encargoStatus === 200 ? 'encargo/login-a1b2 → /r/.claude/worktrees/office-login-a1b2\n' : 'ERROR: no hay ningún encargo abierto', { status: encargoStatus });
-        if (path === '/api/redaccion/sync') return new Response('fuentes listas\n');
+        if (path === '/api/redaccion/sync') return new Response(syncStatus === 200 ? 'fuentes listas\n' : 'ERROR: la planta mobile no existe\n', { status: syncStatus });
         if (path === '/permission') return new Response('{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"allow"}}}');
         return new Response(null, { status: 404 });
       },
@@ -315,6 +316,13 @@ describe('office-hook.sh', () => {
     expect(seen.at(-1)).toMatchObject({ path: '/api/redaccion/sync', body: '{"slug":"login","floors":["mobile"]}' });
     expect(seen.at(-1)?.headers['x-office-key']).toBe(KEY);
     expect((await sync(keyOnly)).code).toBe(69);
+  });
+
+  test('office-sync.sh prints the hub error to stderr and exits 1', async () => {
+    syncStatus = 400;
+    const failed = await runScriptWithErr('office-sync.sh', ['login', 'mobile'], { AGENT_OFFICE_HOME: home });
+    syncStatus = 200;
+    expect(failed).toEqual({ stdout: '', stderr: 'ERROR: la planta mobile no existe\n', code: 1 });
   });
 
   test('a stale answer file left by a killed hook with the same pid is never printed', async () => {

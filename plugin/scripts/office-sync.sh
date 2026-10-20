@@ -46,12 +46,23 @@ fi
 port=
 read -r port 2>/dev/null < "$dir/port"
 [ -n "$port" ] || port=4747
-curl -sS -m 600 -X POST "http://127.0.0.1:$port/api/redaccion/sync?format=text" \
+nl='
+'
+out=$(curl -sS -m 600 -w "$nl%{http_code}" -X POST "http://127.0.0.1:$port/api/redaccion/sync?format=text" \
   -H "Content-Type: application/json" \
   -H @"$dir/headers" \
-  --data-binary "$body"
+  --data-binary "$body")
 status=$?
 if [ $status -ne 0 ]; then
   echo "No se pudo hablar con el hub de Agent Office en el puerto $port (curl $status)." >&2
   exit 69
 fi
+code="${out##*"$nl"}"
+body="${out%"$nl"*}"
+case "$code" in
+  2??) printf '%s' "$body" ;;
+  *)
+    printf '%s' "$body" >&2
+    exit 1
+    ;;
+esac
