@@ -39,7 +39,7 @@ describe('what counts as a delivery', () => {
 
   test('a floor that works with orders says it through the end popup instead', () => {
     const store = seeded();
-    store.orders = [order('x', { floor: 'mobile', worktree: '/w' })];
+    store.orders = [order('x', { floor: 'mobile', worktree: { path: '/w', state: 'listo', error: null, stale: false } })];
     expect(isTracked(store, 'lead-1')).toBe(true);
     expect(leadDeliveryFloor(store, text('HECHO: listo'))).toBeNull();
     expect(deliveryFloors(store, { type: 'finished', data: finished(1, ['mobile', 'backend']) })).toEqual(['mobile', 'backend']);

@@ -53,7 +53,7 @@ export const doc = (path: string, extra: Partial<DocumentView> = {}): DocumentVi
   kind: 'plan',
   slug: path,
   title: path,
-  docType: 'plan',
+  docType: 'implementacion',
   status: 'entregado',
   round: 1,
   maxRounds: 3,

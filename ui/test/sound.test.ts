@@ -165,7 +165,7 @@ describe('what makes a sound', () => {
     expect(engine.played).toHaveLength(2);
 
     now += MERGE_MS + 1;
-    const tracked = build(context([agent(LEAD, { roleKind: 'lead', floor: 'mobile' })], [order('x', { floor: 'mobile', worktree: '/w' })]));
+    const tracked = build(context([agent(LEAD, { roleKind: 'lead', floor: 'mobile' })], [order('x', { floor: 'mobile', worktree: { path: '/w', state: 'listo', error: null, stale: false } })]));
     tracked.observe(message('HECHO: listo'));
     expect(engine.played).toHaveLength(2);
 

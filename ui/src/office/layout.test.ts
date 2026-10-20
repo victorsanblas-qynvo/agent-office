@@ -26,6 +26,10 @@ function agent(key: string, roleKind: AgentView['roleKind'], floor: string, pare
     file: null,
     task: null,
     away: false,
+    tokens: null,
+    waiting: null,
+    stalledSince: null,
+    context: null,
   };
 }
 
@@ -183,9 +187,10 @@ describe('the layout override in 2D', () => {
 
   test('the lead desk moves too, along its row', () => {
     const moved = layout({ lead: { u: 0.5, v: 0.9 } });
+    expect(moved.leadDesk).not.toBeNull();
     expect(moved.leadDesk!.x).toBe(Math.round(0.5 * WIDTH - moved.leadDesk!.width / 2));
     expect(moved.leadDesk!.y).toBe(areaTop);
-    expect(moved.desks.get('lead-1')).toBe(moved.leadDesk);
+    expect(moved.desks.get('lead-1')).toBe(moved.leadDesk!);
   });
 
   test('the coffee machine, the lab bench and the board slide along the wall; the table moves on the floor', () => {

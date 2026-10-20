@@ -188,7 +188,7 @@ describe('coffeePlan', () => {
     const never = [
       asCoffee('stalled', { stalledSince: 5 }),
       asCoffee('blocked', { state: 'blocked' }),
-      asCoffee('waiting', { waiting: { on: 'tester', since: 1 } } as Partial<CoffeeAgent>),
+      asCoffee('waiting', { waiting: { who: 'tester', what: 'tests', since: 1 } }),
       asCoffee('busy', { state: 'working' }),
       asCoffee('away', { away: true }),
       asCoffee('fresh', { stateSince: NOW + 90 * COFFEE_WINDOW_MS }),

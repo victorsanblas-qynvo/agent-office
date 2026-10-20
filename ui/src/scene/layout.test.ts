@@ -76,6 +76,10 @@ function agent(key: string, roleKind: AgentView['roleKind'], parentKey: string |
     file: null,
     task: null,
     away: false,
+    tokens: null,
+    waiting: null,
+    stalledSince: null,
+    context: null,
   };
 }
 
