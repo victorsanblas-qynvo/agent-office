@@ -102,6 +102,7 @@ export class DocumentDesk {
   private cache: DocumentView[] = [];
   private watchers: FSWatcher[] = [];
   private timer: ReturnType<typeof setTimeout> | null = null;
+  private rewatchTimer: ReturnType<typeof setTimeout> | null = null;
   private watchedRoot: string | null = null;
 
   constructor(private readonly opts: DocumentsOptions) {}
@@ -141,7 +142,8 @@ export class DocumentDesk {
   private rewatchLater(): void {
     this.unwatch();
     this.watchedRoot = null;
-    setTimeout(() => {
+    this.rewatchTimer = setTimeout(() => {
+      this.rewatchTimer = null;
       this.watch();
       this.refresh();
     }, 5000);
@@ -152,6 +154,8 @@ export class DocumentDesk {
     this.watchers = [];
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
+    if (this.rewatchTimer) clearTimeout(this.rewatchTimer);
+    this.rewatchTimer = null;
   }
 
   changedAt(ref: DocRef): number | null {
