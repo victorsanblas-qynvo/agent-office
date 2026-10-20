@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync, type Stats } from 'node:fs';
 import { join, normalize, resolve, sep } from 'node:path';
 import type { Server, ServerWebSocket } from 'bun';
 import { Hono, type Context, type Next } from 'hono';
@@ -493,7 +493,7 @@ export function createApp(opts: ServerOptions, holdRequest: (req: Request) => vo
     return c.json({ message: result.message, delivered: result.delivered });
   });
 
-  app.get('*', (c) => serveStatic(c.req.path, opts));
+  app.get('*', (c) => serveStatic(c.req.path, opts, c.req.header('if-none-match')));
   return app;
 }
 
@@ -596,7 +596,7 @@ export function customModels(publicDir: string): string[] {
   }
 }
 
-function serveStatic(path: string, opts: ServerOptions): Response {
+function serveStatic(path: string, opts: ServerOptions, ifNoneMatch?: string): Response {
   if (path === '/' || path === '/index.html') return indexResponse(opts);
   if (path === CUSTOM_MODELS_INDEX) {
     return new Response(JSON.stringify(customModels(opts.publicDir)), {
@@ -612,15 +612,23 @@ function serveStatic(path: string, opts: ServerOptions): Response {
   }
   const file = resolve(root, `.${normalize(decoded)}`);
   if (!file.startsWith(root + sep)) return new Response('not found', { status: 404 });
+  let stat: Stats;
   try {
-    if (!statSync(file).isFile()) return new Response('not found', { status: 404 });
+    stat = statSync(file);
+    if (!stat.isFile()) return new Response('not found', { status: 404 });
   } catch {
     return new Response('not found', { status: 404 });
   }
-  const response = new Response(Bun.file(file));
-  // Vite puts a content hash in the name: the file behind a URL never changes, so it can be cached forever.
-  if (HASHED_ASSET.test(decoded)) response.headers.set('Cache-Control', 'public, max-age=31536000, immutable');
-  return response;
+  const etag = `W/"${stat.size.toString(16)}-${Math.floor(stat.mtimeMs).toString(16)}"`;
+  // The hash in a Vite asset never changes; the rest revalidates, so a reload gets a 304 instead of the whole file.
+  const cache = HASHED_ASSET.test(decoded) ? 'public, max-age=31536000, immutable' : 'no-cache';
+  const headers = new Headers({ ETag: etag, 'Cache-Control': cache });
+  if (ifNoneMatch !== undefined && etagMatches(ifNoneMatch, etag)) return new Response(null, { status: 304, headers });
+  return new Response(Bun.file(file), { headers });
+}
+
+function etagMatches(header: string, etag: string): boolean {
+  return header.split(',').some((candidate) => candidate.trim() === etag || candidate.trim() === '*');
 }
 
 function indexResponse(opts: ServerOptions): Response {

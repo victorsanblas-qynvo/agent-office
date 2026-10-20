@@ -117,8 +117,23 @@ describe('hub server', () => {
     for (const path of ['/app.js', '/assets/logo.png']) {
       const res = await fetch(`${base}${path}`);
       expect(res.status, path).toBe(200);
-      expect(res.headers.get('cache-control') ?? '', path).not.toContain('immutable');
+      expect(res.headers.get('cache-control'), path).toBe('no-cache');
     }
+  });
+
+  test('static files carry an ETag and a matching If-None-Match gets a 304', async () => {
+    for (const path of ['/app.js', '/assets/app-12345678.js', '/assets/logo.png']) {
+      const first = await fetch(`${base}${path}`);
+      const etag = first.headers.get('etag');
+      expect(etag, path).toMatch(/^W\/"[0-9a-f]+-[0-9a-f]+"$/);
+      const again = await fetch(`${base}${path}`, { headers: { 'If-None-Match': etag ?? '' } });
+      expect(again.status, path).toBe(304);
+      expect(await again.text(), path).toBe('');
+      expect(again.headers.get('etag'), path).toBe(etag);
+    }
+    const changed = await fetch(`${base}/app.js`, { headers: { 'If-None-Match': 'W/"stale"' } });
+    expect(changed.status).toBe(200);
+    expect(await changed.text()).toBe('console.log(1)');
   });
 
   test('a launch link is claimed once for a panel token', async () => {
