@@ -242,6 +242,26 @@ describe('desktop notifier', () => {
     expect(FakeNotification.created).toHaveLength(1);
   });
 
+  test('a browser that refuses to construct notifications does not break the event stream', () => {
+    class ThrowingNotification {
+      static permission: NotificationPermission = 'granted';
+      static requestPermission = async (): Promise<NotificationPermission> => 'granted';
+      constructor() {
+        throw new TypeError('Illegal constructor');
+      }
+    }
+    const original = globalThis.Notification;
+    Object.assign(globalThis, { Notification: ThrowingNotification });
+    try {
+      expect(() => notifier.test()).not.toThrow();
+      expect(() => notifier.observe({ type: 'question', data: question('q-throws') })).not.toThrow();
+    } finally {
+      Object.assign(globalThis, { Notification: original });
+    }
+    notifier.observe({ type: 'question', data: question('q-after') });
+    expect(FakeNotification.created.map((n) => n.options.tag)).toEqual(['question:q-after']);
+  });
+
   test('bodies never carry the command, the question or the message text', () => {
     notifier.observe({ type: 'question', data: question('p1', { kind: 'permission', detail: 'curl -H "Authorization: Bearer secreto"', tool: 'Bash' }) });
     notifier.observe({ type: 'question', data: question('q4') });

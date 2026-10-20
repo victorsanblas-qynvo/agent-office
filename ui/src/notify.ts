@@ -74,7 +74,11 @@ export class Notifier {
 
   test(): void {
     if (permissionState() !== 'granted') return;
-    new Notification(t('notify.test'), { tag: 'test' });
+    try {
+      new Notification(t('notify.test'), { tag: 'test' });
+    } catch {
+      // Some browsers expose Notification but only allow it through a service worker (for example mobile Chrome).
+    }
   }
 
   observe(message: ServerMessage): void {
@@ -237,7 +241,13 @@ export class Notifier {
     if (this.seen.size > SEEN_LIMIT) this.seen.delete(this.seen.values().next().value as string);
     // The panel in front already shows it.
     if (document.visibilityState === 'visible' && document.hasFocus()) return;
-    const notification = new Notification(title, { body, tag });
+    let notification: Notification;
+    try {
+      notification = new Notification(title, { body, tag });
+    } catch {
+      // A browser may expose Notification but refuse the constructor; one failed notice must not break the stream.
+      return;
+    }
     this.shown.set(tag, notification);
     if (this.shown.size > SEEN_LIMIT) this.shown.delete(this.shown.keys().next().value as string);
     notification.onclick = () => {
