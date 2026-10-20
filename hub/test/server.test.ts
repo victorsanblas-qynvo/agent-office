@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { mintLaunchToken, mintPanelToken, newNonce } from '../src/panel-auth';
 import { createApp, startServer } from '../src/server';
@@ -216,9 +216,18 @@ describe('hub server', () => {
     expect(await res.json()).toEqual(['dev.glb']);
   });
 
+  test('with no custom folder the character index is empty', async () => {
+    rmSync(join(h.root, 'public', 'assets', 'characters', 'custom'), { recursive: true, force: true });
+    const res = await fetch(`${base}/assets/characters/custom/index.json`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('cache-control')).toBe('no-store');
+    expect(await res.json()).toEqual([]);
+  });
+
   test('nothing outside the public folder is served', async () => {
     expect((await fetch(`${base}/%2e%2e/%2e%2e/etc/passwd`)).status).toBe(404);
     expect((await fetch(`${base}/missing.js`)).status).toBe(404);
+    expect((await fetch(`${base}/%zz.js`)).status).toBe(400);
   });
 
   test('a websocket that does not authenticate is closed with 4401', async () => {
