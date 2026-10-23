@@ -954,6 +954,8 @@ export const es = {
   'history.empty': 'No hay nada que coincida con la búsqueda.',
   'history.failed': 'No se pudo cargar el historial: {error}',
   'history.noIndex': 'Búsqueda simple: el índice de texto del hub no está disponible.',
+  'history.export.hint': 'Exporta las {n} filas cargadas del historial',
+  'history.export.partial': 'Exporta las {n} filas cargadas; hay más sin cargar y no se incluyen',
   'history.more': 'Cargar más',
   'history.replay': 'Reproducir sesión',
   'history.replay.hint': 'Abre la sesión como una grabación, con los silencios acortados',

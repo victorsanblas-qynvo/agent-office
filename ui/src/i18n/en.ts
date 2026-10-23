@@ -953,6 +953,8 @@ export const en: Messages = {
   'history.empty': 'Nothing matches the search.',
   'history.failed': 'The history could not be loaded: {error}',
   'history.noIndex': 'Plain search: the text index of the hub is not available.',
+  'history.export.hint': 'Export the {n} loaded history rows',
+  'history.export.partial': 'Exports the {n} loaded rows; there are more not loaded and they are left out',
   'history.more': 'Load more',
   'history.replay': 'Replay session',
   'history.replay.hint': 'Opens the session as a recording, with the silences shortened',
