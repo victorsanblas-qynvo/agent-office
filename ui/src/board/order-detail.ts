@@ -8,6 +8,7 @@ import { clockTime, relativeTime } from '../time';
 import type { OrderSpend, CheckRunView, CheckView, CheckpointView, OrderCommentView, OrderDiff, OrderDiffFile, OrderView, SearchHit, SkippedFile } from '../types';
 import { activityPath, activityTerms, orderTimeline } from './activity-model';
 import { checksBadgeNode, folderBadgeNode } from './badges';
+import { criteriaMarkdown, criteriaOf, criteriaProgress, criterionHash, readTicks, writeTicks } from './criteria';
 import { flakyChecks } from './flaky';
 import { diffStale, diffSummary, firstChangedLine, latestSha, orderSignature, patchRows, shouldReloadForChecks, statRows } from './diff-model';
 import type { RunMark } from './diff-model';
@@ -667,6 +668,39 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
     );
   };
 
+  let ticks: Set<string> | null = null;
+  const tickSet = (current: OrderView): Set<string> => (ticks ??= readTicks(current.slug));
+
+  const criteriaBlock = (current: OrderView): HTMLElement | null => {
+    const items = criteriaOf(current.description);
+    if (items.length === 0) return null;
+    const ticked = tickSet(current);
+    const progress = el('b', 'criteria-progress', criteriaProgress(items, ticked));
+    const list = el('ul', 'criteria-list');
+    for (const item of items) {
+      const hash = criterionHash(item);
+      const box = el('input');
+      box.type = 'checkbox';
+      box.checked = ticked.has(hash);
+      box.addEventListener('change', () => {
+        if (box.checked) ticked.add(hash);
+        else ticked.delete(hash);
+        writeTicks(current.slug, ticked, items);
+        progress.textContent = criteriaProgress(items, ticked);
+        lastSignature = signature(current);
+      });
+      list.append(el('li', 'criteria-item', el('label', '', box, el('span', '', item))));
+    }
+    const copyList = button(t('board.criteria.copy'));
+    copyList.addEventListener('click', () => {
+      void navigator.clipboard.writeText(criteriaMarkdown(items, ticked)).then(
+        () => store.toast(t('board.pr.copied'), 'ok'),
+        () => store.toast(t('board.pr.copyFailed'), 'error'),
+      );
+    });
+    return el('section', 'order-criteria', el('div', 'criteria-head', el('b', '', t('board.criteria.title')), progress, copyList), list);
+  };
+
   const signature = (current: OrderView): string => {
     const floor = store.floorBySlug(current.floor);
     return orderSignature(current, [
@@ -691,6 +725,7 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
       diffFileLoading,
       diffFileError,
       reviewStamp,
+      [...tickSet(current)].sort(),
     ]);
   };
 
@@ -739,6 +774,7 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
       ),
       current.worktree?.error ? el('pre', 'order-error', current.worktree.error) : null,
       current.description ? el('p', 'order-description', current.description) : null,
+      criteriaBlock(current),
       actions(current),
       tabs,
       tab === 'checks' ? checksTab(current, now) : tab === 'points' ? pointsTab(current, now) : tab === 'activity' ? activityTab(current, now) : diffTab(current),
