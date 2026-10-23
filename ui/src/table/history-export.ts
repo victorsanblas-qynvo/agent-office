@@ -43,14 +43,14 @@ export function historyRows(hits: readonly SearchHit[], who: (key: string) => { 
 }
 
 function cell(value: string): string {
-  const safe = /^[=+\-@\t]/.test(value) ? `'${value}` : value;
+  const safe = /^[=+\-@\t\r＝＋－＠]/.test(value) ? `'${value}` : value;
   return /[",\r\n]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
 }
 
-// Pure: RFC 4180 (comma, CRLF, a header row) with the cells that start like a formula defused by a single quote.
+// Pure: RFC 4180 (UTF-8 BOM, comma, CRLF, a header row) with the cells that start like a formula defused by a single quote.
 export function historyToCsv(rows: readonly HistoryRow[]): string {
   const lines = [HISTORY_COLUMNS.join(','), ...rows.map((row) => HISTORY_COLUMNS.map((column) => cell(row[column])).join(','))];
-  return lines.map((line) => `${line}\r\n`).join('');
+  return `\ufeff${lines.map((line) => `${line}\r\n`).join('')}`;
 }
 
 // Pure: the rows as pretty JSON with the keys always in the order of the columns.

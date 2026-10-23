@@ -52,6 +52,12 @@ export type FloorScore = { slug: string; label: string; open: number; red: numbe
 
 const CLOSED: ReadonlySet<string> = new Set(['hecho', 'descartado']);
 
+// Working means busy and not stuck: idle, done, failed and blocked agents do not count.
+export function isWorking(agent: AgentView, stateOf: (agent: AgentView) => AgentState): boolean {
+  const state = stateOf(agent);
+  return state !== 'idle' && state !== 'done' && state !== 'failed' && state !== 'blocked';
+}
+
 // One score per managed floor, the ones with red checks or blocked agents first, then the most open orders.
 export function floorScores(floors: readonly FloorView[], agents: readonly AgentView[], orders: readonly OrderView[], stateOf: (agent: AgentView) => AgentState): FloorScore[] {
   const scores = floors
@@ -63,9 +69,9 @@ export function floorScores(floors: readonly FloorView[], agents: readonly Agent
         slug: floor.slug,
         label: floorLabel(floor),
         open: open.length,
-        red: open.filter((order) => checksBadge(order)?.kind === 'failed').length,
+        red: open.filter((order) => checksBadge(order)?.kind === 'failed' && !order.checks?.forced).length,
         blocked: states.filter((state) => state === 'blocked').length,
-        working: states.filter((state) => state !== 'idle' && state !== 'done' && state !== 'failed' && state !== 'blocked').length,
+        working: agents.filter((agent) => agent.floor === floor.slug && !isAway(agent) && isWorking(agent, stateOf)).length,
       };
     });
   const urgent = (score: FloorScore): boolean => score.red > 0 || score.blocked > 0;
@@ -84,10 +90,7 @@ function scoreText(score: FloorScore): string {
 
 function directionBoard(input: BoardInput): BoardLine[] {
   const { today, everyone, usage, now } = input;
-  const working = everyone.filter((agent) => {
-    const state = input.stateOf(agent);
-    return state !== 'idle' && state !== 'done' && state !== 'failed';
-  }).length;
+  const working = everyone.filter((agent) => isWorking(agent, input.stateOf)).length;
   const lines: BoardLine[] = [
     { text: t('whiteboard.today', { tokens: today ? formatTokens(tokensTotal(today.total.tokens)) : NO_VALUE }), tone: today ? 'plain' : 'muted' },
     windowLine('5 h', usage?.fiveHour ?? null, now),
