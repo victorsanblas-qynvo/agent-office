@@ -22,6 +22,7 @@ import { mountPlans } from './plans/plans';
 import { loadRecording, mountReplayControls, replayFetchUrl, ReplayPlayer } from './replay';
 import { Store } from './store';
 import { theme } from './theme';
+import { mountBudgetWatch } from './budgets';
 import { UsageToday } from './usage-today';
 import { mountBoard } from './board/board';
 import { mountChat, type ChatHandle } from './chat/chat';
@@ -113,6 +114,7 @@ async function boot(): Promise<void> {
   const api = replayUrl || !token ? null : new OfficeApi(token, expire);
   usageToday = api ? new UsageToday(api) : null;
   usageToday?.setActive(tab === 'office');
+  if (api) mountBudgetWatch(store, api);
   const actions: Actions = api ? liveActions(store, api) : replayActions(store);
 
   const table = mountTable(tableHost, store, api);

@@ -1,3 +1,4 @@
+import { formatTokenShorthand, parseTokenShorthand, readFloorBudgets, writeFloorBudgets } from '../budgets';
 import { button, el } from '../dom';
 import { t, type MessageKey } from '../i18n';
 import { NOTIFY_EVENTS, notificationsSupported, type Notifier } from '../notify';
@@ -158,6 +159,34 @@ export function mountNotifySection(notifier: Notifier): HTMLElement {
     ...(muteRows.length > 0 ? muteRows : [el('p', 'settings-hint muted', t('settings.notifications.mute.none'))]),
   );
 
+  const budgetRows = notifier.floors
+    .filter((floor) => floor.kind === 'managed')
+    .map((floor) => {
+      const input = el('input', 'setting-number');
+      input.type = 'text';
+      input.placeholder = t('settings.budgets.placeholder');
+      input.setAttribute('aria-label', t('settings.budgets.label', { floor: floorLabel(floor) }));
+      const stored = readFloorBudgets()[floor.slug];
+      input.value = stored === undefined ? '' : formatTokenShorthand(stored);
+      input.addEventListener('change', () => {
+        const { [floor.slug]: _old, ...rest } = readFloorBudgets();
+        const parsed = parseTokenShorthand(input.value);
+        const empty = input.value.trim() === '';
+        input.setAttribute('aria-invalid', String(!empty && parsed === null));
+        if (!empty && parsed === null) return;
+        writeFloorBudgets(parsed === null ? rest : { ...rest, [floor.slug]: parsed });
+        input.value = parsed === null ? '' : formatTokenShorthand(parsed);
+      });
+      return el('label', 'setting-row', el('span', 'setting-text', el('span', 'setting-label', floorLabel(floor))), input);
+    });
+  const budgetBlock = el(
+    'div',
+    'notify-mute',
+    el('p', 'setting-label', t('settings.budgets.title')),
+    el('p', 'settings-hint muted', t('settings.budgets.hint')),
+    ...(budgetRows.length > 0 ? budgetRows : [el('p', 'settings-hint muted', t('settings.notifications.mute.none'))]),
+  );
+
   const events = NOTIFY_EVENTS.map((event) => {
     const row = toggleRow(t(`settings.notifications.event.${event}`), HOLD_EVENTS.has(event) ? t('settings.notifications.holdHint') : '');
     row.input.checked = notifier.preferences.events[event];
@@ -212,6 +241,7 @@ export function mountNotifySection(notifier: Notifier): HTMLElement {
     quietPermissions.root,
     el('div', 'notify-events', ...events.map((row) => row.root)),
     muteBlock,
+    budgetBlock,
     el('div', 'notify-actions', test),
   );
 }

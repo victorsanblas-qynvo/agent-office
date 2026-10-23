@@ -1,8 +1,9 @@
 import type { OfficeApi } from '../api';
+import { adoptTodaySummary, readFloorBudgets } from '../budgets';
 import { button, el } from '../dom';
 import { currentLang, plural, t } from '../i18n';
 import { hubText } from '../i18n/hub';
-import { floorLabel, formatTokens, tokenParts, tokenWritten } from '../labels';
+import { floorLabel, formatTokens, tokenParts, tokensTotal, tokenWritten } from '../labels';
 import type { Store } from '../store';
 import type { HubText, TokenRow, UsageDay, UsageRange, UsageSummary } from '../types';
 import { mountUsageCard } from '../usage-card';
@@ -87,10 +88,23 @@ function headCell(label: string, numeric: boolean): HTMLElement {
   return el('th', numeric ? 'num' : '', label);
 }
 
-function tableRow(name: string, row: Pick<TokenRow, 'tokens' | 'agents'>): HTMLElement {
+// Spend against the daily budget of a floor: the fill turns amber from 80 % and red when it is over.
+export function budgetBar(spent: number, budget: number): HTMLElement {
+  const pct = (spent / budget) * 100;
+  const fill = el('span', pct >= 100 ? 'budget-fill over' : pct >= 80 ? 'budget-fill near' : 'budget-fill');
+  fill.style.width = `${Math.min(100, pct)}%`;
+  const bar = el('span', 'budget-bar', fill);
+  bar.title = `${formatTokens(spent)} / ${formatTokens(budget)}`;
+  bar.setAttribute('role', 'img');
+  bar.setAttribute('aria-label', `${formatTokens(spent)} / ${formatTokens(budget)} (${Math.round(pct)} %)`);
+  return bar;
+}
+
+function tableRow(name: string, row: Pick<TokenRow, 'tokens' | 'agents'>, budget: number | null = null): HTMLElement {
   const cell = (value: string): HTMLElement => el('td', 'num', value);
   const label = el('td', 'usage-spend-name', name);
   label.title = name;
+  if (budget !== null) label.append(budgetBar(tokensTotal(row.tokens), budget));
   return el(
     'tr',
     '',
@@ -103,7 +117,7 @@ function tableRow(name: string, row: Pick<TokenRow, 'tokens' | 'agents'>): HTMLE
   );
 }
 
-function spendTable(title: string, rows: readonly TokenRow[], nameOf: (key: string) => string): HTMLElement {
+function spendTable(title: string, rows: readonly TokenRow[], nameOf: (key: string) => string, budgetOf: (key: string) => number | null = () => null): HTMLElement {
   const head = el(
     'tr',
     '',
@@ -114,7 +128,7 @@ function spendTable(title: string, rows: readonly TokenRow[], nameOf: (key: stri
     headCell(t('usage.spend.col.written'), true),
     headCell(t('usage.spend.col.output'), true),
   );
-  const body = rows.map((row) => tableRow(nameOf(row.key), row));
+  const body = rows.map((row) => tableRow(nameOf(row.key), row, budgetOf(row.key)));
   return el(
     'div',
     'usage-spend-group',
@@ -184,11 +198,12 @@ export function mountUsageBlock(store: Store, api: OfficeApi, visible: () => boo
       tables.replaceChildren();
       return;
     }
+    const budgets = readFloorBudgets();
     tables.replaceChildren(
       ...(range === 'week' ? [dayChart(summary.byDay, store.now())] : []),
       spendTable(t('usage.spend.byRole'), summary.byRole, roleName),
       spendTable(t('usage.spend.byModel'), summary.byModel, (key) => key || '—'),
-      spendTable(t('usage.spend.byFloor'), summary.byFloor, floorName),
+      spendTable(t('usage.spend.byFloor'), summary.byFloor, floorName, (slug) => (range === 'today' ? (budgets[slug] ?? null) : null)),
       planList(summary.byPlan),
     );
   }
@@ -203,6 +218,7 @@ export function mountUsageBlock(store: Store, api: OfficeApi, visible: () => boo
     loadedAt = store.now();
     if (result.ok) {
       summary = result.data;
+      if (asked === 'today') adoptTodaySummary(result.data, loadedAt);
       failure = null;
     } else {
       summary = null;
