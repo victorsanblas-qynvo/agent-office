@@ -63,6 +63,8 @@ Las llama la interfaz (`ui/src/api.ts`) con `X-Office-Panel`; el servidor MCP (`
 | `POST /api/board/orders/:id/checks` | key o panel | | Lanza las comprobaciones. `200 {"run"}`. `404 hub.api.orderNotFound`; `409 hub.api.noChecks`, `hub.api.noFolder`. |
 | `DELETE /api/board/orders/:id/checks` | key o panel | | Cancela las que corren. `200 {"ok":true,"cancelled"}`. |
 | `GET /api/board/orders/:id/checkpoints` | key o panel | | `200` los puntos de control. `404 hub.api.orderNotFound`. |
+| `GET /api/board/orders/:id/diff` | key o panel | | Lo que cambiaron los commits de la rama del encargo desde su base (`base...head`; la base es la punta de la rama base, o el commit del que salió si ya está fusionada). `200 {"base","head","files":[{"path","oldPath","adds","dels","binary"}],"totals":{"files","adds","dels"},"truncated"}`, como mucho 300 archivos. `400 hub.api.badId`; `404 hub.api.orderNotFound`; `409 hub.api.orderNoBranch`; `500 hub.api.diffFailed`. |
+| `GET /api/board/orders/:id/diff/file` | key o panel | Query `path`, una de las rutas del diff | El parche de un archivo. `200 {"path","patch","truncated","binary"}`, el parche cortado a 400 KB al final de una línea. `400 hub.api.pathRequired`, `hub.api.diffPath`; `404 hub.api.orderNotFound`; `409 hub.api.orderNoBranch`; `500 hub.api.diffFailed`. |
 | `POST /api/alerts/:id/seen` | key o panel | | Cierra un aviso de fin. `200 {"ok":true}`. `404 hub.api.alertNotFound`. |
 | `GET /api/worktrees` | key o panel | Query `floor` opcional | `200` las carpetas de encargos con su estado y tamaño. |
 | `POST /api/worktrees/prune` | key o panel | | Retira ahora las carpetas que ya caducaron. `200` con el resultado. |

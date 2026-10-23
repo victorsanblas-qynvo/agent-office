@@ -362,6 +362,24 @@ export function createApp(opts: ServerOptions, holdRequest: (req: Request) => vo
     return result ? c.json(result) : c.json({ error: { key: 'hub.api.orderNotFound' } }, 404);
   });
 
+  app.get('/api/board/orders/:id/diff', requirePanel, async (c) => {
+    const id = idOf(c.req.param('id'));
+    if (id === null) return c.json({ error: { key: 'hub.api.badId' } }, 400);
+    holdRequest(c.req.raw);
+    const result = await office.orderDiff(id);
+    return result.ok ? c.json(result.diff) : c.json({ error: result.error }, result.status);
+  });
+
+  app.get('/api/board/orders/:id/diff/file', requirePanel, async (c) => {
+    const id = idOf(c.req.param('id'));
+    const path = c.req.query('path');
+    if (id === null) return c.json({ error: { key: 'hub.api.badId' } }, 400);
+    if (!path) return c.json({ error: { key: 'hub.api.pathRequired' } }, 400);
+    holdRequest(c.req.raw);
+    const result = await office.orderDiffFile(id, path);
+    return result.ok ? c.json(result.file) : c.json({ error: result.error }, result.status);
+  });
+
   app.post('/api/alerts/:id/seen', requirePanel, (c) => {
     const id = idOf(c.req.param('id'));
     if (id === null) return c.json({ error: { key: 'hub.api.badId' } }, 400);

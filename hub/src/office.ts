@@ -11,6 +11,7 @@ import { withoutChatCalls } from './chat-commands';
 import { ChatRoom, type ReadChatResult, type UserChatResult } from './chat-room';
 import { ContextDesk } from './context-desk';
 import { deliver } from './courier';
+import { DeliveryDesk, type DiffFileResult, type DiffResult } from './delivery-desk';
 import { DocumentDesk } from './documents';
 import { FloorDirtyError, FloorInUseError, purgeFloorData } from './floor-data';
 import { FloorResolver, isInside, memoryRegistry, realPath, type FloorRegistry, type GitRootFn } from './floors';
@@ -194,6 +195,7 @@ export class Office {
   private readonly store: OrderStore;
   private readonly worktrees: WorktreeDesk;
   private readonly checkpoints: CheckpointDesk;
+  private readonly delivery: DeliveryDesk;
   private readonly checks: ChecksDesk;
   private readonly board: BoardDesk;
   private readonly searches: SearchDesk;
@@ -357,6 +359,7 @@ export class Office {
       changed: (order) => this.bus.emit({ type: 'worktrees', floor: order.floor }),
     });
     this.checkpoints = new CheckpointDesk({ db: opts.db, store: this.store, git: this.git, now: this.now, bus: this.bus, config: () => this.config });
+    this.delivery = new DeliveryDesk({ store: this.store, git: this.git, config: () => this.config });
     this.checks = new ChecksDesk({
       db: opts.db,
       store: this.store,
@@ -768,6 +771,14 @@ export class Office {
   orderCheckpoints(id: number): { checkpoints: CheckpointView[]; skipped: SkippedFile[] } | null {
     const order = this.store.get(id);
     return order ? { checkpoints: this.checkpoints.list(id), skipped: this.checkpoints.skipped(order) } : null;
+  }
+
+  orderDiff(id: number): Promise<DiffResult> {
+    return this.delivery.diff(id);
+  }
+
+  orderDiffFile(id: number, path: string): Promise<DiffFileResult> {
+    return this.delivery.diffFile(id, path);
   }
 
   orderScript(request: ScriptRequest, meta: HookMeta): Promise<ScriptResult> {
