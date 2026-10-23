@@ -880,6 +880,7 @@ export const es = {
   'palette.group.floor': 'Planta',
   'palette.group.agent': 'Agente',
   'palette.group.plan': 'Plan',
+  'palette.group.order': 'Encargo',
   'palette.action.reply': 'Responder a {name}',
   'palette.action.status': 'Pedir estado a {name}',
   'palette.action.relaunch': 'Relanzar a {name}',

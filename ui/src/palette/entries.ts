@@ -1,17 +1,18 @@
 import { fuzzyFilter } from '../fuzzy';
 import { currentLang, t } from '../i18n';
 import { agentName, documentStatusLabel, floorKindLabel, floorLabel, roleLabel } from '../labels';
-import type { AgentView, DocumentView, FloorView } from '../types';
+import type { AgentView, DocumentView, FloorView, OrderView } from '../types';
 
-export type PaletteGroup = 'action' | 'tab' | 'floor' | 'agent' | 'plan';
+export type PaletteGroup = 'action' | 'tab' | 'floor' | 'agent' | 'plan' | 'order';
 
-export const PALETTE_GROUPS: readonly PaletteGroup[] = ['action', 'tab', 'floor', 'agent', 'plan'];
+export const PALETTE_GROUPS: readonly PaletteGroup[] = ['action', 'tab', 'floor', 'agent', 'plan', 'order'];
 
 export type PaletteTarget =
   | { type: 'agent'; key: string }
   | { type: 'floor'; slug: string }
   | { type: 'tab'; index: number }
   | { type: 'plan'; path: string }
+  | { type: 'order'; slug: string; floor: string }
   | { type: 'reply' }
   | { type: 'status'; sessionId: string }
   | { type: 'relaunch'; sessionId: string }
@@ -21,12 +22,13 @@ export type PaletteTarget =
   | { type: 'mute' }
   | { type: 'muteSound' };
 
-export type PaletteEntry = { id: string; group: PaletteGroup; label: string; hint: string; target: PaletteTarget; write: boolean };
+export type PaletteEntry = { id: string; group: PaletteGroup; label: string; hint: string; keywords?: string; target: PaletteTarget; write: boolean };
 
 export type PaletteContext = {
   agents: readonly AgentView[];
   floors: readonly FloorView[];
   documents: readonly DocumentView[];
+  orders: readonly OrderView[];
   tabs: readonly string[];
   // Whether there is a hub to write to: false in a replay, where the actions that change something are left out.
   live: boolean;
@@ -40,6 +42,7 @@ export type PaletteContext = {
 
 export const EMPTY_LIMIT = 30;
 export const RESULT_LIMIT = 50;
+export const ORDER_LIMIT = 50;
 
 function actions(context: PaletteContext): PaletteEntry[] {
   const out: PaletteEntry[] = [];
@@ -55,6 +58,30 @@ function actions(context: PaletteContext): PaletteEntry[] {
   if (context.mute) add('mute', t('palette.action.mute'), t('palette.hint.notifications'), { type: 'mute' }, false);
   if (context.muteSound) add('muteSound', t('palette.action.muteSound'), t('palette.hint.sound'), { type: 'muteSound' }, false);
   return out;
+}
+
+const lastTouch = (order: OrderView): number => Math.max(order.lastActivity ?? 0, order.updatedAt);
+const isOpen = (order: OrderView): boolean => order.status !== 'hecho' && order.status !== 'descartado';
+
+// The open orders first, the most recently touched first, then the rest; the Tablero's own notion of open.
+function orderEntries(context: PaletteContext): PaletteEntry[] {
+  const floors = new Map(context.floors.map((floor) => [floor.slug, floor]));
+  return [...context.orders]
+    .sort((a, b) => Number(isOpen(b)) - Number(isOpen(a)) || lastTouch(b) - lastTouch(a) || b.id - a.id)
+    .slice(0, ORDER_LIMIT)
+    .map((order): PaletteEntry => {
+      const floor = floors.get(order.floor);
+      const floorName = floor ? floorLabel(floor) : order.floor;
+      return {
+        id: `order:${order.slug}`,
+        group: 'order',
+        label: order.title,
+        hint: `${floorName} · ${t(`board.col.${order.status}`)} · ${order.slug}`,
+        keywords: [order.slug, order.branch ?? '', order.floor, floorName].join(' '),
+        target: { type: 'order', slug: order.slug, floor: order.floor },
+        write: false,
+      };
+    });
 }
 
 export function buildEntries(context: PaletteContext): PaletteEntry[] {
@@ -81,6 +108,7 @@ export function buildEntries(context: PaletteContext): PaletteEntry[] {
     if (doc.kind !== 'plan') continue;
     entries.push({ id: `plan:${doc.path}`, group: 'plan', label: doc.title, hint: documentStatusLabel(doc.status), target: { type: 'plan', path: doc.path }, write: false });
   }
+  entries.push(...orderEntries(context));
   return context.live ? entries : entries.filter((entry) => !entry.write);
 }
 
@@ -90,7 +118,7 @@ export type PaletteResult = { entry: PaletteEntry; indices: number[] };
 // highlighted letters are the ones of the name.
 export function searchEntries(entries: readonly PaletteEntry[], query: string): PaletteResult[] {
   if (query.trim() === '') return entries.slice(0, EMPTY_LIMIT).map((entry) => ({ entry, indices: [] }));
-  return fuzzyFilter(entries, query, (entry) => `${entry.label} ${entry.hint}`)
+  return fuzzyFilter(entries, query, (entry) => `${entry.label} ${entry.hint} ${entry.keywords ?? ''}`)
     .slice(0, RESULT_LIMIT)
     .map(({ item, match }) => ({ entry: item, indices: match.indices.filter((index) => index < item.label.length) }));
 }

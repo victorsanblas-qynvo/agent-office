@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { applyLang } from '../src/i18n/index';
 import { buildEntries, EMPTY_LIMIT, searchEntries, type PaletteContext } from '../src/palette/entries';
-import { agent, doc, floor } from './fixtures';
+import { agent, doc, floor, order } from './fixtures';
 
 beforeEach(() => applyLang('es'));
 afterEach(() => applyLang('es'));
@@ -10,6 +10,7 @@ const context = (extra: Partial<PaletteContext> = {}): PaletteContext => ({
   agents: [agent('lead-mobile', { roleKind: 'lead' }), agent('tester-mobile', { roleKind: 'tester' })],
   floors: [floor('mobile'), floor('direccion', { kind: 'direccion', label: 'Dirección' })],
   documents: [doc('plans/login.md', { title: 'Login con huella' }), doc('skills/x.md', { kind: 'skill', title: 'Skill X' })],
+  orders: [],
   tabs: ['Oficina', 'Tabla', 'Tablero', 'Planes', 'Chat', 'Ajustes'],
   live: true,
   reply: { name: 'lead-mobile' },
@@ -58,6 +59,49 @@ describe('buildEntries', () => {
     const entries = buildEntries(context());
     expect(entries.find((entry) => entry.id === 'action:reply')?.label).toBe('Responder a lead-mobile');
     expect(entries.find((entry) => entry.id === 'tab:2')).toMatchObject({ label: 'Tablero', hint: '3' });
+  });
+});
+
+describe('order entries', () => {
+  const orderIds = (extra: Partial<PaletteContext>) => ids(buildEntries(context(extra)).filter((entry) => entry.group === 'order'));
+
+  test('each order is listed with its title, floor, status and slug', () => {
+    const entries = buildEntries(context({ orders: [order('login-huella', { title: 'Login con huella', status: 'revision' })] }));
+    const found = entries.find((entry) => entry.group === 'order');
+    expect(found).toMatchObject({
+      id: 'order:login-huella',
+      label: 'Login con huella',
+      hint: 'mobile · Revisión · login-huella',
+      target: { type: 'order', slug: 'login-huella', floor: 'mobile' },
+      write: false,
+    });
+  });
+
+  test('without orders there are no entries of the group', () => {
+    expect(orderIds({ orders: [] })).toEqual([]);
+  });
+
+  test('the open ones come first by last activity, then the finished ones', () => {
+    const orders = [
+      order('old-done', { id: 1, status: 'hecho', updatedAt: 9000 }),
+      order('quiet', { id: 2, status: 'pendiente', updatedAt: 1000 }),
+      order('busy', { id: 3, status: 'en-curso', updatedAt: 1000, lastActivity: 5000 }),
+      order('dropped', { id: 4, status: 'descartado', updatedAt: 8000 }),
+    ];
+    expect(orderIds({ orders })).toEqual(['order:busy', 'order:quiet', 'order:old-done', 'order:dropped']);
+  });
+
+  test('at most 50 orders are offered', () => {
+    const orders = Array.from({ length: 60 }, (_, index) => order(`o-${index}`, { id: index + 1, updatedAt: index }));
+    const listed = orderIds({ orders });
+    expect(listed).toHaveLength(50);
+    expect(listed[0]).toBe('order:o-59');
+  });
+
+  test('fuzzy search finds an order by slug and by branch', () => {
+    const entries = buildEntries(context({ orders: [order('pago-tarjeta', { title: 'Cobros', branch: 'office/qr-checkout' }), order('otro', { id: 2 })] }));
+    expect(searchEntries(entries, 'pagotarj')[0].entry.id).toBe('order:pago-tarjeta');
+    expect(searchEntries(entries, 'qr-checkout')[0].entry.id).toBe('order:pago-tarjeta');
   });
 });
 

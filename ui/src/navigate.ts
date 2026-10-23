@@ -118,6 +118,7 @@ export function paletteContext(nav: Nav): PaletteContext {
     agents: store.officeAgents(),
     floors: store.floorList(),
     documents: store.documents,
+    orders: store.orders,
     tabs: TABS.map(({ labelKey }) => t(labelKey)),
     live: nav.api !== null,
     reply: question ? { name: asker ? agentName(asker) : question.agentKey.slice(0, 8) } : null,
@@ -148,6 +149,10 @@ export function runTarget(nav: Nav, target: PaletteTarget): void {
       if (doc) openDocument(store, doc);
       break;
     }
+    case 'order':
+      nav.showTab('board');
+      nav.board().show(target.floor, target.slug);
+      break;
     case 'reply': {
       const question = oldestQuestion(nav);
       if (question) goToAgent(nav, question.agentKey, 'question');
