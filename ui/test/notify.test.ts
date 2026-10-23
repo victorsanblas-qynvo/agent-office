@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
 import { applyLang, t } from '../src/i18n/index';
 import { QUIET_KEY } from '../src/prefs';
-import { NOTIFY_EVENTS, Notifier, SEEN_LIMIT, type NotifyPrefs } from '../src/notify';
+import { NOTIFY_EVENTS, Notifier, checkTransitionNotice, SEEN_LIMIT, type NotifyPrefs } from '../src/notify';
 import type { Store } from '../src/store';
-import type { AgentView, DocumentView, QuestionView, ServerMessage, Snapshot } from '../src/types';
+import type { AgentView, CheckRunView, DocumentView, OrderView, QuestionView, ServerMessage, Snapshot } from '../src/types';
 
 class FakeNotification {
   static permission: NotificationPermission = 'granted';
@@ -421,5 +421,93 @@ describe('desktop notifier', () => {
     expect(internals.seen.has('question:b0')).toBe(false);
     expect(internals.shown.has('question:b0')).toBe(false);
     expect(internals.shown.has(`question:b${SEEN_LIMIT}`)).toBe(true);
+  });
+});
+
+function run(id: number, status: CheckRunView['status'], extra: Partial<CheckRunView> = {}): CheckRunView {
+  return {
+    id,
+    orderId: 7,
+    sha: 'abc1234',
+    trigger: 'listo',
+    status,
+    startedAt: 1,
+    endedAt: null,
+    checks: [
+      { name: 'typecheck', command: 'bun run typecheck', status: 'passed', exitCode: 0, durationMs: 1, outputTail: 'secret output' },
+      { name: 'test', command: 'bun test', status: status === 'failed' ? 'failed' : 'passed', exitCode: 1, durationMs: 1, outputTail: 'secret output' },
+    ],
+    ...extra,
+  } as CheckRunView;
+}
+
+describe('checkTransitionNotice', () => {
+  test('running to failed names only the failing check', () => {
+    const notice = checkTransitionNotice(run(1, 'running'), run(1, 'failed'));
+    expect(notice).toEqual({ orderId: 7, tag: 'checks:1', key: 'notify.checks.failed', body: 'test' });
+  });
+
+  test('running to passed has no body', () => {
+    const notice = checkTransitionNotice(run(1, 'running'), run(1, 'passed'));
+    expect(notice).toEqual({ orderId: 7, tag: 'checks:1', key: 'notify.checks.passed', body: '' });
+  });
+
+  test('passed to passed, a first sight and another run id give nothing', () => {
+    expect(checkTransitionNotice(run(1, 'passed'), run(1, 'passed'))).toBeNull();
+    expect(checkTransitionNotice(undefined, run(1, 'failed'))).toBeNull();
+    expect(checkTransitionNotice(run(1, 'running'), run(2, 'failed'))).toBeNull();
+  });
+
+  test('the toggle off gives nothing', () => {
+    expect(checkTransitionNotice(run(1, 'running'), run(1, 'failed'), false)).toBeNull();
+  });
+});
+
+describe('check result notices', () => {
+  const order = { id: 7, slug: 'login', floor: 'mobile', title: 'Login con Apple' } as OrderView;
+  let opened: OrderView[];
+  let notifier: Notifier;
+
+  beforeEach(() => {
+    storage.clear();
+    FakeNotification.permission = 'granted';
+    FakeNotification.created = [];
+    page.visible = false;
+    page.focused = false;
+    opened = [];
+    const store = { ...fakeStore([]), orders: [order] } as unknown as Store;
+    notifier = new Notifier(store);
+    notifier.openOrder = (item) => opened.push(item);
+  });
+
+  test('is off by default', () => {
+    expect(notifier.preferences.events.checks).toBe(false);
+    notifier.save({ ...allOn(), events: { ...allOn().events, checks: false } });
+    notifier.observe({ type: 'checks', orderId: 7, data: run(1, 'running') });
+    notifier.observe({ type: 'checks', orderId: 7, data: run(1, 'failed') });
+    expect(FakeNotification.created).toHaveLength(0);
+  });
+
+  test('notifies once per run and a click opens the order', () => {
+    notifier.save(allOn());
+    notifier.observe({ type: 'checks', orderId: 7, data: run(1, 'running') });
+    notifier.observe({ type: 'checks', orderId: 7, data: run(1, 'failed') });
+    notifier.observe({ type: 'checks', orderId: 7, data: run(1, 'failed') });
+    expect(FakeNotification.created).toHaveLength(1);
+    const shown = FakeNotification.created[0];
+    expect(shown?.title).toBe('Checks en rojo · Login con Apple');
+    expect(shown?.options.body).toBe('test');
+    shown?.onclick?.();
+    expect(opened).toEqual([order]);
+  });
+
+  test('is dropped in quiet hours', () => {
+    storage.set(QUIET_KEY, JSON.stringify({ enabled: true, from: '22:00', to: '08:00', allowPermissions: false }));
+    const store = { ...fakeStore([]), orders: [order] } as unknown as Store;
+    const desk = new Notifier(store, () => new Date(2026, 9, 23, 23, 0));
+    desk.save(allOn());
+    desk.observe({ type: 'checks', orderId: 7, data: run(1, 'running') });
+    desk.observe({ type: 'checks', orderId: 7, data: run(1, 'passed') });
+    expect(FakeNotification.created).toHaveLength(0);
   });
 });

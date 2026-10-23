@@ -125,6 +125,12 @@ async function boot(): Promise<void> {
     board.show(view.floors.length === 1 ? (view.floors[0] ?? null) : null, view.kind === 'order' ? view.slug : undefined);
   };
   if (notifier) notifier.openFinished = showFinished;
+  if (notifier) {
+    notifier.openOrder = (order) => {
+      showTab('board');
+      board.show(order.floor, order.slug);
+    };
+  }
   if (notifier || sound) {
     store.watch(['tick'], () => {
       notifier?.tick();

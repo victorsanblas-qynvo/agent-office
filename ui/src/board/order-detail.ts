@@ -6,6 +6,7 @@ import type { Store } from '../store';
 import { clockTime, relativeTime } from '../time';
 import type { CheckRunView, CheckView, CheckpointView, OrderDiff, OrderDiffFile, OrderView, SkippedFile } from '../types';
 import { checksBadgeNode, folderBadgeNode } from './badges';
+import { flakyChecks } from './flaky';
 import { diffStale, diffSummary, latestSha, orderSignature, patchRows, shouldReloadForChecks, statRows } from './diff-model';
 import type { RunMark } from './diff-model';
 import { parseDiff } from './diff-parse';
@@ -25,13 +26,20 @@ function kilobytes(bytes: number): string {
   return bytes < 1024 ? `${bytes} B` : `${new Intl.NumberFormat(currentLang(), { maximumFractionDigits: 1 }).format(bytes / 1024)} KB`;
 }
 
-function checkRow(check: CheckView): HTMLElement {
+function flakyChip(): HTMLElement {
+  const chip = el('span', 'chip check-flaky', t('board.check.flaky'));
+  chip.title = t('board.check.flaky.hint');
+  return chip;
+}
+
+function checkRow(check: CheckView, flaky: ReadonlySet<string>): HTMLElement {
   const icon = check.status === 'passed' ? '✓' : check.status === 'failed' || check.status === 'timeout' ? '✗' : check.status === 'running' ? '' : '·';
   const head = el(
     'div',
     'check-head',
     el('span', check.status === 'running' ? 'spinner' : `check-mark check-${check.status}`, icon),
     el('b', 'check-name', check.name),
+    flaky.has(check.name) ? flakyChip() : null,
     el('span', 'muted', t(`board.check.status.${check.status}`)),
     check.exitCode !== null && check.exitCode !== 0 ? el('span', 'muted', t('board.check.exit', { code: check.exitCode })) : null,
     check.durationMs !== null ? el('span', 'muted', seconds(check.durationMs)) : null,
@@ -51,7 +59,7 @@ function ageNode(ts: number, now: number, className = 'muted'): HTMLElement {
   return node;
 }
 
-function runBlock(run: CheckRunView, now: number, first: boolean): HTMLElement {
+function runBlock(run: CheckRunView, now: number, first: boolean, flaky: ReadonlySet<string>): HTMLElement {
   const sha = el('code', '', run.sha.slice(0, 7));
   const block = el(
     'section',
@@ -64,7 +72,7 @@ function runBlock(run: CheckRunView, now: number, first: boolean): HTMLElement {
       sha,
       ageNode(run.startedAt, now),
     ),
-    el('ul', 'checks-list', ...run.checks.map(checkRow)),
+    el('ul', 'checks-list', ...run.checks.map((check) => checkRow(check, flaky))),
   );
   if (!first) block.classList.add('run-old');
   return block;
@@ -236,6 +244,7 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
         : null;
     const live = store.checkRuns.get(orderId);
     const shown = live && !runs.some((r) => r.id === live.id) ? [live, ...runs] : runs.map((r) => (live && r.id === live.id ? live : r));
+    const flaky = flakyChecks(shown);
     const body =
       error !== ''
         ? null
@@ -243,7 +252,7 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
           ? el('p', 'muted', t('board.loading'))
           : shown.length === 0
             ? el('p', 'muted', t(current.checks ? 'board.checks.none' : 'board.checks.unconfigured'))
-            : el('div', 'runs', ...shown.map((run, index) => runBlock(run, now, index === 0)));
+            : el('div', 'runs', ...shown.map((run, index) => runBlock(run, now, index === 0, flaky)));
     const failure = error !== '' ? el('p', 'order-warning', t('board.checks.loadFailed', { error })) : null;
     return el('div', 'order-tab', warning, failure, body);
   };
