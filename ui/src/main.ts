@@ -124,7 +124,10 @@ async function boot(): Promise<void> {
     showTab('board');
     board.show(view.floors.length === 1 ? (view.floors[0] ?? null) : null, view.kind === 'order' ? view.slug : undefined);
   };
-  if (notifier) notifier.openFinished = showFinished;
+  if (notifier) {
+    notifier.openFinished = showFinished;
+    topbar.notices.bind(notifier.notices);
+  }
   if (notifier) {
     notifier.openOrder = (order) => {
       showTab('board');
@@ -158,7 +161,7 @@ async function boot(): Promise<void> {
   const cursor = new NeedCursor();
   mountKeys({
     run: (action) => runKey(nav, action, cursor, { palette: palette.open, help: help.toggle }),
-    layers: [palette.close, help.close, topbar.needs.close, closeDocument, () => tab === 'board' && board.clearHighlight()],
+    layers: [palette.close, help.close, topbar.needs.close, topbar.notices.close, closeDocument, () => tab === 'board' && board.clearHighlight()],
     boardReady: (move) => boardKeysReady(tab === 'board', document.querySelector('.order-drawer-backdrop') !== null, move === 'open', board.hasHighlight()),
     modalOpen: () => palette.isOpen() || help.isOpen() || document.querySelector('.dialog-backdrop, .modal-backdrop') !== null,
   });

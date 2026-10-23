@@ -3771,6 +3771,43 @@ button.diff-file.active {
   font-size: 12px;
 }
 
+.notices-menu {
+  min-width: 380px;
+}
+
+.notices-item {
+  flex-wrap: nowrap;
+}
+
+.notices-label {
+  flex: 1;
+}
+
+.notices-outcome,
+.notices-new {
+  flex: none;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 11px;
+}
+
+.notices-new {
+  border-color: var(--accent);
+}
+
+.notices-empty {
+  margin: 6px 8px;
+}
+
+.notices-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  padding-top: 4px;
+  font-size: 12px;
+}
+
 .overlay-host .dialog-backdrop {
   z-index: 70;
 }
