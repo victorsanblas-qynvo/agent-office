@@ -4125,3 +4125,40 @@ button.diff-file.active {
 .pin-toggle.active {
   border-color: var(--asking);
 }
+
+.now-tail {
+  margin-top: 12px;
+}
+
+.now-tail-title {
+  cursor: pointer;
+}
+
+.now-tail-actions {
+  margin: 6px 0;
+}
+
+.now-tail-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.now-tail-row {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: baseline;
+  padding: 3px 0;
+}
+
+.now-tail-row time {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+}
+
+.now-tail-text {
+  overflow-wrap: anywhere;
+  line-height: 1.35;
+  white-space: pre-wrap;
+}

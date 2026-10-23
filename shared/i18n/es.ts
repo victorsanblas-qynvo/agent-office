@@ -202,6 +202,7 @@ export const hubEs = {
   'hub.api.orderTooLong': 'La orden es demasiado larga',
   'hub.api.sessionNotFound': 'Sesión no encontrada',
   'hub.api.sessionNotOffice': 'Esa sesión no es de la oficina: no recibe órdenes ni se relanza desde el panel',
+  'hub.api.transcriptMissing': 'No hay transcript de esa sesión en disco',
   'hub.api.orderFailed': 'No se pudo entregar la orden',
   'hub.api.settingsUnavailable': 'Ajustes no disponibles',
   'hub.api.floorsUnavailable': 'Proyectos no disponibles',

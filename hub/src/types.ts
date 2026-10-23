@@ -211,6 +211,7 @@ export type HubTextParams = {
   'hub.api.orderTooLong': undefined;
   'hub.api.sessionNotFound': undefined;
   'hub.api.sessionNotOffice': undefined;
+  'hub.api.transcriptMissing': undefined;
   'hub.api.orderFailed': undefined;
   'hub.api.settingsUnavailable': undefined;
   'hub.api.floorsUnavailable': undefined;
@@ -675,6 +676,10 @@ export type LessonView = {
   agentKey: string | null;
   createdAt: number;
 };
+
+export type TranscriptEntry = { ts: number; role: 'assistant' | 'tool' | 'user'; text: string };
+
+export type TranscriptTail = { entries: TranscriptEntry[]; hidden?: true };
 
 export type ReportView = {
   agentKey: string;

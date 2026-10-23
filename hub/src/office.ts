@@ -25,6 +25,7 @@ import { GuardDesk } from './guard-desk';
 import type { Log } from './log';
 import { emptyLayouts, type LayoutStore, type LayoutsSave } from './layouts';
 import { MeterDesk } from './meter-desk';
+import { readTranscriptTail } from './transcript-tail';
 import { OfficeBus } from './office-bus';
 import { prepare, type Sql } from './office-sql';
 import {
@@ -55,7 +56,7 @@ import {
 import { isUserPrompt, roleLabel, taskLine } from './office-texts';
 import { OrderDesk } from './order-desk';
 import { OrderStore } from './order-store';
-import { publicDetail, publicSummary, publicText, storedPayload, visibleKind } from './privacy';
+import { isPrivate, publicDetail, publicSummary, publicText, storedPayload, visibleKind } from './privacy';
 import { detectStack, profileFor, type Profiles } from './profiles';
 import { parseProtocol } from './protocol';
 import { ProtocolDesk } from './protocol-desk';
@@ -95,6 +96,7 @@ import type {
   OrderStatus,
   PlanDecision,
   ReportView,
+  TranscriptTail,
   RoleId,
   ServerMessage,
   SkippedFile,
@@ -686,6 +688,20 @@ export class Office {
 
   requestStatus(sessionId: string): Promise<OrderResult> {
     return this.orders.requestStatus(sessionId);
+  }
+
+  // The last steps of a session's transcript; a session outside the office is as private as an observed floor.
+  transcriptTail(sessionId: string, n: number, key: string): TranscriptTail | 'not-found' | 'missing' {
+    const session = this.book.sessions.get(sessionId);
+    if (!session) return 'not-found';
+    if (isPrivate(this.book.privacyKind(session))) return { entries: [], hidden: true };
+    const file = this.meter.transcriptOf(sessionId);
+    if (!file) return 'missing';
+    try {
+      return { entries: readTranscriptTail(file, n, key) };
+    } catch {
+      return 'missing';
+    }
   }
 
   postChat(raw: ChatPostRequest, meta: HookMeta): ChatPostResult {
