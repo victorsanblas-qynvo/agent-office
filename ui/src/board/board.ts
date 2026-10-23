@@ -1,6 +1,7 @@
 import type { OfficeApi } from '../api';
 import { button, el } from '../dom';
 import { t } from '../i18n';
+import { fileStamp, saveFile } from '../download';
 import { floorLabel, formatTokens, tokensTotal } from '../labels';
 import { readBoardStaleHours, readJson, writeJson } from '../prefs';
 import type { BoardMove } from '../keys';
@@ -8,7 +9,8 @@ import type { Store } from '../store';
 import { relativeTime } from '../time';
 import type { OrderStatus, OrderView } from '../types';
 import { checksBadgeNode, folderBadgeNode } from './badges';
-import { ageBadge, agesDue, type AgeBadge, columnsOf, deliveryFloors, filterOrders, neighbours, neighbourStatus, nextCard, orderFloors } from './columns';
+import { boardMarkdown } from './board-markdown';
+import { ageBadge, agesDue, type AgeBadge, columnsOf, type Column, deliveryFloors, filterOrders, neighbours, neighbourStatus, nextCard, orderFloors } from './columns';
 import { mountOrderDetail, type OrderDetail } from './order-detail';
 import { openNewOrder } from './new-order';
 
@@ -41,7 +43,8 @@ export function mountBoard(host: HTMLElement, store: Store, api: OfficeApi | nul
   const search = el('input', 'board-search');
   search.type = 'search';
   const add = button('', 'primary board-new');
-  const head = el('header', 'board-head', heading, filterLabel, search, add);
+  const exportMd = button('', 'board-export');
+  const head = el('header', 'board-head', heading, filterLabel, search, exportMd, add);
   const notice = el('p', 'board-notice muted');
   const columnsHost = el('div', 'board-columns');
   const drawerHost = el('div', 'board-drawer-host');
@@ -55,6 +58,7 @@ export function mountBoard(host: HTMLElement, store: Store, api: OfficeApi | nul
   let openId: number | null = null;
   let highlightId: string | null = null;
   let visible: string[][] = [];
+  let shownColumns: Column[] = [];
   let agedAt = store.now();
   let agedStale = readBoardStaleHours();
 
@@ -234,6 +238,7 @@ export function mountBoard(host: HTMLElement, store: Store, api: OfficeApi | nul
     filterLabel.replaceChildren(t('board.filter.label'), ' ', filter);
     search.placeholder = t('board.search.placeholder');
     search.setAttribute('aria-label', t('board.search.placeholder'));
+    exportMd.textContent = t('board.export');
     add.textContent = t('board.new');
     add.hidden = api === null;
     add.disabled = deliveryFloors(store.floorList()).length === 0;
@@ -249,6 +254,8 @@ export function mountBoard(host: HTMLElement, store: Store, api: OfficeApi | nul
       api === null ? t(store.replay ? 'board.replay' : 'board.offline') : [total === 0 ? t(query.trim() !== '' && store.orders.length > 0 ? 'board.search.empty' : 'board.empty') : '', add.disabled ? t('board.new.none') : ''].filter((part) => part !== '').join(' ');
     notice.hidden = notice.textContent === '';
     columnsHost.replaceChildren(...grouped.map((group) => column(group.status, group.orders, now)));
+    shownColumns = grouped;
+    exportMd.disabled = total === 0;
     visible = grouped.map((group) => group.orders.map((order) => String(order.id)));
     paintHighlight(false);
     if (openId !== null && !store.orders.some((order) => order.id === openId)) closeDetail();
@@ -274,6 +281,10 @@ export function mountBoard(host: HTMLElement, store: Store, api: OfficeApi | nul
     if (api && deliveryFloors(store.floorList()).length > 0) openNewOrder(host, store, api, floor, (order) => openDetail(order));
   };
   add.addEventListener('click', newOrder);
+  exportMd.addEventListener('click', () => {
+    const now = store.now();
+    saveFile(`${t('board.export.file')}-${fileStamp(new Date(now))}.md`, boardMarkdown(shownColumns, now), 'text/markdown;charset=utf-8');
+  });
   store.watch(['orders', 'lang', 'floors', 'mode'], render);
   // The age of a card moves on its own, and follows the stale threshold of Ajustes.
   store.watch(['tick'], () => {
