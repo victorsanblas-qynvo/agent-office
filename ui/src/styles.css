@@ -3341,6 +3341,14 @@ button.diff-file.active {
   box-shadow: var(--shadow);
 }
 
+.broadcast textarea {
+  resize: vertical;
+}
+
+.broadcast-count.error {
+  color: var(--danger);
+}
+
 .new-order-heading {
   font-size: 16px;
 }

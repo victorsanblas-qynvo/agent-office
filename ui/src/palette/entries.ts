@@ -18,6 +18,8 @@ export type PaletteTarget =
   | { type: 'status'; sessionId: string }
   | { type: 'relaunch'; sessionId: string }
   | { type: 'relaunchAll' }
+  | { type: 'statusAll' }
+  | { type: 'messageAll' }
   | { type: 'pin'; key: string }
   | { type: 'newOrder' }
   | { type: 'lang' }
@@ -40,6 +42,9 @@ export type PaletteContext = {
   relaunch: { sessionId: string; name: string } | null;
   // How many open sessions are marked for relaunch.
   relaunchAll: number;
+  // How many floor leads a broadcast reaches now; the status one leaves out those asked a moment ago.
+  statusAll: number;
+  messageAll: number;
   pins: readonly string[];
   newOrder: boolean;
   mute: boolean;
@@ -58,6 +63,8 @@ function actions(context: PaletteContext): PaletteEntry[] {
   if (context.status) add('status', t('palette.action.status', { name: context.status.name }), t('palette.hint.session'), { type: 'status', sessionId: context.status.sessionId }, true);
   if (context.relaunch) add('relaunch', t('palette.action.relaunch', { name: context.relaunch.name }), t('palette.hint.session'), { type: 'relaunch', sessionId: context.relaunch.sessionId }, true);
   if (context.relaunchAll > 0) add('relaunchAll', t('palette.action.relaunchAll'), plural('palette.hint.relaunchAll', context.relaunchAll), { type: 'relaunchAll' }, true);
+  if (context.statusAll > 0) add('statusAll', t('palette.action.statusAll'), plural('palette.hint.leads', context.statusAll), { type: 'statusAll' }, true);
+  if (context.messageAll > 0) add('messageAll', t('palette.action.messageAll'), plural('palette.hint.leads', context.messageAll), { type: 'messageAll' }, true);
   if (context.newOrder) add('newOrder', t('palette.action.newOrder'), t('palette.hint.board'), { type: 'newOrder' }, true);
   add('lang', t(currentLang() === 'es' ? 'palette.action.langEn' : 'palette.action.langEs'), t('palette.hint.lang'), { type: 'lang' }, false);
   add('history', t('palette.action.history'), '/', { type: 'history' }, false);

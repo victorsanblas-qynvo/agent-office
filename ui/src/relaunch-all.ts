@@ -1,10 +1,10 @@
 import type { ApiResult } from './api';
+import { runSequential } from './broadcast';
+import type { Tally } from './broadcast';
 import { relaunchable } from './panel/orderable';
 import type { SessionView } from './types';
 
-export type RelaunchTally = { ok: number; busy: number; failed: number; skipped: number };
-
-const BUSY = 409;
+export type RelaunchTally = Tally;
 
 let running = false;
 
@@ -34,24 +34,9 @@ export async function relaunchAll(
 ): Promise<RelaunchTally | null> {
   if (running) return null;
   running = true;
-  const tally: RelaunchTally = { ok: 0, busy: 0, failed: 0, skipped: 0 };
   try {
-    for (const id of ids) {
-      if (!still(id)) {
-        tally.skipped += 1;
-        continue;
-      }
-      try {
-        const result = await call(id);
-        if (result.ok) tally.ok += 1;
-        else if (result.status === BUSY) tally.busy += 1;
-        else tally.failed += 1;
-      } catch {
-        tally.failed += 1;
-      }
-    }
+    return await runSequential(ids, call, still);
   } finally {
     running = false;
   }
-  return tally;
 }
