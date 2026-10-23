@@ -116,6 +116,8 @@ export const hubEs = {
   'hub.act.worktreesOrphan': '{n} carpetas de encargos sin tarjeta: {paths}',
   'hub.act.worktreesPending': '{n} carpetas de encargos terminados sin fusionar esperan tu decisión ({sizeKb} KB)',
   'hub.act.worktreesHeavy': 'Las carpetas de encargos ocupan {gb} GB y el aviso está en {max} GB',
+  'hub.act.worktreesUnknown': '{n} carpetas de encargos se quedan hasta mañana: git no pudo confirmar si su rama está fusionada ({slugs})',
+  'hub.act.branchDeleted': 'Se borra la rama {branch} en {sha}; si hace falta, git branch {branch} {sha} la recupera',
   'hub.act.orderCreated': 'Nuevo encargo en {floor}: {title}',
   'hub.act.orderMoved': '{title} ({floor}) pasa a {status}',
   'hub.act.orderDiscarded': 'Encargo descartado en {floor}: {title}',

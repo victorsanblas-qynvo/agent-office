@@ -80,6 +80,12 @@ export function numstatPath(value: string, inNumstat: ReadonlySet<string>): stri
 // The output of a diff the hub parses or shows, whatever the user's config says about colour, external
 // drivers, textconv filters or prefixes.
 const PINNED_DIFF = ['--no-color', '--no-ext-diff', '--no-textconv', '--src-prefix=a/', '--dst-prefix=b/'];
+// Two of these diffs are equal text only when every file goes between the same blobs, binary ones included.
+const EXACT_DIFF = [...PINNED_DIFF, '--no-renames', '--full-index', '--binary'];
+
+function literal(paths: readonly string[]): string[] {
+  return paths.map((path) => `:(literal)${pathspecPath(path)}`);
+}
 
 export const gitOps = {
   fetch: (base: string): string[] => ['fetch', '--quiet', 'origin', ref(base, 'rama')],
@@ -92,6 +98,9 @@ export const gitOps = {
   worktreePrune: (): string[] => ['worktree', 'prune'],
   worktreeList: (): string[] => ['worktree', 'list', '--porcelain'],
   branchDelete: (branch: string, force: boolean): string[] => ['branch', force ? '-D' : '-d', writable(branch)],
+  // Deletes the branch only while it still points at the commit that was judged.
+  branchDeleteAt: (branch: string, tip: string): string[] => ['update-ref', '-d', `refs/heads/${writable(branch)}`, sha(tip)],
+  branchTip: (branch: string): string[] => ['rev-parse', '--verify', '--quiet', `refs/heads/${ref(branch, 'rama')}^{commit}`],
   branchExists: (branch: string): string[] => ['rev-parse', '--verify', '--quiet', `refs/heads/${ref(branch, 'rama')}`],
   status: (): string[] => ['status', '--porcelain=v1', '-z', '-uall', '--no-renames'],
   addFromStdin: (): string[] => ['add', '--pathspec-from-file=-', '--pathspec-file-nul'],
@@ -100,11 +109,21 @@ export const gitOps = {
     if (!message || message.length > 300 || message.includes('\0')) throw new RepoOpError('mensaje de commit no válido');
     return ['commit', '-q', '-m', message];
   },
-  aheadBehind: (base: string, branch: string): string[] => ['rev-list', '--left-right', '--count', `${sha(base)}...${writable(branch)}`],
+  aheadBehind: (base: string, head: string): string[] => ['rev-list', '--left-right', '--count', `${sha(base)}...${sha(head)}`],
   isAncestor: (ancestor: string, descendant: string): string[] => ['merge-base', '--is-ancestor', sha(ancestor), ref(descendant, 'rama')],
   cherry: (upstream: string, head: string, limit: string): string[] => ['cherry', sha(upstream), sha(head), sha(limit)],
-  diffPatch: (base: string, head: string): string[] => ['diff', ...PINNED_DIFF, '--no-renames', sha(base), sha(head), '--'],
-  logPatches: (base: string, head: string): string[] => ['log', '-p', '--no-merges', ...PINNED_DIFF, '--no-renames', '--format=commit %H', `${sha(base)}..${sha(head)}`, '--'],
+  diffPatch: (base: string, head: string, paths: readonly string[] = []): string[] => ['diff', ...EXACT_DIFF, sha(base), sha(head), '--', ...literal(paths)],
+  commitPatch: (commit: string, paths: readonly string[] = []): string[] => ['diff', ...EXACT_DIFF, `${sha(commit)}^`, sha(commit), '--', ...literal(paths)],
+  logPatches: (base: string, head: string, paths: readonly string[] = []): string[] => [
+    'log',
+    '-p',
+    '--no-merges',
+    ...EXACT_DIFF,
+    '--format=commit %H',
+    `${sha(base)}..${sha(head)}`,
+    '--',
+    ...literal(paths),
+  ],
   patchIds: (): string[] => ['patch-id', '--stable'],
   diffNames: (baseSha: string, head: string): string[] => ['diff', '--name-only', '-z', sha(baseSha), sha(head), '--'],
   diffNumstat: (base: string, head: string): string[] => ['diff', ...PINNED_DIFF, '-z', '--numstat', '--find-renames', `${sha(base)}...${sha(head)}`, '--'],

@@ -5,6 +5,7 @@ import { defaultConfig } from '../src/config';
 import { openDb } from '../src/db';
 import { realPath } from '../src/floors';
 import { runGit } from '../src/git';
+import { renderHubText } from '../src/render-text';
 import { OfficeBus } from '../src/office-bus';
 import { OrderStore, type OrderRow } from '../src/order-store';
 import type { ShellResult } from '../src/shell';
@@ -581,5 +582,142 @@ describe('expire', () => {
     expect(existsSync(remote.worktree_path as string)).toBe(true);
     expect(r.store.get(remote.id)).toMatchObject({ status: 'hecho', worktree_state: 'listo', base_stale: 0 });
     expect((await r.desk.list('mobile')).worktrees.find((v) => v.slug === 'remoto-2222')).toMatchObject({ merged: false, pending: true });
+  });
+});
+
+describe('a branch is only deleted on facts git confirmed', () => {
+  const DAY = 86_400_000;
+  const failing =
+    (command: string, also: (args: string[]) => boolean = () => false): WorktreeDeskOpts['git'] =>
+    (cwd, args, ...rest) =>
+      args[0] === command || also(args) ? Promise.resolve({ code: 128, stdout: '', stderr: 'fatal: bad object' }) : runGit(cwd, args, ...rest);
+  const branchOf = (r: Rig, made: OrderRow) => git(r.repo, 'branch', '--list', made.branch as string);
+  const keyed = (r: Rig, key: string) => r.activity.filter((a) => typeof a.summary !== 'string' && a.summary.key === key);
+
+  test('a rev-list that fails leaves an unmerged branch and its folder alone', async () => {
+    const r = rig({ git: failing('rev-list') });
+    const made = await created(r);
+    work(made.worktree_path as string, 'f.txt', 'trabajo sin fusionar');
+    expect(await r.desk.remove(made.id, { deleteBranch: true, force: false })).toBe('unmerged');
+    expect(existsSync(made.worktree_path as string)).toBe(true);
+    expect(branchOf(r, made)).toContain('encargo/login-a1b2');
+    expect((await r.desk.list('mobile')).worktrees[0]).toMatchObject({ merged: false });
+  });
+
+  test('expire keeps the folder and the branch of a row whose facts git could not confirm, and says so once', async () => {
+    const r = rig({ git: failing('rev-list') }, (config) => {
+      config.worktrees.maxActivePerFloor = 10;
+    });
+    const old = r.clock.now - 10 * DAY;
+    const done = await created(r, order(r, 'hecho-1111'));
+    const discarded = await created(r, order(r, 'descartado-2222'));
+    for (const made of [done, discarded]) work(made.worktree_path as string, `${made.slug}.txt`, made.slug);
+    r.store.update(done.id, { status: 'hecho', updated_at: old });
+    r.store.update(discarded.id, { status: 'descartado', updated_at: old });
+    expect(await r.desk.expire()).toMatchObject({ removed: 0 });
+    for (const made of [done, discarded]) {
+      expect(existsSync(made.worktree_path as string)).toBe(true);
+      expect(branchOf(r, made)).toContain(made.branch as string);
+    }
+    const notes = keyed(r, 'hub.act.worktreesUnknown');
+    expect(notes).toHaveLength(1);
+    expect(notes[0]?.summary).toMatchObject({ params: { n: 2 } });
+  });
+
+  test('without the sha it started from a branch is undecided, even with no commits of its own', async () => {
+    const r = rig();
+    const made = await created(r);
+    r.store.update(made.id, { base_sha: null, status: 'hecho', updated_at: r.clock.now - 10 * DAY });
+    expect((await r.desk.list('mobile')).worktrees[0]).toMatchObject({ merged: false, pending: true });
+    expect(await r.desk.remove(made.id, { deleteBranch: true, force: false })).toBe('unmerged');
+    expect(branchOf(r, made)).toContain('encargo/login-a1b2');
+  });
+
+  test('a folder whose HEAD left the branch for the base is not merged, and expire keeps both', async () => {
+    const r = rig();
+    const made = await created(r);
+    const path = made.worktree_path as string;
+    work(path, 'f.txt', 'trabajo sin fusionar');
+    const tip = git(path, 'rev-parse', 'HEAD');
+    git(path, 'checkout', '-q', '--detach', 'origin/develop');
+    r.store.update(made.id, { status: 'hecho', updated_at: r.clock.now - 10 * DAY });
+    expect((await r.desk.list('mobile')).worktrees[0]).toMatchObject({ merged: false, pending: true });
+    expect(await r.desk.expire()).toMatchObject({ removed: 0 });
+    expect(existsSync(path)).toBe(true);
+    expect(git(r.repo, 'rev-parse', 'refs/heads/encargo/login-a1b2')).toBe(tip);
+  });
+
+  test('a squash on the remote followed by a whitespace-only commit is not merged', async () => {
+    const r = rig();
+    const made = await created(r);
+    const path = made.worktree_path as string;
+    writeFileSync(join(path, 'a.txt'), 'uno dos\n');
+    git(path, 'add', '.');
+    git(path, 'commit', '-q', '-m', 'uno dos');
+    landOnRemote(r, made, 'squash');
+    writeFileSync(join(path, 'a.txt'), 'uno  dos\n');
+    git(path, 'commit', '-q', '-am', 'espacios');
+    git(r.repo, 'fetch', '-q', 'origin');
+    r.store.update(made.id, { status: 'hecho', updated_at: r.clock.now - 10 * DAY });
+    expect((await r.desk.list('mobile')).worktrees[0]).toMatchObject({ merged: false, pending: true });
+    await r.desk.expire();
+    expect(branchOf(r, made)).toContain('encargo/login-a1b2');
+  });
+
+  test('a squash followed by a binary change is not merged, and a squash with a binary file still is', async () => {
+    const r = rig({}, (config) => {
+      config.worktrees.maxActivePerFloor = 10;
+    });
+    const changed = await created(r, order(r, 'binario-1111'));
+    const landed = await created(r, order(r, 'aplastado-2222'));
+    for (const made of [changed, landed]) {
+      const path = made.worktree_path as string;
+      writeFileSync(join(path, `${made.slug}.txt`), `${made.slug}\n`);
+      writeFileSync(join(path, `${made.slug}.bin`), new Uint8Array([0, 1, 2, 3, 255]));
+      git(path, 'add', '.');
+      git(path, 'commit', '-q', '-m', made.slug);
+      landOnRemote(r, made, 'squash');
+    }
+    writeFileSync(join(changed.worktree_path as string, 'binario-1111.bin'), new Uint8Array([0, 1, 2, 4, 255]));
+    git(changed.worktree_path as string, 'commit', '-q', '-am', 'otro binario');
+    git(r.repo, 'fetch', '-q', 'origin');
+    const views = (await r.desk.list('mobile')).worktrees;
+    expect(views.find((v) => v.slug === 'binario-1111')).toMatchObject({ merged: false });
+    expect(views.find((v) => v.slug === 'aplastado-2222')).toMatchObject({ merged: true });
+  });
+
+  test('a branch that moves after it was judged is not deleted', async () => {
+    let late = '';
+    let repo = '';
+    const r = rig({
+      git: async (cwd, args, ...rest) => {
+        if (args[0] === 'worktree' && args[1] === 'remove' && late) await runGit(repo, ['update-ref', 'refs/heads/encargo/login-a1b2', late]);
+        return runGit(cwd, args, ...rest);
+      },
+    });
+    repo = r.repo;
+    const made = await created(r);
+    work(made.worktree_path as string, 'f.txt', 'trabajo');
+    landOnRemote(r, made, 'merge');
+    git(r.repo, 'fetch', '-q', 'origin');
+    const tip = git(r.repo, 'rev-parse', 'refs/heads/encargo/login-a1b2');
+    late = git(r.repo, 'commit-tree', `${tip}^{tree}`, '-p', tip, '-m', 'llega tarde');
+    expect(await r.desk.remove(made.id, { deleteBranch: true, force: false })).toBe('failed');
+    expect(git(r.repo, 'rev-parse', 'refs/heads/encargo/login-a1b2')).toBe(late);
+  });
+
+  test('a deleted branch leaves a line with its sha and the command that brings it back', async () => {
+    const r = rig();
+    const made = await created(r);
+    work(made.worktree_path as string, 'f.txt', 'trabajo');
+    landOnRemote(r, made, 'merge');
+    git(r.repo, 'fetch', '-q', 'origin');
+    const tip = git(r.repo, 'rev-parse', 'refs/heads/encargo/login-a1b2');
+    expect(await r.desk.remove(made.id, { deleteBranch: true, force: false })).toBe('ok');
+    expect(branchOf(r, made)).toBe('');
+    const receipts = keyed(r, 'hub.act.branchDeleted');
+    expect(receipts).toHaveLength(1);
+    expect(receipts[0]?.summary).toMatchObject({ params: { branch: 'encargo/login-a1b2', sha: tip } });
+    expect(renderHubText(receipts[0]?.summary)).toContain(`git branch encargo/login-a1b2 ${tip}`);
   });
 });
