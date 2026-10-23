@@ -877,6 +877,8 @@ export const es = {
   'board.pr.copied': 'Copiado',
   'board.pr.copyFailed': 'No se pudo copiar: selecciona el texto y cópialo a mano',
   'board.pr.close': 'Cerrar',
+  'board.criteria.title': 'Criterios',
+  'board.criteria.copy': 'Copiar como lista',
   'board.export': 'Exportar .md',
   'board.export.file': 'tablero',
   'board.md.title': 'Tablero — {date}',

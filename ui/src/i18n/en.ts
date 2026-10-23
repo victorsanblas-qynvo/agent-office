@@ -877,6 +877,8 @@ export const en: Messages = {
   'board.pr.copied': 'Copied',
   'board.pr.copyFailed': 'Could not copy: select the text and copy it by hand',
   'board.pr.close': 'Close',
+  'board.criteria.title': 'Criteria',
+  'board.criteria.copy': 'Copy as list',
   'board.export': 'Export .md',
   'board.export.file': 'board',
   'board.md.title': 'Board — {date}',

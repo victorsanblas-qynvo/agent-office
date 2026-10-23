@@ -2862,6 +2862,36 @@ button.board-arrow {
   overflow-wrap: anywhere;
 }
 
+.order-criteria {
+  display: grid;
+  gap: 6px;
+}
+
+.criteria-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.criteria-head button {
+  margin-left: auto;
+}
+
+.criteria-list {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.criteria-item label {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  overflow-wrap: anywhere;
+}
+
 .order-error,
 .check-output pre {
   margin: 0;
