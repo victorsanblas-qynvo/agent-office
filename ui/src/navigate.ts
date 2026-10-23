@@ -34,6 +34,7 @@ const SECTION_OF: Record<NeedKind, SectionId | null> = {
   permission: 'question',
   question: 'question',
   blocked: 'orders',
+  hung: 'floors',
   stalled: 'floors',
   plan: null,
   checks: null,
