@@ -508,6 +508,11 @@ export function createApp(opts: ServerOptions, holdRequest: (req: Request) => vo
     return branches ? c.json({ branches }) : c.json({ error: { key: 'hub.api.floorNotManaged' } }, 404);
   });
 
+  app.get('/api/floors/:floor/orphan-branches', requirePanel, async (c) => {
+    const branches = await office.orphanBranches(c.req.param('floor') ?? '');
+    return branches ? c.json({ branches }) : c.json({ error: { key: 'hub.api.floorNotManaged' } }, 404);
+  });
+
   app.post('/api/floors/:floor/deleted-branches/restore', requirePanel, async (c) => {
     const body = record(await readJson(c));
     holdRequest(c.req.raw);
