@@ -16,6 +16,8 @@ const context = (extra: Partial<PaletteContext> = {}): PaletteContext => ({
   reply: { name: 'lead-mobile' },
   status: { sessionId: 'lead-mobile', name: 'lead-mobile' },
   relaunch: { sessionId: 'lead-mobile', name: 'lead-mobile' },
+  relaunchAll: 0,
+  pins: [],
   newOrder: true,
   mute: true,
   muteSound: true,
@@ -28,7 +30,7 @@ describe('buildEntries', () => {
   test('live, it offers every action, tab, floor, agent and plan', () => {
     const entries = buildEntries(context());
     const actions = entries.filter((entry) => entry.group === 'action').map((entry) => entry.target.type);
-    expect(actions).toEqual(['reply', 'status', 'relaunch', 'newOrder', 'lang', 'history', 'mute', 'muteSound']);
+    expect(actions).toEqual(['reply', 'status', 'relaunch', 'newOrder', 'lang', 'history', 'mute', 'muteSound', 'pin', 'pin']);
     expect(entries.filter((entry) => entry.group === 'tab')).toHaveLength(6);
     expect(entries.filter((entry) => entry.group === 'floor')).toHaveLength(2);
     expect(entries.filter((entry) => entry.group === 'agent')).toHaveLength(2);
@@ -45,7 +47,34 @@ describe('buildEntries', () => {
 
   test('an action with nothing to act on is not offered', () => {
     const entries = buildEntries(context({ reply: null, status: null, relaunch: null, newOrder: false, mute: false, muteSound: false }));
-    expect(entries.filter((entry) => entry.group === 'action').map((entry) => entry.target.type)).toEqual(['lang', 'history']);
+    expect(entries.filter((entry) => entry.group === 'action').map((entry) => entry.target.type)).toEqual(['lang', 'history', 'pin', 'pin']);
+  });
+
+  test('every agent can be pinned, and a pinned one can be unpinned', () => {
+    const entries = buildEntries(context({ pins: ['tester-mobile'] }));
+    const pins = entries.filter((entry) => entry.target.type === 'pin');
+    expect(pins.map((entry) => [entry.id, entry.label, entry.write])).toEqual([
+      ['action:pin:lead-mobile', 'Fijar agente lead-mobile', true],
+      ['action:pin:tester-mobile', 'Soltar agente tester-mobile', true],
+    ]);
+    expect(pins[0].target).toEqual({ type: 'pin', key: 'lead-mobile' });
+    applyLang('en');
+    expect(buildEntries(context()).find((entry) => entry.id === 'action:pin:lead-mobile')?.label).toBe('Pin agent lead-mobile');
+  });
+
+  test('with four pinned, only those can be unpinned; in a replay none is offered', () => {
+    const agents = ['a', 'b', 'c', 'd', 'e'].map((key) => agent(key));
+    const full = buildEntries(context({ agents, pins: ['a', 'b', 'c', 'd'] })).filter((entry) => entry.target.type === 'pin');
+    expect(full.map((entry) => entry.id)).toEqual(['action:pin:a', 'action:pin:b', 'action:pin:c', 'action:pin:d']);
+    expect(buildEntries(context({ live: false })).some((entry) => entry.target.type === 'pin')).toBe(false);
+  });
+
+  test('relaunch all flagged is offered only with candidates, and only live', () => {
+    const find = (extra: Partial<PaletteContext>) => buildEntries(context(extra)).find((entry) => entry.target.type === 'relaunchAll');
+    expect(find({ relaunchAll: 0 })).toBeUndefined();
+    expect(find({ relaunchAll: 3 })).toMatchObject({ id: 'action:relaunchAll', label: 'Relanzar los marcados', hint: '3 sesiones', write: true });
+    expect(find({ relaunchAll: 1 })?.hint).toBe('1 sesión');
+    expect(find({ relaunchAll: 3, live: false })).toBeUndefined();
   });
 
   test('the language action names the other language', () => {

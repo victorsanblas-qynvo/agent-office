@@ -1,8 +1,9 @@
 import type { OfficeApi } from '../api';
 import { button } from '../dom';
-import { t } from '../i18n';
+import { plural, t } from '../i18n';
 import { agentName } from '../labels';
 import type { Store } from '../store';
+import { relaunchAll, relaunchCandidates } from '../relaunch-all';
 import { duration } from '../time';
 import type { AgentView, SessionView } from '../types';
 import { statusAllowed } from './orderable';
@@ -59,4 +60,12 @@ export async function runSessionAction(api: OfficeApi | null, store: Store, cont
   control.disabled = true;
   await requestSession(api, store, sessionId, control.dataset.action === 'relaunch' ? 'relaunch' : 'status');
   control.disabled = false;
+}
+
+export async function requestRelaunchAll(api: OfficeApi | null, store: Store): Promise<void> {
+  const ids = relaunchCandidates(store.sessions.values());
+  if (api === null || ids.length === 0) return;
+  if (!window.confirm(plural('floors.relaunchAllConfirm', ids.length))) return;
+  const tally = await relaunchAll(ids, (sessionId) => api.relaunch(sessionId));
+  store.toast(t('toast.relaunchedAll', tally), tally.failed > 0 ? 'error' : 'ok');
 }

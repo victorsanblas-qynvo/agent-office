@@ -3918,3 +3918,47 @@ button.diff-file.active {
 .digest-orders {
   margin-top: 4px;
 }
+
+.pinned-strip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.pinned-strip[hidden] {
+  display: none;
+}
+
+.pinned-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--c) 55%, var(--border));
+  background: color-mix(in srgb, var(--c) 12%, var(--surface-2));
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.pinned-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--c);
+}
+
+.pinned-tool {
+  max-width: 90px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pin-toggle {
+  margin-left: auto;
+}
+
+.pin-toggle.active {
+  border-color: var(--asking);
+}
