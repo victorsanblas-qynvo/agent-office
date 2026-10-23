@@ -390,6 +390,36 @@ export function createApp(opts: ServerOptions, holdRequest: (req: Request) => vo
     return result ? c.json(result) : c.json({ error: { key: 'hub.api.orderNotFound' } }, 404);
   });
 
+  app.post('/api/board/orders/:id/checkpoints/undo-reset', requirePanel, async (c) => {
+    const id = idOf(c.req.param('id'));
+    if (id === null) return c.json({ error: { key: 'hub.api.badId' } }, 400);
+    const body = record(await readJson(c));
+    holdRequest(c.req.raw);
+    const result = await office.undoOrderReset(id, body.safetyRef);
+    return result.ok ? c.json(result) : c.json({ error: result.error }, result.status);
+  });
+
+  app.post('/api/board/orders/:id/checkpoints/:cp/reset', requirePanel, async (c) => {
+    const id = idOf(c.req.param('id'));
+    const cp = idOf(c.req.param('cp'));
+    if (id === null || cp === null) return c.json({ error: { key: 'hub.api.badId' } }, 400);
+    holdRequest(c.req.raw);
+    const result = await office.resetOrderToCheckpoint(id, cp);
+    return result.ok ? c.json(result) : c.json({ error: result.error }, result.status);
+  });
+
+  app.post('/api/board/orders/:id/checkpoints/:cp/fork', requirePanel, async (c) => {
+    const id = idOf(c.req.param('id'));
+    const cp = idOf(c.req.param('cp'));
+    if (id === null || cp === null) return c.json({ error: { key: 'hub.api.badId' } }, 400);
+    const body = record(await readJson(c));
+    const via = body.via;
+    if (via !== undefined && via !== 'lead' && via !== 'director') return c.json({ error: { key: 'hub.api.boardFields' } }, 400);
+    holdRequest(c.req.raw);
+    const result = await office.forkOrder(id, cp, { title: text(body.title) ?? undefined, via });
+    return result.ok ? c.json({ order: result.order }) : c.json({ error: result.error }, result.status);
+  });
+
   app.get('/api/board/orders/:id/diff', requirePanel, async (c) => {
     const id = idOf(c.req.param('id'));
     if (id === null) return c.json({ error: { key: 'hub.api.badId' } }, 400);

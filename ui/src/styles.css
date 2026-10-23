@@ -3297,6 +3297,20 @@ button.diff-file.active {
   font-size: 12px;
 }
 
+.point-actions {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.points-restored {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  overflow-wrap: anywhere;
+}
+
 .dialog-backdrop {
   position: fixed;
   inset: 0;

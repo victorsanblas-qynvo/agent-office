@@ -6,6 +6,7 @@ import { AskDesk } from './ask-desk';
 import { BoardDesk, type CreateOrderRequest, type CreateOrderResult, type MoveResult, type ScriptRequest, type ScriptResult } from './board-desk';
 import { BranchRestoreDesk, type BranchRestoreResult } from './branch-restore';
 import { ChatDesk, GLOBAL_CHANNEL, SNAPSHOT_LIMIT } from './chat';
+import { RestoreDesk, type ForkRequest, type ResetResult, type RestoreFailure } from './checkpoint-restore';
 import { CheckpointDesk } from './checkpoints';
 import { ChecksDesk } from './checks';
 import { flakyReport } from './flaky-report';
@@ -81,6 +82,7 @@ import type {
   ChatPostResult,
   CheckRunView,
   CheckTrigger,
+  AgentState,
   CheckpointView,
   DeletedBranchView,
   DocumentContent,
@@ -110,6 +112,8 @@ import type {
 } from './types';
 import { UsageDesk } from './usage';
 import { WorktreeDesk, type RemoveResult, type WorktreeSummary } from './worktrees';
+
+const TURN_CLOSED: ReadonlySet<AgentState> = new Set<AgentState>(['idle', 'done', 'failed']);
 
 export {
   GHOST_MS,
@@ -210,6 +214,7 @@ export class Office {
   private readonly worktrees: WorktreeDesk;
   private readonly branches: BranchRestoreDesk;
   private readonly checkpoints: CheckpointDesk;
+  private readonly restores: RestoreDesk;
   private readonly delivery: DeliveryDesk;
   private readonly checks: ChecksDesk;
   private readonly board: BoardDesk;
@@ -407,6 +412,23 @@ export class Office {
         const root = this.floors.rootOf(realPath(cwd));
         return managedFloors(this.config).find(([, floor]) => realPath(floor.path) === root)?.[0] ?? null;
       },
+    });
+    this.restores = new RestoreDesk({
+      db: opts.db,
+      store: this.store,
+      git: this.git,
+      now: this.now,
+      bus: this.bus,
+      checkpoints: this.checkpoints,
+      exclusive: (id, task) => this.checks.exclusive(id, task),
+      running: (id) => this.checks.isRunning(id),
+      busy: (path) => this.busyIn(path),
+      tellLead: (order, text) => this.board.tellLead(order, text),
+      changed: (order) => {
+        this.board.refresh(order.id);
+        this.bus.emit({ type: 'worktrees', floor: order.floor });
+      },
+      create: (request) => this.board.createFromPanel(request),
     });
     this.reviews = new ReviewDesk({
       db: opts.db,
@@ -845,6 +867,18 @@ export class Office {
     return order ? { checkpoints: this.checkpoints.list(id), skipped: this.checkpoints.skipped(order) } : null;
   }
 
+  resetOrderToCheckpoint(id: number, checkpointId: number): Promise<ResetResult> {
+    return this.restores.reset(id, checkpointId);
+  }
+
+  undoOrderReset(id: number, safetyRef: unknown): Promise<ResetResult> {
+    return this.restores.undo(id, safetyRef);
+  }
+
+  forkOrder(id: number, checkpointId: number, request: ForkRequest): Promise<CreateOrderResult | RestoreFailure> {
+    return this.restores.fork(id, checkpointId, request);
+  }
+
   orderDiff(id: number): Promise<DiffResult> {
     return this.delivery.diff(id);
   }
@@ -911,6 +945,18 @@ export class Office {
 
   expireWorktrees(): Promise<{ removed: number; pending: number; totalKb: number }> {
     return this.worktrees.expire();
+  }
+
+  // The agents with an open turn in a session that works inside the folder.
+  private busyIn(path: string): string[] {
+    const folder = realPath(path);
+    const names: string[] = [];
+    for (const agent of this.book.agents.values()) {
+      if (agent.endedAt !== null || TURN_CLOSED.has(agent.state)) continue;
+      const cwd = this.book.sessions.get(agent.sessionId)?.cwd ?? null;
+      if (cwd !== null && isInside(realPath(cwd), folder)) names.push(agent.name ?? agent.key);
+    }
+    return names;
   }
 
   private sessionInside(path: string): boolean {

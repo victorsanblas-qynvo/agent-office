@@ -12,7 +12,7 @@ import { BOARD_COLUMNS, doneSummary, leavesDone, manualTarget, nextStatus, order
 import { keyMatches } from './security';
 import { deliveryOf, gateModeOf, setupOf } from './profiles';
 import { BRIEF_PREFIX, parseProtocol } from './protocol';
-import { validRef } from './repo-ops';
+import { validRef, validSha } from './repo-ops';
 import type { SessionBook } from './session-book';
 import type {
   CheckTrigger,
@@ -30,8 +30,8 @@ import type { CreateResult } from './worktrees';
 const TOUCH_WRITE_MS = 2000;
 const OUTSIDE_NOTE_MS = 5 * 60_000;
 const CLOSED_ON_SNAPSHOT = 100;
-const MAX_TITLE = 120;
-const MAX_DESCRIPTION = 2000;
+export const MAX_TITLE = 120;
+export const MAX_DESCRIPTION = 2000;
 
 export type BoardDeskOpts = {
   db: Database;
@@ -53,7 +53,8 @@ export type BoardDeskOpts = {
 
 export type BoardChecks = Pick<ChecksDesk, 'summary' | 'gateReading' | 'start' | 'force' | 'cancel' | 'latest' | 'history' | 'scheduleListo'>;
 
-export type CreateOrderRequest = { floor: string; title: string; description?: string; base?: string; via: 'lead' | 'director' };
+// startSha: the commit the folder leaves from instead of the tip of the base (a fork from a checkpoint).
+export type CreateOrderRequest = { floor: string; title: string; description?: string; base?: string; via: 'lead' | 'director'; parentId?: number; startSha?: string };
 
 export type ScriptRequest = { order: string; slug?: string; reason?: string; cwd?: string };
 
@@ -228,7 +229,13 @@ export class BoardDesk {
   async createFromPanel(raw: CreateOrderRequest): Promise<CreateOrderResult> {
     const title = raw.title.trim();
     const description = (raw.description ?? '').trim();
-    if (!title || title.length > MAX_TITLE || description.length > MAX_DESCRIPTION || (raw.base !== undefined && !validRef(raw.base))) {
+    if (
+      !title ||
+      title.length > MAX_TITLE ||
+      description.length > MAX_DESCRIPTION ||
+      (raw.base !== undefined && !validRef(raw.base)) ||
+      (raw.startSha !== undefined && !validSha(raw.startSha))
+    ) {
       return { ok: false, status: 400, error: { key: 'hub.api.boardFields' } };
     }
     if (!this.managed(raw.floor)) return { ok: false, status: 404, error: { key: 'hub.api.floorNotManaged' } };
@@ -238,16 +245,18 @@ export class BoardDesk {
     if (raw.via === 'lead' && !lead) return { ok: false, status: 409, error: { key: 'hub.api.leadClosed' } };
     if (raw.via === 'director' && !director) return { ok: false, status: 409, error: { key: 'hub.api.directorClosed' } };
     const source: OrderSource = raw.via === 'lead' ? 'panel-lead' : 'panel-director';
-    const row = this.opts.store.insert({
+    const inserted = this.opts.store.insert({
       slug: this.freshSlug(title),
       floor: raw.floor,
       title,
       description,
       source,
+      parentId: raw.parentId ?? null,
       leadSession: lead?.sessionId ?? null,
       baseRef: raw.base ?? null,
       now: this.opts.now(),
     });
+    const row = raw.startSha ? (this.opts.store.update(inserted.id, { base_sha: raw.startSha }) as OrderRow) : inserted;
     this.note({ key: 'hub.act.orderCreated', params: { floor: raw.floor, title } });
     this.changed(row);
     const text = description ? `${title}\n${description}` : title;

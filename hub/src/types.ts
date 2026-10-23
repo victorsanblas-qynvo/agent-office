@@ -135,6 +135,9 @@ export type HubTextParams = {
   'hub.act.editOutsideWorktree': { who: string; slug: string };
   'hub.act.checkpointSkipped': { slug: string; files: string };
   'hub.act.checkpointFailed': { slug: string };
+  'hub.act.checkpointReset': { slug: string; n: number; ref: string };
+  'hub.act.checkpointResetUndone': { slug: string; target: string; ref: string };
+  'hub.act.checkpointResetFailed': { slug: string; ref: string };
   'hub.act.worktreesOrphan': { n: number; paths: string };
   'hub.act.worktreesPending': { n: number; sizeKb: number };
   'hub.act.worktreesHeavy': { gb: number; max: number };
@@ -263,6 +266,17 @@ export type HubTextParams = {
   'hub.move.touched': { files: string };
   'hub.api.noFolder': undefined;
   'hub.api.noChecks': undefined;
+  'hub.api.checkpointNotFound': undefined;
+  'hub.api.checkpointNotOnBranch': undefined;
+  'hub.api.restoreNoFolder': undefined;
+  'hub.api.restoreChecksRunning': undefined;
+  'hub.api.restoreBusy': { who: string };
+  'hub.api.restoreOffBranch': undefined;
+  'hub.api.restoreCheckpointFailed': undefined;
+  'hub.api.restoreLeftovers': { files: string };
+  'hub.api.restoreFailed': undefined;
+  'hub.api.safetyRefInvalid': undefined;
+  'hub.api.safetyRefNotFound': undefined;
   'hub.api.boardFields': undefined;
   'hub.api.floorNotManaged': undefined;
   'hub.api.deliveryOff': { floor: string };
