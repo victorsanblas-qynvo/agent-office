@@ -67,6 +67,7 @@ const WORKTREE_FAILURES: Record<Exclude<RemoveResult, 'ok'>, { key: HubTextKey; 
   busy: { key: 'hub.api.worktreeBusy', status: 409 },
   dirty: { key: 'hub.api.worktreeDirty', status: 409 },
   unmerged: { key: 'hub.api.branchUnmerged', status: 409 },
+  'branch-moved': { key: 'hub.api.branchMoved', status: 409 },
   failed: { key: 'hub.api.worktreeFailed', status: 500 },
 };
 const RESTORE_FAILURES: Record<Exclude<BranchRestoreResult, 'ok'>, { key: HubTextKey; status: 400 | 404 | 409 | 410 | 500 }> = {
@@ -460,6 +461,16 @@ export function createApp(opts: ServerOptions, holdRequest: (req: Request) => vo
     if (!request) return c.json({ error: { key: 'hub.api.reviewFields' } }, 400);
     holdRequest(c.req.raw);
     const result = await office.reviewOrder(id, request);
+    if (!result.ok) return c.json({ error: result.error }, result.status);
+    return c.json(result.delivered ? { delivered: true, count: result.count } : { delivered: false, count: result.count, reason: result.reason });
+  });
+
+  app.post('/api/board/orders/:id/comments/resend', requirePanel, async (c) => {
+    const id = idOf(c.req.param('id'));
+    if (id === null) return c.json({ error: { key: 'hub.api.badId' } }, 400);
+    const body = record(await readJson(c));
+    holdRequest(c.req.raw);
+    const result = await office.resendReview(id, body.lang === 'en' ? 'en' : 'es');
     if (!result.ok) return c.json({ error: result.error }, result.status);
     return c.json(result.delivered ? { delivered: true, count: result.count } : { delivered: false, count: result.count, reason: result.reason });
   });

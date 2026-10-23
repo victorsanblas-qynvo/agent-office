@@ -12,7 +12,7 @@ import { openDocument } from './panel/deliverables';
 import { focusOrders } from './panel/orders';
 import { relaunchable } from './panel/orderable';
 import { togglePin } from './pins';
-import { relaunchCandidates } from './relaunch-all';
+import { relaunchCandidates, relaunchRunning } from './relaunch-all';
 import { openSection, type SectionId } from './panel/section';
 import { requestRelaunchAll, requestSession } from './panel/session-controls';
 import type { Store } from './store';
@@ -136,7 +136,7 @@ export function paletteContext(nav: Nav): PaletteContext {
     reply: question ? { name: asker ? agentName(asker) : question.agentKey.slice(0, 8) } : null,
     status: selected && session?.office ? { sessionId: selected.sessionId, name: agentName(selected) } : null,
     relaunch: selected && main && relaunchable(main) && main.canRelaunch ? { sessionId: selected.sessionId, name: agentName(selected) } : null,
-    relaunchAll: relaunchCandidates(store.sessions.values()).length,
+    relaunchAll: relaunchRunning() ? 0 : relaunchCandidates(store.sessions.values()).length,
     pins: store.pins,
     newOrder: nav.board().canCreate(),
     mute: nav.notifier?.preferences.enabled === true,

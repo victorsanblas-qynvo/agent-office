@@ -187,6 +187,86 @@ describe('review comments on the diff of an order', () => {
     expect(listed.body.comments).toEqual([expect.objectContaining({ path: 'lib/login.dart', line: 3, body: 'x', sentAt: null })]);
     expect(rig.h.office.snapshot().activity.map((a) => a.summary)).toContainEqual({ key: 'hub.act.reviewUnsent', params: { slug } });
   });
+
+  test('a review the lead missed is resent once from the stored rows, and a retry does not store it twice', async () => {
+    let down = true;
+    rig = deliveryRig({
+      office: {
+        deliverFn: async (socket, payload) => {
+          if (down && socket.endsWith('lead.sock')) throw new Error('gone');
+          rig?.sent.push({ socket, payload, text: textOf(payload) });
+        },
+      },
+    });
+    const call = api(rig);
+    const { id, slug } = await reviewable(rig);
+    rig.h.office.moveOrder(id, 'revision');
+    const review = { comments: [{ path: 'lib/login.dart', line: 2, body: 'uno' }, { path: 'lib/otro.dart', line: null, body: 'dos' }] };
+    expect((await call('POST', `/api/board/orders/${id}/comments`, review)).body).toMatchObject({ delivered: false, count: 2 });
+    const [first, again] = await Promise.all([call('POST', `/api/board/orders/${id}/comments`, review), call('POST', `/api/board/orders/${id}/comments`, review)]);
+    expect([first.body.delivered, again.body.delivered]).toEqual([false, false]);
+    expect(count(rig)).toBe(2);
+
+    down = false;
+    rig.h.clock.now += 1000;
+    expect(await call('POST', `/api/board/orders/${id}/comments/resend`, {})).toEqual({ status: 200, body: { delivered: true, count: 2 } });
+    const messages = reviews(rig);
+    expect(messages).toHaveLength(1);
+    expect(messages[0]?.split('\n').slice(2)).toEqual(['- lib/login.dart:2 — uno', '- lib/otro.dart — dos']);
+    const listed = await call('GET', `/api/board/orders/${id}/comments`);
+    expect((listed.body.comments as { sentAt: number | null }[]).map((c) => c.sentAt)).toEqual([rig.h.clock.now, rig.h.clock.now]);
+    expect(orderOf(rig, slug).status).toBe('en-curso');
+
+    expect(await call('POST', `/api/board/orders/${id}/comments/resend`, {})).toEqual({ status: 409, body: { error: { key: 'hub.api.reviewNothingUnsent' } } });
+    expect(reviews(rig)).toHaveLength(1);
+    expect(count(rig)).toBe(2);
+    expect(await call('POST', '/api/board/orders/999/comments/resend', {})).toEqual({ status: 404, body: { error: { key: 'hub.api.orderNotFound' } } });
+    expect(await call('POST', '/api/board/orders/x/comments/resend', {})).toEqual({ status: 400, body: { error: { key: 'hub.api.badId' } } });
+  });
+
+  test('two sends and a resend of one order reach the lead one after another', async () => {
+    let active = 0;
+    let most = 0;
+    rig = deliveryRig({
+      office: {
+        deliverFn: async (socket, payload) => {
+          const text = textOf(payload);
+          if (socket.endsWith('lead.sock') && text.startsWith(HEADER)) {
+            active += 1;
+            most = Math.max(most, active);
+            await Bun.sleep(30);
+            active -= 1;
+          }
+          rig?.sent.push({ socket, payload, text });
+        },
+      },
+    });
+    const call = api(rig);
+    const { id } = await reviewable(rig);
+    const results = await Promise.all([
+      call('POST', `/api/board/orders/${id}/comments`, { comments: [{ path: 'lib/login.dart', line: 1, body: 'a' }] }),
+      call('POST', `/api/board/orders/${id}/comments`, { comments: [{ path: 'lib/login.dart', line: 2, body: 'b' }] }),
+      call('POST', `/api/board/orders/${id}/comments/resend`, {}),
+    ]);
+    expect(most).toBe(1);
+    expect(results.map((r) => r.status)).toEqual([200, 200, 409]);
+    expect(reviews(rig)).toHaveLength(2);
+    expect(count(rig)).toBe(2);
+  });
+
+  test('a done order whose folder was removed is refused: nothing is stored, sent or moved', async () => {
+    rig = deliveryRig();
+    const call = api(rig);
+    const { id, slug } = await reviewable(rig);
+    expect(rig.h.office.moveOrder(id, 'hecho')).toMatchObject({ ok: true });
+    expect(await rig.h.office.removeWorktree(id, { deleteBranch: false, force: false })).toBe('ok');
+    const refused = await call('POST', `/api/board/orders/${id}/comments`, { comments: [{ path: 'lib/login.dart', line: 1, body: 'x' }] });
+    expect(refused).toEqual({ status: 409, body: { error: { key: 'hub.api.orderNoFolder' } } });
+    expect(await call('POST', `/api/board/orders/${id}/comments/resend`, {})).toEqual({ status: 409, body: { error: { key: 'hub.api.orderNoFolder' } } });
+    expect(orderOf(rig, slug)).toMatchObject({ status: 'hecho', cycle: 1 });
+    expect(count(rig)).toBe(0);
+    expect(reviews(rig)).toEqual([]);
+  });
 });
 
 describe('parseReview', () => {

@@ -28,7 +28,7 @@ export type CreateResult =
   | { ok: true; order: OrderRow; ready: Promise<OrderRow> }
   | { ok: false; error: CreateFailure; detail: string };
 
-export type RemoveResult = 'ok' | 'not-found' | 'busy' | 'dirty' | 'unmerged' | 'failed';
+export type RemoveResult = 'ok' | 'not-found' | 'busy' | 'dirty' | 'unmerged' | 'branch-moved' | 'failed';
 
 export type WorktreeSummary = { worktrees: WorktreeView[]; totalKb: number; warnKb: number };
 
@@ -461,16 +461,30 @@ export class WorktreeDesk {
       if (removed.code !== 0) return 'failed';
     } else await run(this.opts.git, repo, () => gitOps.worktreePrune());
     if (branch && tip) {
-      this.note({ key: 'hub.act.branchDeleted', params: { branch, sha: tip } });
+      const judged = present || opts.force;
       // Without its folder nothing was judged: git deletes it only if it is merged into the main copy.
-      const deleted = await run(this.opts.git, repo, () => (present || opts.force ? gitOps.branchDeleteAt(branch, tip) : gitOps.branchDelete(branch, false)));
-      if (deleted.code !== 0) return 'failed';
+      const deleted = await run(this.opts.git, repo, () => (judged ? gitOps.branchDeleteAt(branch, tip) : gitOps.branchDelete(branch, false)));
+      if (deleted.code !== 0) {
+        if (!judged) return 'failed';
+        // The branch took a commit after it was judged: the folder is gone either way, the branch stays where it went.
+        const current = await this.branchTip(repo, branch);
+        if (current === tip) return 'failed';
+        this.retire(orderId, path);
+        if (!current) return 'ok';
+        this.note({ key: 'hub.act.branchMoved', params: { branch, sha: current } });
+        return 'branch-moved';
+      }
+      this.note({ key: 'hub.act.branchDeleted', params: { branch, sha: tip } });
     }
+    this.retire(orderId, path);
+    return 'ok';
+  }
+
+  private retire(orderId: number, path: string): void {
     const next = this.opts.store.update(orderId, { worktree_state: 'retirado', updated_at: this.opts.now() }) as OrderRow;
     this.reindex();
     this.sizes.delete(path);
     this.opts.changed(next);
-    return 'ok';
   }
 
   // The setup of a folder that failed or was cut short, again: the state goes back to preparando and ends in listo or error.
@@ -555,7 +569,7 @@ export class WorktreeDesk {
       }
       if (facts.dirty) continue;
       const outcome = await this.remove(row.id, { deleteBranch: !undecided(facts), force: false });
-      if (outcome === 'ok') removed += 1;
+      if (outcome === 'ok' || outcome === 'branch-moved') removed += 1;
     }
     if (pending > 0) this.note({ key: 'hub.act.worktreesPending', params: { n: pending, sizeKb: pendingKb } });
     if (unknown.length > 0) this.note({ key: 'hub.act.worktreesUnknown', params: { n: unknown.length, slugs: unknown.join(', ') } });

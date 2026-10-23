@@ -27,11 +27,13 @@ import {
   fileComments,
   fileTarget,
   removeDraft,
+  reviewReopens,
   reviewRequest,
   rowTarget,
   sameTarget,
   targetKey,
   targetLabel,
+  unsentCount,
   type ReviewDraft,
   type ReviewTarget,
 } from './review-model';
@@ -150,6 +152,7 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
   let editText = '';
   let focusEditor = false;
   let reviewStamp = 0;
+  let resending = false;
   let activityHits: SearchHit[] = [];
   let activityLoaded = false;
   let activityLoading = false;
@@ -237,6 +240,21 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
     reviewChanged();
     await loadComments();
     return true;
+  };
+
+  // The comments the lead did not get stay stored: they go again in one message, never twice.
+  const resendReview = async (): Promise<void> => {
+    if (!api || resending) return;
+    resending = true;
+    reviewChanged();
+    const result = await api.resendReview(orderId, currentLang());
+    resending = false;
+    if (gone) return;
+    if (!result.ok) store.toast(result.message, 'error');
+    else if (result.data.delivered) store.toast(plural('board.review.sent', result.data.count), 'ok');
+    else store.toast(renderHubText(t, result.data.reason), 'error');
+    reviewChanged();
+    await loadComments();
   };
 
   const loadDiffFile = async (path: string): Promise<void> => {
@@ -581,6 +599,15 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
     return latestSha(current, live ? [live, ...runs] : runs, points);
   };
 
+  const unsentBar = (): HTMLElement | null => {
+    const unsent = unsentCount(comments);
+    if (!api || unsent === 0) return null;
+    const resend = button(t('board.review.resend'), '', plural('board.review.resendLabel', unsent));
+    resend.disabled = resending;
+    resend.addEventListener('click', () => void resendReview());
+    return el('span', 'review-unsent-bar', el('span', 'review-unsent', plural('board.review.unsentCount', unsent)), ' · ', resend);
+  };
+
   const diffTab = (current: OrderView): HTMLElement => {
     const reload = button(t('board.diff.reload'));
     reload.disabled = diffLoading || !api;
@@ -608,6 +635,7 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
       send.addEventListener('click', () =>
         openReviewDialog(host, {
           slug: current.slug,
+          note: reviewReopens(current.status) ? t('board.review.reopens') : null,
           drafts: () => drafts,
           remove: (id) => {
             drafts = removeDraft(drafts, id);
@@ -620,7 +648,7 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
     return el(
       'div',
       'order-tab',
-      el('div', 'diff-head', el('b', '', diffSummary(diff)), send, reload),
+      el('div', 'diff-head', el('b', '', diffSummary(diff)), unsentBar(), send, reload),
       stale,
       diff.truncated ? el('p', 'order-warning', t('board.diff.truncated')) : null,
       rows.length === 0 ? el('p', 'muted', t('board.diff.none')) : el('ul', 'diff-files', ...rows),

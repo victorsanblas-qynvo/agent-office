@@ -260,6 +260,10 @@ export class OfficeApi {
     return this.send('POST', `/api/board/orders/${id}/comments`, review);
   }
 
+  resendReview(id: number, lang: Lang): Promise<ApiData<ReviewSent>> {
+    return this.send('POST', `/api/board/orders/${id}/comments/resend`, { lang });
+  }
+
   markFinishedSeen(id: number): Promise<ApiData<{ ok: true }>> {
     return this.send('POST', `/api/alerts/${id}/seen`, {});
   }
