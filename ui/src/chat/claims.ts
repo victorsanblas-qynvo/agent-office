@@ -7,6 +7,13 @@ function baseName(path: string): string {
   return path.slice(path.lastIndexOf('/') + 1);
 }
 
+export const BADGE_REFRESH_MS = 60_000;
+
+// Pure: whether the collision badge is due a recompute, once a minute so an expired claim drops out.
+export function badgeDue(last: number, now: number): boolean {
+  return now - last >= BADGE_REFRESH_MS || now < last;
+}
+
 export function samePath(a: string, b: string): boolean {
   if (a === b) return true;
   if (a.includes('/') && b.includes('/')) return false;

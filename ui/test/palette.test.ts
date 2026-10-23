@@ -91,11 +91,17 @@ describe('order entries', () => {
     expect(orderIds({ orders })).toEqual(['order:busy', 'order:quiet', 'order:old-done', 'order:dropped']);
   });
 
-  test('at most 50 orders are offered', () => {
+  test('with no query only the first entries are shown, the newest orders among them', () => {
     const orders = Array.from({ length: 60 }, (_, index) => order(`o-${index}`, { id: index + 1, updatedAt: index }));
-    const listed = orderIds({ orders });
-    expect(listed).toHaveLength(50);
-    expect(listed[0]).toBe('order:o-59');
+    const shown = searchEntries(buildEntries(context({ orders })), '').map((result) => result.entry.id);
+    expect(shown).toHaveLength(EMPTY_LIMIT);
+    expect(shown).not.toContain('order:o-0');
+  });
+
+  test('the 60th oldest order is still found by its slug', () => {
+    const orders = Array.from({ length: 60 }, (_, index) => order(`o-${index}-zeta`, { id: index + 1, updatedAt: index }));
+    expect(orderIds({ orders })).toHaveLength(60);
+    expect(searchEntries(buildEntries(context({ orders })), 'o-0-zeta')[0].entry.id).toBe('order:o-0-zeta');
   });
 
   test('fuzzy search finds an order by slug and by branch', () => {

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type { ChatKind, ChatMessageView } from '../types';
-import { CLAIM_TTL_MS, collisions, heldClaims, openClaims } from './claims';
+import { badgeDue, BADGE_REFRESH_MS, CLAIM_TTL_MS, collisions, heldClaims, openClaims } from './claims';
 
 const NOW = 1_800_000_000_000;
 
@@ -90,5 +90,13 @@ describe('collisions', () => {
       message(4, 'dev-2', 'toca', ['new.dart'], NOW - 2000),
     ]);
     expect(found.map((c) => c.path)).toEqual(['new.dart', 'old.dart']);
+  });
+});
+
+describe('badgeDue', () => {
+  test('recomputes once a minute and when the clock goes back', () => {
+    expect(badgeDue(1000, 1000 + BADGE_REFRESH_MS - 1)).toBe(false);
+    expect(badgeDue(1000, 1000 + BADGE_REFRESH_MS)).toBe(true);
+    expect(badgeDue(1000, 999)).toBe(true);
   });
 });

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { BOARD_MAX_LINES, boardData, floorScores, boardSignature, type BoardInput } from '../src/boards';
+import { BOARD_MAX_LINES, boardData, floorScores, boardSignature, isWorking, type BoardInput } from '../src/boards';
 import { applyLang } from '../src/i18n/index';
 import type { UsageSummary } from '../src/types';
 import { agent, doc, floor, order } from './fixtures';
@@ -199,6 +199,11 @@ describe('floorScores', () => {
     ]);
   });
 
+  test('a failing order whose checks were forced is not red', () => {
+    const [score] = floorScores(floors, [], [checked('o1', 'mobile', { checks: { ...failing, forced: true } as never })], (a) => a.state);
+    expect(score.red).toBe(0);
+  });
+
   test('skips observed floors', () => {
     expect(floorScores(floors, [agent('x', { floor: 'seen' })], [checked('o', 'seen')], (a) => a.state).map((s) => s.slug)).not.toContain('seen');
   });
@@ -241,5 +246,18 @@ describe('direction scoreboard rows', () => {
     const four = ['a', 'b', 'c', 'd'].map((slug) => floor(slug));
     expect(rows({ floors: four })).toHaveLength(4);
     expect(rows({ floors: four }).some((text) => text.startsWith('+'))).toBe(false);
+  });
+});
+
+describe('isWorking', () => {
+  test('busy agents work; idle, done, failed and blocked ones do not', () => {
+    const states = ['working', 'idle', 'done', 'failed', 'blocked'] as const;
+    expect(states.map((state) => isWorking(agent('a', { state }), (a) => a.state))).toEqual([true, false, false, false, false]);
+  });
+
+  test('the direction header counts like the floors do', () => {
+    const everyone = [agent('a', { floor: 'mobile', state: 'working' }), agent('b', { floor: 'mobile', state: 'blocked' })];
+    const lines = boardData(input({ floor: floor('direccion', { kind: 'direccion' }), floors: [floor('mobile')], everyone }));
+    expect(lines.lines.some((line) => line.text === '1 de 2 trabajando')).toBe(true);
   });
 });

@@ -42,7 +42,6 @@ export type PaletteContext = {
 
 export const EMPTY_LIMIT = 30;
 export const RESULT_LIMIT = 50;
-export const ORDER_LIMIT = 50;
 
 function actions(context: PaletteContext): PaletteEntry[] {
   const out: PaletteEntry[] = [];
@@ -68,7 +67,6 @@ function orderEntries(context: PaletteContext): PaletteEntry[] {
   const floors = new Map(context.floors.map((floor) => [floor.slug, floor]));
   return [...context.orders]
     .sort((a, b) => Number(isOpen(b)) - Number(isOpen(a)) || lastTouch(b) - lastTouch(a) || b.id - a.id)
-    .slice(0, ORDER_LIMIT)
     .map((order): PaletteEntry => {
       const floor = floors.get(order.floor);
       const floorName = floor ? floorLabel(floor) : order.floor;

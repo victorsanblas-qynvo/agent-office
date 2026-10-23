@@ -154,11 +154,11 @@ describe('history export', () => {
   const row = (over: Partial<HistoryRow> = {}): HistoryRow => ({ time: '2026-10-23T14:05:09.000+02:00', floor: 'mobile', agent: 'Lead', session: 's1', role: 'jefe', kind: 'chat', text: 'hola', ...over });
 
   test('csv has a header and one CRLF-terminated line per row', () => {
-    expect(historyToCsv([row()])).toBe('time,floor,agent,session,role,kind,text\r\n2026-10-23T14:05:09.000+02:00,mobile,Lead,s1,jefe,chat,hola\r\n');
+    expect(historyToCsv([row()])).toBe('\ufefftime,floor,agent,session,role,kind,text\r\n2026-10-23T14:05:09.000+02:00,mobile,Lead,s1,jefe,chat,hola\r\n');
   });
 
   test('no rows is the header only', () => {
-    expect(historyToCsv([])).toBe('time,floor,agent,session,role,kind,text\r\n');
+    expect(historyToCsv([])).toBe('\ufefftime,floor,agent,session,role,kind,text\r\n');
   });
 
   test('fields with a comma, a quote or a line break are quoted and quotes doubled', () => {
@@ -170,9 +170,14 @@ describe('history export', () => {
   });
 
   test('cells that start like a formula get a single quote', () => {
-    for (const text of ['=SUM(A1)', '+1', '-1', '@x', '\tx']) expect(historyToCsv([row({ text })])).toContain(`,'${text}\r\n`);
+    for (const text of ['=SUM(A1)', '+1', '-1', '@x', '\tx', '＝1', '＋1', '－1', '＠x']) expect(historyToCsv([row({ text })])).toContain(`,'${text}\r\n`);
     expect(historyToCsv([row({ text: '=1,2' })])).toContain(`,"'=1,2"\r\n`);
+    expect(historyToCsv([row({ text: '\r=1' })])).toContain(`,"'\r=1"\r\n`);
     expect(historyToCsv([row({ text: 'a=b' })])).toContain(',a=b\r\n');
+  });
+
+  test('the csv starts with a UTF-8 byte order mark', () => {
+    expect(historyToCsv([row()]).charCodeAt(0)).toBe(0xfeff);
   });
 
   test('json is pretty and keeps the column order', () => {

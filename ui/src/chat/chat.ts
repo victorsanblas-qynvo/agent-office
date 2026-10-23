@@ -6,7 +6,7 @@ import { floorLabel, roleLabel } from '../labels';
 import type { Store } from '../store';
 import { clockTime } from '../time';
 import type { ChatKind, ChatMessageView, RoleId, RoleKind } from '../types';
-import { collisions, heldClaims, openClaims, type Collision } from './claims';
+import { badgeDue, collisions, heldClaims, openClaims, type Collision } from './claims';
 
 export type ChatHandle = { setActive(active: boolean): void; show(channel: string): void };
 
@@ -267,6 +267,15 @@ export function mountChat(host: HTMLElement, store: Store, api: OfficeApi | null
 
   store.watch(['lang'], relabel);
   store.watch(['chat', 'floors'], paint);
+  let badgeAt = store.now();
+  store.watch(['tick'], () => {
+    const now = store.now();
+    if (!badgeDue(badgeAt, now)) return;
+    badgeAt = now;
+    const found = collisions(heldClaims(store.chat, now));
+    paintChannels(current(), found);
+    paintCollisions(found);
+  });
   refresh();
 
   return {
