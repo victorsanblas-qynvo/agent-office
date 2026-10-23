@@ -408,6 +408,14 @@ export function createApp(opts: ServerOptions, holdRequest: (req: Request) => vo
     return result.ok ? c.json(result) : c.json({ error: result.error }, result.status);
   });
 
+  app.get('/api/board/orders/:id/checkpoints/:cp/preview', requirePanel, async (c) => {
+    const id = idOf(c.req.param('id'));
+    const cp = idOf(c.req.param('cp'));
+    if (id === null || cp === null) return c.json({ error: { key: 'hub.api.badId' } }, 400);
+    const result = await office.previewOrderReset(id, cp);
+    return result.ok ? c.json(result.preview) : c.json({ error: result.error }, result.status);
+  });
+
   app.post('/api/board/orders/:id/checkpoints/:cp/reset', requirePanel, async (c) => {
     const id = idOf(c.req.param('id'));
     const cp = idOf(c.req.param('cp'));

@@ -14,6 +14,7 @@ import type {
   OrphanBranchView,
   OrderDiff,
   OrderDiffFile,
+  RestorePreview,
   DocumentContent,
   DocumentRound,
   DocumentRoundDiff,
@@ -243,6 +244,10 @@ export class OfficeApi {
 
   orderSpend(id: number): Promise<ApiData<OrderSpend>> {
     return this.get(`/api/board/orders/${id}/spend`);
+  }
+
+  restorePreview(id: number, checkpointId: number): Promise<ApiData<RestorePreview>> {
+    return this.get(`/api/board/orders/${id}/checkpoints/${checkpointId}/preview`);
   }
 
   resetToCheckpoint(id: number, checkpointId: number, force = false): Promise<ApiData<{ ok: true; safetyRef: string; head: string }>> {

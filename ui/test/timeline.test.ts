@@ -3,7 +3,7 @@ import { applyLang } from '../src/i18n';
 import { readTableView } from '../src/table/history';
 import { timelineAgentName } from '../src/table/timeline';
 import type { Store } from '../src/store';
-import { hourTicks, layoutSegments, readTimelineHours } from '../src/table/timeline-model';
+import { hourTicks, layoutSegments, readTimelineHours, segmentFilters } from '../src/table/timeline-model';
 
 afterEach(() => applyLang('es'));
 
@@ -77,5 +77,16 @@ describe('timelineAgentName', () => {
   test('shows the name of a known agent and the start of the key of an unknown one', () => {
     expect(timelineAgentName(store, 'abcdef123456')).toBe('dev-mobile');
     expect(timelineAgentName(store, 'ffff00001111aaaa')).toBe('ffff0000');
+  });
+});
+
+describe('segmentFilters', () => {
+  test('filters the history by the agent and the local days of the segment', () => {
+    const filters = segmentFilters('abcdef123456', { from: new Date(2026, 9, 23, 23, 30).getTime(), to: new Date(2026, 9, 24, 0, 15).getTime() });
+    expect(filters).toEqual({ q: '', floor: '', agent: 'abcdef123456', kind: '', from: '2026-10-23', to: '2026-10-24' });
+  });
+
+  test('a segment inside one day gives the same day twice', () => {
+    expect(segmentFilters('a', { from: FROM, to: TO })).toMatchObject({ from: '2026-10-24', to: '2026-10-24' });
   });
 });

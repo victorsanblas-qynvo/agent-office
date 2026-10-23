@@ -18,6 +18,7 @@ import { readEditor } from '../prefs';
 import { REVIEW_MAX_BODY } from '../../../shared/review-message';
 import { spendLine, spendTitle } from './spend';
 import { openPrDraft } from './pr-draft';
+import { openRestorePreview } from './restore-preview';
 import { canRestore, newestFirst, pointNumbers, restoreBlock, restoreNeedsForce } from './points-model';
 import { openReviewDialog } from './review-dialog';
 import {
@@ -382,15 +383,17 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
   };
 
   const restorePoint = (point: CheckpointView, n: number): void => {
-    if (!api || !window.confirm(t('board.points.restoreAsk', { n, sha: point.sha.slice(0, 7) }))) return;
-    const force = confirmDone();
-    if (force === null) return;
-    void act(async () => {
-      const result = await api.resetToCheckpoint(orderId, point.id, force);
-      if (result.ok) restored = { safetyRef: result.data.safetyRef, n };
-      await reload();
-      return result.ok ? { ok: true } : result;
-    }, t('board.points.restored', { n }));
+    if (!api) return;
+    openRestorePreview(host, api, orderId, point, n, () => {
+      const force = confirmDone();
+      if (force === null) return;
+      void act(async () => {
+        const result = await api.resetToCheckpoint(orderId, point.id, force);
+        if (result.ok) restored = { safetyRef: result.data.safetyRef, n };
+        await reload();
+        return result.ok ? { ok: true } : result;
+      }, t('board.points.restored', { n }));
+    });
   };
 
   const undoRestore = (ref: string, ask: string | null): void => {

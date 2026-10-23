@@ -852,6 +852,14 @@ export type CheckpointView = { id: number; sha: string; reason: string; label: s
 // A HEAD a restore replaced, kept under refs/office/<slug>/before-reset-<at>.
 export type SafetyRefView = { ref: string; sha: string; at: number };
 
+export type RestorePreview = {
+  dropped: string[];
+  droppedTotal: number;
+  stat: { files: number; adds: number; dels: number };
+  dirty: string[];
+  blocked: HubText | null;
+};
+
 export type SkippedFile = { path: string; size: number; mtime: number };
 
 export type DiffFileStat = { path: string; oldPath: string | null; adds: number | null; dels: number | null; binary: boolean };
