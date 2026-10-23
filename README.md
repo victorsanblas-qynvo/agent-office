@@ -121,7 +121,7 @@ También se dan de alta y se borran desde **Ajustes → Proyectos**, sin reinici
 
 ### El director y el reparto
 
-El director recibe tus órdenes y las reparte a los jefes de planta con `ENCARGO: <título corto> — <qué> — criterios — fuera`. Entre plantas fija los contratos que comparten y resuelve los bloqueos. Un tope (`limits.maxBriefsPerOrder`, 3; 0 lo desactiva) limita los encargos a jefes desde tu última instrucción: el siguiente se bloquea y el director te pregunta cuáles quieres y en qué orden. Los jefes de planta dirigen a su equipo y le avisan con `HECHO:` cuando terminan.
+El director recibe tus órdenes y las reparte a los jefes de planta con `ENCARGO: <título corto> — <qué> — criterios — fuera`. Entre plantas fija los contratos que comparten y resuelve los bloqueos. Un tope (`limits.maxBriefsPerOrder`, 3; 0 lo desactiva) limita los encargos a jefes desde tu última instrucción: el siguiente se bloquea y el director te pregunta cuáles quieres y en qué orden. Los jefes de planta dirigen a su equipo y le avisan con `HECHO:` cuando terminan. En el panel de órdenes, «Componer encargo» permite guardar los campos como plantilla reutilizable (con `{planta}` y `{fecha}`) y exportarlas o importarlas en JSON.
 
 ### Esperas, parados y relanzar
 

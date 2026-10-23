@@ -1,11 +1,23 @@
 import type { Actions } from '../actions';
 import { button, el } from '../dom';
+import { fileStamp, saveFile } from '../download';
 import { t } from '../i18n';
 import { agentName, floorLabel } from '../labels';
-import { readJson } from '../prefs';
+import { readJson, writeJson } from '../prefs';
 import type { Store } from '../store';
 import type { SessionView } from '../types';
 import { BRIEF_DRAFT_KEY, BRIEF_LIMIT, composeBrief, EMPTY_BRIEF, mayReplaceDraft, parseBriefDraft, type BriefFields } from './brief-compose';
+import {
+  BRIEF_TEMPLATES_KEY,
+  fillPlaceholders,
+  mergeImported,
+  parseTemplates,
+  removeTemplate,
+  TEMPLATE_NAME_MAX,
+  upsertTemplate,
+  validTemplateName,
+  type BriefTemplate,
+} from './brief-templates';
 import { orderable, orderableSessions } from './orderable';
 import { openSection, panelSection } from './section';
 
@@ -30,7 +42,7 @@ function defaultSession(sessions: readonly SessionView[]): SessionView | undefin
   return sessions.find((session) => session.role !== null && DIRECTOR_ROLES.has(session.role)) ?? sessions[0];
 }
 
-function mountComposer(insert: (text: string) => void): { node: HTMLElement; relabel: () => void } {
+function mountComposer(insert: (text: string) => void, currentFloor: () => string | null): { node: HTMLElement; relabel: () => void } {
   const stored = parseBriefDraft(readJson(BRIEF_DRAFT_KEY));
   const fields: BriefFields = { ...stored };
   const toggle = button('');
@@ -53,10 +65,22 @@ function mountComposer(insert: (text: string) => void): { node: HTMLElement; rel
   const preview = el('pre', 'orders-brief-preview');
   const count = el('span', 'orders-status');
   const insertButton = button('', 'primary');
+  const templateSelect = el('select', 'orders-select');
+  const saveTemplate = button('');
+  const deleteTemplate = button('');
+  const exportTemplates = button('');
+  const importTemplates = button('');
+  const importInput = el('input');
+  importInput.type = 'file';
+  importInput.accept = 'application/json,.json';
+  importInput.hidden = true;
+  const templateStatus = el('span', 'orders-status');
   const form = el('div', 'orders-brief');
   form.hidden = true;
   const keys = ['title', 'what', 'criteria', 'outOfScope'] as const;
   form.append(
+    el('div', 'orders-actions', templateSelect, saveTemplate, deleteTemplate),
+    el('div', 'orders-actions', exportTemplates, importTemplates, importInput, templateStatus),
     ...keys.map((key) => el('label', 'field', labels[key], inputs[key])),
     el('div', 'field', previewLabel, preview),
     el('div', 'orders-actions', insertButton, count),
@@ -70,6 +94,41 @@ function mountComposer(insert: (text: string) => void): { node: HTMLElement; rel
     } catch {
       // Blocked storage: the draft lasts for this session only.
     }
+  };
+
+  let templates: BriefTemplate[] = parseTemplates(readJson(BRIEF_TEMPLATES_KEY));
+
+  const hasText = (): boolean => keys.some((key) => fields[key].trim() !== '');
+
+  const renderTemplates = (selected = ''): void => {
+    const placeholder = el('option', '', t('orders.template.placeholder'));
+    placeholder.value = '';
+    templateSelect.replaceChildren(
+      placeholder,
+      ...templates.map((template) => {
+        const option = el('option', '', template.name);
+        option.value = template.name;
+        return option;
+      }),
+    );
+    templateSelect.value = templates.some((template) => template.name === selected) ? selected : '';
+    deleteTemplate.disabled = templateSelect.value === '';
+    exportTemplates.disabled = templates.length === 0;
+  };
+
+  const storeTemplates = (next: BriefTemplate[], selected = ''): void => {
+    templates = next;
+    writeJson(BRIEF_TEMPLATES_KEY, templates);
+    renderTemplates(selected);
+  };
+
+  const setFields = (next: BriefFields): void => {
+    for (const key of keys) {
+      fields[key] = next[key];
+      inputs[key].value = next[key];
+    }
+    saveDraft();
+    update();
   };
 
   const update = (): void => {
@@ -87,12 +146,67 @@ function mountComposer(insert: (text: string) => void): { node: HTMLElement; rel
       update();
     });
   }
+  templateSelect.addEventListener('change', () => {
+    const template = templates.find((item) => item.name === templateSelect.value);
+    deleteTemplate.disabled = template === undefined;
+    templateStatus.textContent = '';
+    if (!template) return;
+    if (hasText() && !window.confirm(t('orders.template.replace'))) {
+      templateSelect.value = '';
+      deleteTemplate.disabled = true;
+      return;
+    }
+    setFields(template.fields);
+  });
+  saveTemplate.addEventListener('click', () => {
+    const name = (window.prompt(t('orders.template.name', { max: TEMPLATE_NAME_MAX }), templateSelect.value) ?? '').trim();
+    if (name === '') return;
+    if (!validTemplateName(name)) {
+      templateStatus.textContent = t('orders.template.nameInvalid', { max: TEMPLATE_NAME_MAX });
+      return;
+    }
+    if (templates.some((item) => item.name === name) && !window.confirm(t('orders.template.overwrite', { name }))) return;
+    storeTemplates(upsertTemplate(templates, { name, fields }, Date.now()), name);
+    templateStatus.textContent = t('orders.template.saved', { name });
+  });
+  deleteTemplate.addEventListener('click', () => {
+    const name = templateSelect.value;
+    if (name === '' || !window.confirm(t('orders.template.delete', { name }))) return;
+    storeTemplates(removeTemplate(templates, name));
+    templateStatus.textContent = '';
+  });
+  exportTemplates.addEventListener('click', () => {
+    saveFile(`agent-office-templates-${fileStamp(new Date())}.json`, JSON.stringify(templates, null, 2), 'application/json');
+  });
+  importTemplates.addEventListener('click', () => importInput.click());
+  importInput.addEventListener('change', () => {
+    const file = importInput.files?.[0];
+    importInput.value = '';
+    if (!file) return;
+    void file
+      .text()
+      .then((text) => {
+        const raw: unknown = JSON.parse(text);
+        const imported = parseTemplates(raw);
+        if (imported.length === 0 || (Array.isArray(raw) && imported.length < raw.length && !window.confirm(t('orders.template.importPartial', { n: imported.length })))) {
+          if (imported.length === 0) templateStatus.textContent = t('orders.template.importInvalid');
+          return;
+        }
+        const merged = mergeImported(templates, imported);
+        if (merged.conflicts.length > 0 && !window.confirm(t('orders.template.importOverwrite', { names: merged.conflicts.join(', ') }))) return;
+        storeTemplates(merged.list);
+        templateStatus.textContent = t('orders.template.imported', { n: imported.length });
+      })
+      .catch(() => {
+        templateStatus.textContent = t('orders.template.importInvalid');
+      });
+  });
   toggle.addEventListener('click', () => {
     form.hidden = !form.hidden;
     toggle.setAttribute('aria-expanded', String(!form.hidden));
   });
   insertButton.addEventListener('click', () => {
-    const brief = composeBrief(fields);
+    const brief = composeBrief(fillPlaceholders(fields, { floor: currentFloor(), now: new Date() }));
     if (!brief.valid) return;
     insert(brief.text);
     for (const key of keys) {
@@ -113,6 +227,11 @@ function mountComposer(insert: (text: string) => void): { node: HTMLElement; rel
     labels.outOfScope.textContent = t('orders.brief.outOfScope');
     previewLabel.textContent = t('orders.brief.preview');
     insertButton.textContent = t('orders.brief.insert');
+    saveTemplate.textContent = t('orders.template.save');
+    deleteTemplate.textContent = t('orders.template.remove');
+    exportTemplates.textContent = t('orders.template.export');
+    importTemplates.textContent = t('orders.template.import');
+    renderTemplates(templateSelect.value);
     update();
   };
   toggle.setAttribute('aria-expanded', 'false');
@@ -129,12 +248,19 @@ export function mountOrders(host: HTMLElement, store: Store, actions: Actions): 
   const targetLabel = el('span', 'field-label muted');
 
   const section = panelSection({ id: 'orders', title: () => t('orders.title'), host });
-  const composer = mountComposer((text) => {
+  const composer = mountComposer(
+    (text) => {
     if (!mayReplaceDraft(textarea.value, () => window.confirm(t('orders.brief.replace')))) return;
     textarea.value = text;
     textarea.focus();
     refresh();
-  });
+    },
+    () => {
+      const session = store.sessions.get(select.value);
+      const known = session ? store.floorBySlug(session.floor) : undefined;
+      return known ? floorLabel(known) : null;
+    },
+  );
   section.body.append(el('label', 'field', targetLabel, select), textarea, el('div', 'orders-actions', send, status), composer.node);
 
   focusText = () => textarea.focus();
