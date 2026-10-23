@@ -25,6 +25,7 @@ const context = (extra: Partial<PaletteContext> = {}): PaletteContext => ({
   mute: true,
   muteSound: true,
   searches: [],
+  recent: [],
   ...extra,
 });
 

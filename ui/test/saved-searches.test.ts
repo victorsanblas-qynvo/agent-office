@@ -85,6 +85,7 @@ describe('palette entries for saved searches', () => {
     mute: false,
     muteSound: false,
     searches: [saved('Bloqueos', 'bloqueado')],
+    recent: [],
     ...extra,
   });
 

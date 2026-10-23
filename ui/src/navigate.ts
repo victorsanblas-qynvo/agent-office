@@ -9,7 +9,8 @@ import type { NoticeTarget } from './notice-log';
 import type { Notifier } from './notify';
 import type { SoundDesk } from './sound';
 import type { OfficeHandle } from './office/office';
-import type { PaletteContext, PaletteTarget } from './palette/entries';
+import type { PaletteContext, PaletteEntry, PaletteTarget } from './palette/entries';
+import { readRecent, recordRecent, writeRecent } from './palette/recent';
 import { openDocument } from './panel/deliverables';
 import { focusOrders } from './panel/orders';
 import { relaunchable } from './panel/orderable';
@@ -207,7 +208,14 @@ export function paletteContext(nav: Nav): PaletteContext {
     mute: nav.notifier?.preferences.enabled === true,
     muteSound: nav.sound?.preferences.enabled === true,
     searches: readSaved(),
+    recent: readRecent(),
   };
+}
+
+// Runs what a palette entry points at and remembers the entry, but for the action that forgets them.
+export function runEntry(nav: Nav, entry: PaletteEntry): void {
+  if (entry.target.type !== 'clearRecent') writeRecent(recordRecent(readRecent(), entry.id));
+  runTarget(nav, entry.target);
 }
 
 export function runTarget(nav: Nav, target: PaletteTarget): void {
@@ -279,6 +287,10 @@ export function runTarget(nav: Nav, target: PaletteTarget): void {
       nav.table().showSearch(search);
       break;
     }
+    case 'clearRecent':
+      writeRecent([]);
+      store.toast(t('palette.recentCleared'), 'ok');
+      break;
     case 'mute': {
       const prefs = nav.notifier?.preferences;
       if (!nav.notifier || !prefs) break;

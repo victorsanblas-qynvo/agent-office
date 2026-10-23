@@ -3960,6 +3960,13 @@ button.diff-file.active {
   cursor: pointer;
 }
 
+.palette-heading {
+  padding: 6px 10px 2px;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 .palette-row.active {
   background: color-mix(in srgb, var(--accent) 18%, transparent);
   box-shadow: inset 3px 0 0 var(--accent);
