@@ -312,9 +312,39 @@ export function saveSnoozes(mode: SnoozeMode, snoozes: Snoozes): void {
   else pageSnoozes = snoozes;
 }
 
-// What N and Shift+N walk: the queue without the postponed entries.
+// What N and Shift+N walk: the queue without the postponed entries, narrowed to the chosen floor.
 export function activeNeedsOf(store: Store): Need[] {
-  return activeNeeds(needsOf(store), loadSnoozes(store), store.now());
+  const active = activeNeeds(needsOf(store), loadSnoozes(store), store.now());
+  return filterByFloor(active, liveFloorFilter(active, floorFilter));
+}
+
+// The floor the queue is narrowed to; kept for the page only, never stored.
+let floorFilter: string | null = null;
+
+export function getFloorFilter(): string | null {
+  return floorFilter;
+}
+
+export function setFloorFilter(floor: string | null): void {
+  floorFilter = floor;
+}
+
+export function filterByFloor(needs: readonly Need[], floor: string | null): Need[] {
+  return floor === null ? [...needs] : needs.filter((need) => need.floor === floor);
+}
+
+// A filter on a floor that no longer has entries lapses, so the queue never looks empty behind it.
+export function liveFloorFilter(needs: readonly Need[], floor: string | null): string | null {
+  return floor !== null && needs.some((need) => need.floor === floor) ? floor : null;
+}
+
+export type FloorChip = { floor: string | null; count: number; muted: boolean };
+
+// "Todas" first, then one chip per floor with entries in the order they first appear.
+export function floorChips(needs: readonly Need[], muted: readonly string[]): FloorChip[] {
+  const counts = new Map<string, number>();
+  for (const need of needs) if (need.floor !== null) counts.set(need.floor, (counts.get(need.floor) ?? 0) + 1);
+  return [{ floor: null, count: needs.length, muted: false }, ...[...counts].map(([floor, count]) => ({ floor, count, muted: muted.includes(floor) }))];
 }
 
 // Where the menu puts the focus when it opens: the first entry, or the postponed ones when all of them are.
@@ -331,8 +361,8 @@ export function menuStep(at: number, direction: 1 | -1, length: number): number 
 }
 
 // What the trigger shows; the menu rewrites it only when this changes.
-export function triggerSignature(lang: string, active: number, total: number): string {
-  return `${lang}|${active}|${total === 0 ? 'off' : 'on'}`;
+export function triggerSignature(lang: string, active: number, total: number, filter: string | null = null): string {
+  return `${lang}|${active}|${total === 0 ? 'off' : 'on'}|${filter ?? ''}`;
 }
 
 export function needToast(position: number, total: number, need: Need): string {

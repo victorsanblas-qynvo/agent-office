@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type { QuestionView } from '../src/types';
-import { SNOOZE_KEY, dueReminders, readContextWarn, writeContextWarn, readSnoozes, writeSnoozes, QUIET_DEFAULT, inQuietHours, quietSilences, type QuietHours } from '../src/prefs';
+import { SNOOZE_KEY, dueReminders, readContextWarn, writeContextWarn, readSnoozes, writeSnoozes, QUIET_DEFAULT, MUTED_FLOORS_KEY, floorMuted, readMutedFloors, inQuietHours, quietSilences, type QuietHours } from '../src/prefs';
 
 const at = (hour: number, minute = 0): Date => new Date(2026, 9, 23, hour, minute);
 const window = (from: string, to: string, extra: Partial<QuietHours> = {}): QuietHours => ({ ...QUIET_DEFAULT, enabled: true, from, to, ...extra });
@@ -116,5 +116,28 @@ describe('context warning threshold', () => {
     } finally {
       Object.defineProperty(globalThis, 'localStorage', { value: original, configurable: true });
     }
+  });
+});
+
+describe('floorMuted', () => {
+  test('silences a muted floor and nothing else', () => {
+    expect(floorMuted(['mobile'], 'mobile', false)).toBe(true);
+    expect(floorMuted(['mobile'], 'backend', false)).toBe(false);
+    expect(floorMuted(['mobile'], null, false)).toBe(false);
+    expect(floorMuted([], 'mobile', false)).toBe(false);
+  });
+
+  test('lets a permission request through', () => {
+    expect(floorMuted(['mobile'], 'mobile', true)).toBe(false);
+  });
+
+  test('reads only a list of slugs', () => {
+    const store = new Map<string, string>();
+    Object.assign(globalThis, { localStorage: { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => store.set(k, v) } });
+    expect(readMutedFloors()).toEqual([]);
+    store.set(MUTED_FLOORS_KEY, '["mobile",3,"backend"]');
+    expect(readMutedFloors()).toEqual(['mobile', 'backend']);
+    store.set(MUTED_FLOORS_KEY, '{"mobile":true}');
+    expect(readMutedFloors()).toEqual([]);
   });
 });

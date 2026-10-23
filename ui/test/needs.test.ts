@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { applyLang } from '../src/i18n/index';
 import { clockMinutes } from '../src/time';
-import { activeNeeds, canSnooze, collectNeeds, loadSnoozes, menuStart, menuStep, NEEDS_TOPICS, needSignature, pruneSnoozes, saveSnoozes, shouldPersistSnoozes, shouldPruneSnoozes, snoozedNeeds, snoozeNeed, triggerSignature, wakeNeed, NeedCursor, needLabel, needToast, type Need, type NeedSources } from '../src/needs';
+import { activeNeeds, filterByFloor, floorChips, liveFloorFilter, canSnooze, collectNeeds, loadSnoozes, menuStart, menuStep, NEEDS_TOPICS, needSignature, pruneSnoozes, saveSnoozes, shouldPersistSnoozes, shouldPruneSnoozes, snoozedNeeds, snoozeNeed, triggerSignature, wakeNeed, NeedCursor, needLabel, needToast, type Need, type NeedSources } from '../src/needs';
 import { SNOOZE_KEY, type Snoozes } from '../src/prefs';
 import type { Collision } from '../src/chat/claims';
 import type { UsageForecast, UsageView, UsageWindow } from '../src/types';
@@ -554,5 +554,43 @@ describe('context almost full', () => {
     const MIN = 60_000;
     const needs = collectNeeds(sources({ agents: [full({ state: 'testing', tool: 'Bash', detail: '', toolSince: NOW - 12 * MIN })] }));
     expect(kinds(needs)).toEqual(['hung:lead']);
+  });
+});
+
+describe('floor filter', () => {
+  const on = (id: string, floor: string | null): Need => ({ id, kind: 'question', since: 0, name: id, instance: id, agentKey: id, floor, docPath: null, orderSlug: null });
+  const queue = [on('a', 'mobile'), on('b', 'backend'), on('c', 'mobile'), on('d', null)];
+
+  test('filterByFloor narrows to one floor and null keeps all', () => {
+    expect(filterByFloor(queue, 'mobile').map((need) => need.id)).toEqual(['a', 'c']);
+    expect(filterByFloor(queue, null)).toHaveLength(4);
+    expect(filterByFloor(queue, 'gone')).toEqual([]);
+  });
+
+  test('floorChips count every floor with entries after Todas and flag the muted ones', () => {
+    expect(floorChips(queue, ['backend'])).toEqual([
+      { floor: null, count: 4, muted: false },
+      { floor: 'mobile', count: 2, muted: false },
+      { floor: 'backend', count: 1, muted: true },
+    ]);
+    expect(floorChips([], [])).toEqual([{ floor: null, count: 0, muted: false }]);
+  });
+
+  test('a filter on a floor without entries lapses', () => {
+    expect(liveFloorFilter(queue, 'mobile')).toBe('mobile');
+    expect(liveFloorFilter(queue, 'gone')).toBeNull();
+    expect(liveFloorFilter(queue, null)).toBeNull();
+  });
+
+  test('the cursor walks only the filtered list', () => {
+    const cursor = new NeedCursor();
+    const shown = filterByFloor(queue, 'mobile');
+    const steps = [1, 1, 1].map(() => cursor.step(shown, 1));
+    expect(steps.map((step) => step?.need.id)).toEqual(['a', 'c', 'a']);
+    expect(steps[0]?.total).toBe(2);
+  });
+
+  test('the trigger signature changes with the filter', () => {
+    expect(triggerSignature('es', 2, 4, 'mobile')).not.toBe(triggerSignature('es', 2, 4));
   });
 });

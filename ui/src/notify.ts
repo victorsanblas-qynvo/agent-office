@@ -3,10 +3,10 @@ import { plural, t } from './i18n';
 import { agentName, floorLabel } from './labels';
 import { openDocument } from './panel/deliverables';
 import type { Store } from './store';
-import { dueReminders, inQuietHours, quietSilences, readQuietHours, readRemindMinutes } from './prefs';
+import { dueReminders, floorMuted, inQuietHours, quietSilences, readMutedFloors, readQuietHours, readRemindMinutes } from './prefs';
 import { forecastText } from './usage-card';
 import { finishedNotice, readFinishedMode, wantsDesktop } from './panel/finished';
-import type { AgentView, CheckRunView, DocumentView, FinishedView, GuardAlert, MessageView, OrderView, QuestionView, ServerMessage, UsageView, UsageWindow } from './types';
+import type { AgentView, CheckRunView, FloorView, DocumentView, FinishedView, GuardAlert, MessageView, OrderView, QuestionView, ServerMessage, UsageView, UsageWindow } from './types';
 
 export type NotifyEvent = 'permission' | 'question' | 'blocked' | 'done' | 'document' | 'alert' | 'stalled' | 'usage' | 'checks';
 
@@ -85,6 +85,10 @@ export class Notifier {
     this.wasQuiet = inQuietHours(readQuietHours(), this.now());
   }
 
+  get floors(): readonly FloorView[] {
+    return this.store.floors;
+  }
+
   get preferences(): NotifyPrefs {
     return { enabled: this.prefs.enabled, events: { ...this.prefs.events } };
   }
@@ -127,7 +131,7 @@ export class Notifier {
       const permission = question.kind === 'permission';
       if (quietSilences(readQuietHours(), permission, date)) continue;
       this.reminded.add(question.id);
-      this.show(permission ? 'permission' : 'question', `question:${question.id}:remind`, t('notify.remind.title', { agent: this.name(question.agentKey) }), t('notify.openPanel'), this.select(question.agentKey));
+      this.show(permission ? 'permission' : 'question', `question:${question.id}:remind`, t('notify.remind.title', { agent: this.name(question.agentKey) }), t('notify.openPanel'), this.select(question.agentKey), question.floor);
     }
   }
 
@@ -196,9 +200,9 @@ export class Notifier {
     const agent = this.name(question.agentKey);
     if (question.kind === 'permission') {
       const title = question.tool ? t('notify.permission.tool', { agent, tool: question.tool }) : t('notify.permission.title', { agent });
-      this.show('permission', `question:${question.id}`, title, t('notify.openPanel'), this.select(question.agentKey));
+      this.show('permission', `question:${question.id}`, title, t('notify.openPanel'), this.select(question.agentKey), question.floor);
     } else {
-      this.show('question', `question:${question.id}`, t('notify.question.title', { agent }), t('notify.openPanel'), this.select(question.agentKey));
+      this.show('question', `question:${question.id}`, t('notify.question.title', { agent }), t('notify.openPanel'), this.select(question.agentKey), question.floor);
     }
   }
 
@@ -206,16 +210,17 @@ export class Notifier {
     if (message.text === null) return;
     const agent = this.name(message.fromKey);
     if (isBlockedMessage(message)) {
-      this.show('blocked', `message:${message.id}`, t('notify.blocked.title', { agent }), t('notify.openPanel'), this.select(message.fromKey));
-    } else if (leadDeliveryFloor(this.store, message) !== null) {
-      this.show('done', `message:${message.id}`, t('notify.done.title', { agent }), t('notify.openPanel'), this.select(message.fromKey));
+      this.show('blocked', `message:${message.id}`, t('notify.blocked.title', { agent }), t('notify.openPanel'), this.select(message.fromKey), this.store.agents.get(message.fromKey)?.floor);
+    } else {
+      const floor = leadDeliveryFloor(this.store, message);
+      if (floor !== null) this.show('done', `message:${message.id}`, t('notify.done.title', { agent }), t('notify.openPanel'), this.select(message.fromKey), floor);
     }
   }
 
   private finished(view: FinishedView): void {
     if (!wantsDesktop(readFinishedMode())) return;
     const notice = finishedNotice(view);
-    this.show('done', `finished:${view.id}`, t(notice.key, notice.params), t('notify.openPanel'), () => this.openFinished?.(view));
+    this.show('done', `finished:${view.id}`, t(notice.key, notice.params), t('notify.openPanel'), () => this.openFinished?.(view), this.mutedFloorOf(view.floors));
   }
 
   private checks(run: CheckRunView): void {
@@ -256,7 +261,7 @@ export class Notifier {
     const since = agent.stalledSince ?? null;
     this.stalled.set(agent.key, since);
     if (before !== null || since === null) return;
-    this.show('stalled', `stalled:${agent.key}:${since}`, t('notify.stalled.title', { agent: agentName(agent) }), t('notify.openPanel'), this.select(agent.key));
+    this.show('stalled', `stalled:${agent.key}:${since}`, t('notify.stalled.title', { agent: agentName(agent) }), t('notify.openPanel'), this.select(agent.key), agent.floor);
   }
 
   private seedDocuments(documents: readonly DocumentView[]): void {
@@ -295,12 +300,23 @@ export class Notifier {
       t('notify.alert.title', { floor: floor ? floorLabel(floor) : alert.floor }),
       plural('notify.alert.files', alert.files.length),
       this.select(alert.agentKey),
+      alert.floor,
     );
   }
 
-  private show(event: NotifyEvent, tag: string, title: string, body: string, onClick: () => void): void {
+  // A delivery to several floors is silenced only when every one of them is muted.
+  private mutedFloorOf(floors: readonly string[]): string | null {
+    const muted = readMutedFloors();
+    return floors.length > 0 && floors.every((slug) => muted.includes(slug)) ? (floors[0] ?? null) : null;
+  }
+
+  private show(event: NotifyEvent, tag: string, title: string, body: string, onClick: () => void, floor: string | null = null): void {
     if (!this.prefs.enabled || !this.prefs.events[event] || permissionState() !== 'granted') return;
     if (this.seen.has(tag)) return;
+    if (floorMuted(readMutedFloors(), floor, event === 'permission')) {
+      this.seen.add(tag);
+      return;
+    }
     const quiet = quietSilences(readQuietHours(), event === 'permission', this.now());
     if (quiet && DEFERRED_EVENTS.has(event)) return;
     this.seen.add(tag);

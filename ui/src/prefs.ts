@@ -163,3 +163,19 @@ export function inQuietHours(prefs: QuietHours, date: Date): boolean {
 export function quietSilences(prefs: QuietHours, permission: boolean, date: Date): boolean {
   return inQuietHours(prefs, date) && !(permission && prefs.allowPermissions);
 }
+
+export const MUTED_FLOORS_KEY = 'agent-office.mutedFloors';
+
+export function readMutedFloors(): string[] {
+  const raw = readJson(MUTED_FLOORS_KEY);
+  return Array.isArray(raw) ? raw.filter((slug): slug is string => typeof slug === 'string') : [];
+}
+
+export function writeMutedFloors(muted: readonly string[]): void {
+  writeJson(MUTED_FLOORS_KEY, [...new Set(muted)]);
+}
+
+// A muted floor gives no notices and no sounds, except for a permission request, which blocks an agent.
+export function floorMuted(muted: readonly string[], floor: string | null | undefined, isPermission: boolean): boolean {
+  return floor != null && !isPermission && muted.includes(floor);
+}

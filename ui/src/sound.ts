@@ -1,5 +1,5 @@
 import { isBlockedMessage, leadDeliveryFloor, type DeliveryContext } from './deliveries';
-import { dueReminders, inQuietHours, quietSilences, readJson, readQuietHours, readRemindMinutes, writeJson } from './prefs';
+import { dueReminders, floorMuted, inQuietHours, quietSilences, readJson, readMutedFloors, readQuietHours, readRemindMinutes, writeJson } from './prefs';
 import type { QuestionView, ServerMessage } from './types';
 
 export type SoundEvent = 'question' | 'delivery' | 'stalled' | 'error';
@@ -203,7 +203,7 @@ export class SoundDesk {
       const permission = question.kind === 'permission';
       if (quietSilences(readQuietHours(), permission, new Date(now))) continue;
       this.reminded.add(question.id);
-      this.emit('question', permission);
+      this.emit('question', permission, question.floor);
     }
   }
 
@@ -220,7 +220,7 @@ export class SoundDesk {
         const before = this.stalled.get(message.data.key) ?? null;
         const since = message.data.stalledSince ?? null;
         this.stalled.set(message.data.key, since);
-        if (before === null && since !== null) this.emit('stalled');
+        if (before === null && since !== null) this.emit('stalled', false, message.data.floor);
         break;
       }
       case 'agent-gone':
@@ -230,14 +230,20 @@ export class SoundDesk {
         this.question(message.data);
         break;
       case 'message':
-        if (isBlockedMessage(message.data)) this.emit('error');
-        else if (leadDeliveryFloor(this.store, message.data) !== null) this.emit('delivery');
+        if (isBlockedMessage(message.data)) this.emit('error', false, this.store.agents.get(message.data.fromKey)?.floor);
+        else {
+          const floor = leadDeliveryFloor(this.store, message.data);
+          if (floor !== null) this.emit('delivery', false, floor);
+        }
         break;
-      case 'finished':
-        this.emit('delivery');
+      case 'finished': {
+        const muted = readMutedFloors();
+        const floors = message.data.floors;
+        this.emit('delivery', false, floors.length > 0 && floors.every((slug) => muted.includes(slug)) ? floors[0] : null);
         break;
+      }
       case 'alert':
-        if (message.data.level === 'alerta') this.emit('error');
+        if (message.data.level === 'alerta') this.emit('error', false, message.data.floor);
         break;
     }
   }
@@ -245,11 +251,12 @@ export class SoundDesk {
   private question(question: QuestionView): void {
     if (this.seen.has(`question:${question.id}`) || this.silenced(question)) return;
     this.remember(`question:${question.id}`);
-    this.emit('question', question.kind === 'permission');
+    this.emit('question', question.kind === 'permission', question.floor);
   }
 
   private silenced(question: QuestionView): boolean {
-    return quietSilences(readQuietHours(), question.kind === 'permission', new Date(this.clock()));
+    const permission = question.kind === 'permission';
+    return quietSilences(readQuietHours(), permission, new Date(this.clock())) || floorMuted(readMutedFloors(), question.floor, permission);
   }
 
   private remember(tag: string): boolean {
@@ -259,8 +266,9 @@ export class SoundDesk {
     return true;
   }
 
-  private emit(event: SoundEvent, permission = false): void {
+  private emit(event: SoundEvent, permission = false, floor: string | null = null): void {
     if (!this.prefs.enabled || !this.prefs.events[event]) return;
+    if (floorMuted(readMutedFloors(), floor, permission)) return;
     const now = this.clock();
     if (quietSilences(readQuietHours(), permission, new Date(now))) return;
     if (now - this.lastAt < MIN_GAP_MS) return;
