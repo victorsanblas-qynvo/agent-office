@@ -1,13 +1,24 @@
 import { el } from '../dom';
 import { t } from '../i18n';
 import type { OrderView } from '../types';
-import { checksBadge, folderBusy } from './columns';
+import { checksBadge, type ChecksBadge, folderBusy } from './columns';
+
+function checksIcon(kind: NonNullable<ChecksBadge>['kind']): string {
+  return kind === 'passed' ? '✓' : kind === 'failed' ? '✗' : kind === 'running' ? '' : '·';
+}
+
+// Pure: the checks badge as plain text (✓ 3/3), or null when the floor runs no checks.
+export function checksBadgeText(order: OrderView): string | null {
+  const badge = checksBadge(order);
+  if (!badge) return null;
+  return [checksIcon(badge.kind), t('board.checks.count', { passed: badge.passed, total: badge.total })].filter((part) => part !== '').join(' ');
+}
 
 // ✓ / ✗ / spinner with passed/total, or null when the floor runs no checks.
 export function checksBadgeNode(order: OrderView): HTMLElement | null {
   const badge = checksBadge(order);
   if (!badge) return null;
-  const icon = badge.kind === 'passed' ? '✓' : badge.kind === 'failed' ? '✗' : badge.kind === 'running' ? '' : '·';
+  const icon = checksIcon(badge.kind);
   const mark = el('span', badge.kind === 'running' ? 'spinner' : 'checks-mark', icon);
   const node = el('span', `checks-badge checks-${badge.kind}`, mark, el('span', 'checks-count', t('board.checks.count', { passed: badge.passed, total: badge.total })));
   node.title = t(`board.checks.${badge.kind}`);
