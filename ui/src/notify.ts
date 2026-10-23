@@ -3,7 +3,7 @@ import { plural, t } from './i18n';
 import { agentName, floorLabel } from './labels';
 import { openDocument } from './panel/deliverables';
 import type { Store } from './store';
-import { quietSilences, readQuietHours } from './prefs';
+import { dueReminders, inQuietHours, quietSilences, readQuietHours, readRemindMinutes } from './prefs';
 import { forecastText } from './usage-card';
 import { finishedNotice, readFinishedMode, wantsDesktop } from './panel/finished';
 import type { AgentView, DocumentView, FinishedView, GuardAlert, MessageView, QuestionView, ServerMessage, UsageView, UsageWindow } from './types';
@@ -14,6 +14,9 @@ export const NOTIFY_EVENTS: readonly NotifyEvent[] = ['permission', 'question', 
 
 // Percentages of a usage window that warn, once each per window.
 export const USAGE_THRESHOLDS: readonly number[] = [80, 95];
+
+// Events held back through quiet hours instead of dropped: they stay open (a question) or true (a usage level) after the window.
+const DEFERRED_EVENTS: ReadonlySet<NotifyEvent> = new Set(['permission', 'question', 'usage']);
 
 export type NotifyPrefs = { enabled: boolean; events: Record<NotifyEvent, boolean> };
 
@@ -55,13 +58,18 @@ export class Notifier {
   private readonly shown = new Map<string, Notification>();
   private documents: Map<string, DocumentView['status']> | null = null;
   private readonly stalled = new Map<string, number | null>();
+  private readonly reminded = new Set<string>();
+  private lastUsage: UsageView | null = null;
+  private wasQuiet: boolean;
   // Where the notification of a finished order takes the user when it is clicked.
   openFinished: ((view: FinishedView) => void) | null = null;
 
   constructor(
     private readonly store: Store,
     private readonly now: () => Date = () => new Date(),
-  ) {}
+  ) {
+    this.wasQuiet = inQuietHours(readQuietHours(), this.now());
+  }
 
   get preferences(): NotifyPrefs {
     return { enabled: this.prefs.enabled, events: { ...this.prefs.events } };
@@ -82,6 +90,30 @@ export class Notifier {
       new Notification(t('notify.test'), { tag: 'test' });
     } catch {
       // Some browsers expose Notification but only allow it through a service worker (for example mobile Chrome).
+    }
+  }
+
+  // On the store tick: the end of quiet hours offers what is still open, and a question open long enough is announced once more.
+  tick(): void {
+    const date = this.now();
+    const quiet = inQuietHours(readQuietHours(), date);
+    const open = this.store.questions;
+    if (this.wasQuiet && !quiet) {
+      for (const question of open) {
+        if (this.seen.has(`question:${question.id}`)) continue;
+        this.question(question);
+        this.reminded.add(question.id);
+      }
+      this.usage(this.lastUsage, true);
+    }
+    this.wasQuiet = quiet;
+    const ids = new Set(open.map((question) => question.id));
+    for (const id of this.reminded) if (!ids.has(id)) this.reminded.delete(id);
+    for (const question of dueReminders(open, date.getTime(), readRemindMinutes(), this.reminded)) {
+      const permission = question.kind === 'permission';
+      if (quietSilences(readQuietHours(), permission, date)) continue;
+      this.reminded.add(question.id);
+      this.show(permission ? 'permission' : 'question', `question:${question.id}:remind`, t('notify.remind.title', { agent: this.name(question.agentKey) }), t('notify.openPanel'), this.select(question.agentKey));
     }
   }
 
@@ -172,6 +204,7 @@ export class Notifier {
   // 80 % and 95 % of each window warn once; the tag carries the reset of the window, so the next one warns again.
   private usage(view: UsageView | null, announce: boolean): void {
     if (!view) return;
+    this.lastUsage = view;
     const windows: [string, UsageWindow | null][] = [
       ['five', view.fiveHour],
       ['seven', view.sevenDay],
@@ -241,9 +274,11 @@ export class Notifier {
   private show(event: NotifyEvent, tag: string, title: string, body: string, onClick: () => void): void {
     if (!this.prefs.enabled || !this.prefs.events[event] || permissionState() !== 'granted') return;
     if (this.seen.has(tag)) return;
+    const quiet = quietSilences(readQuietHours(), event === 'permission', this.now());
+    if (quiet && DEFERRED_EVENTS.has(event)) return;
     this.seen.add(tag);
     if (this.seen.size > SEEN_LIMIT) this.seen.delete(this.seen.values().next().value as string);
-    if (quietSilences(readQuietHours(), event === 'permission', this.now())) return;
+    if (quiet) return;
     // The panel in front already shows it.
     if (document.visibilityState === 'visible' && document.hasFocus()) return;
     let notification: Notification;

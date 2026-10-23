@@ -204,6 +204,36 @@ describe('quiet hours', () => {
     expect(engine.played).toHaveLength(1);
   });
 
+  test('a question still open when the window ends sounds on the next tick, once', () => {
+    quiet(true);
+    now = night;
+    const pending = question('q1', LEAD, 1) as QuestionView;
+    desk.observe({ type: 'question', data: pending });
+    desk.tick([pending]);
+    expect(engine.played).toHaveLength(0);
+    now = new Date(2026, 9, 24, 8, 0).getTime();
+    desk.tick([pending]);
+    desk.tick([pending]);
+    expect(engine.played).toHaveLength(1);
+  });
+
+  test('a reminder is held through the window and sounds once after it', () => {
+    quiet(true);
+    const evening = new Date(2026, 9, 23, 21, 0).getTime();
+    now = evening;
+    desk = build();
+    const pending = question('q2', LEAD, evening) as QuestionView;
+    desk.observe({ type: 'question', data: pending });
+    expect(engine.played).toHaveLength(1);
+    now = new Date(2026, 9, 23, 23, 30).getTime();
+    desk.tick([pending]);
+    expect(engine.played).toHaveLength(1);
+    now = new Date(2026, 9, 24, 8, 0).getTime();
+    desk.tick([pending]);
+    desk.tick([pending]);
+    expect(engine.played).toHaveLength(2);
+  });
+
   test('a plain question is silent even with the exception on', () => {
     quiet(true);
     now = night;
