@@ -82,6 +82,11 @@ export type KeyContext = { typing: boolean; modalOpen: boolean; boardReady: bool
 
 // Cmd/Ctrl+K and Esc always work; the help toggles over a dialog; the rest wait while the user types or a dialog is up.
 // The board keys also wait until the Tablero can use them, so the arrows and Enter keep their usual job elsewhere.
+// The board keys act only on the board tab, with no order drawer over it, and Enter only on a highlighted card.
+export function boardKeysReady(onBoard: boolean, drawerOpen: boolean, opens: boolean, hasHighlight: boolean): boolean {
+  return onBoard && !drawerOpen && (!opens || hasHighlight);
+}
+
 export function shouldRun(action: KeyAction, context: KeyContext): boolean {
   if (action.type === 'palette' || action.type === 'escape') return true;
   if (context.typing) return false;

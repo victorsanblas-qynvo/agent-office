@@ -114,9 +114,10 @@ export function buildEntries(context: PaletteContext): PaletteEntry[] {
     entries.push({ id: `plan:${doc.path}`, group: 'plan', label: doc.title, hint: documentStatusLabel(doc.status), target: { type: 'plan', path: doc.path }, write: false });
   }
   entries.push(...orderEntries(context));
+  const live = new Map(context.agents.map((agent) => [agent.key, agent]));
   for (const agent of context.agents) {
     const pinned = context.pins.includes(agent.key);
-    if (!pinned && !canPin(context.pins, agent.key)) continue;
+    if (!pinned && !canPin(context.pins, agent.key, live)) continue;
     const name = agentName(agent);
     entries.push({
       id: `action:pin:${agent.key}`,

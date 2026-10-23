@@ -8,7 +8,7 @@ Object.assign(globalThis, {
 });
 
 const { Store } = await import('../src/store');
-const { MAX_REPLAY_EVENTS, parseRecording, seekKeyDelta, seekTo, serializeRecording, timeAt } = await import('../src/replay');
+const { MAX_REPLAY_EVENTS, parseRecording, seekKeyDelta, seekPlan, seekTo, serializeRecording, timeAt } = await import('../src/replay');
 const { agent } = await import('./fixtures');
 
 const snapshot: ServerMessage = { type: 'snapshot', data: { now: 1, floors: [], agents: [], sessions: [], questions: [], messages: [], activity: [], documents: [], alerts: [] } as unknown as Snapshot };
@@ -22,6 +22,17 @@ const messages: Recording['messages'] = [
   { t: 5000, msg: joins('c') },
 ];
 const recording: Recording = { version: 1, startedAt: 100, messages };
+
+describe('seekPlan', () => {
+  test('forwards applies only the new messages without a reset', () => {
+    expect(seekPlan(2, 4)).toEqual({ reset: false, from: 2, to: 4 });
+    expect(seekPlan(3, 3)).toEqual({ reset: false, from: 3, to: 3 });
+  });
+
+  test('backwards resets and replays from the snapshot', () => {
+    expect(seekPlan(4, 1)).toEqual({ reset: true, from: 0, to: 1 });
+  });
+});
 
 describe('seekTo', () => {
   test('at the start only the snapshot is applied', () => {

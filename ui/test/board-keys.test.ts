@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { neighbourStatus, nextCard } from '../src/board/columns';
 import { applyLang } from '../src/i18n/index';
-import { BINDINGS, keepsEnter, resolveKey, shouldRun, type KeyLike } from '../src/keys';
+import { BINDINGS, boardKeysReady, keepsEnter, resolveKey, shouldRun, type KeyLike } from '../src/keys';
 
 applyLang('es');
 
@@ -84,5 +84,19 @@ describe('board key routing', () => {
     const shown = BINDINGS.filter((binding) => binding.hidden !== true).map((binding) => binding.combo);
     expect(shown).toEqual(expect.arrayContaining(['j', 'k', 'h', 'l', 'Enter', '[', ']']));
     expect(shown.some((combo) => combo.startsWith('Arrow'))).toBe(false);
+  });
+});
+
+describe('boardKeysReady', () => {
+  test('the board keys wait while the order drawer is open', () => {
+    expect(boardKeysReady(true, false, false, false)).toBe(true);
+    expect(boardKeysReady(true, true, false, false)).toBe(false);
+    expect(boardKeysReady(true, true, true, true)).toBe(false);
+  });
+
+  test('only on the board, and Enter only with a highlighted card', () => {
+    expect(boardKeysReady(false, false, false, false)).toBe(false);
+    expect(boardKeysReady(true, false, true, false)).toBe(false);
+    expect(boardKeysReady(true, false, true, true)).toBe(true);
   });
 });

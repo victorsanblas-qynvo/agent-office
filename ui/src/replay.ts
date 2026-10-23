@@ -47,6 +47,11 @@ export function serializeRecording(recording: Recording): string {
 // Pure: where to resume after jumping to targetTs (the first message not yet delivered) and the messages that rebuild the state
 // from the initial snapshot up to that point.
 export function seekTo(messages: Recording['messages'], targetTs: number): { index: number; apply: ServerMessage[] } {
+  const index = indexAt(messages, targetTs);
+  return { index, apply: messages.slice(0, index).map((entry) => entry.msg) };
+}
+
+function indexAt(messages: Recording['messages'], targetTs: number): number {
   let low = 0;
   let high = messages.length;
   while (low < high) {
@@ -54,7 +59,13 @@ export function seekTo(messages: Recording['messages'], targetTs: number): { ind
     if (messages[mid].t <= targetTs) low = mid + 1;
     else high = mid;
   }
-  return { index: low, apply: messages.slice(0, low).map((entry) => entry.msg) };
+  return low;
+}
+
+// Pure: seeking forwards applies only the messages between the two indexes; seeking backwards starts from the snapshot again.
+export function seekPlan(current: number, target: number): { reset: boolean; from: number; to: number } {
+  const reset = target < current;
+  return { reset, from: reset ? 0 : current, to: target };
 }
 
 // Pure: the recording time under a pointer, from its x and the bar's left edge and width.
@@ -179,11 +190,12 @@ export class ReplayPlayer {
 
   seek(target: number): void {
     const to = Math.min(Math.max(0, target), this.duration);
-    const { index, apply } = seekTo(this.recording.messages, to);
-    this.store.reset();
+    const { messages } = this.recording;
+    const plan = seekPlan(this.index, indexAt(messages, to));
+    if (plan.reset) this.store.reset();
     this.elapsed = to;
-    this.index = index;
-    for (const message of apply) this.store.apply(message);
+    this.index = plan.to;
+    for (let at = plan.from; at < plan.to; at += 1) this.store.apply(messages[at].msg);
     this.lastFrame = performance.now();
     this.emit();
   }

@@ -10,6 +10,7 @@ import { deliverySwitch } from './floor-delivery-switch';
 import type { FloorDeliveryDraft } from './floor-delivery-model';
 import { flakyChecks } from './flaky-checks';
 import { deletedBranches, deletedBranchesContext, reloadOpen } from './deleted-branches';
+import { reloadDelay } from './deleted-branches-model';
 import { mountDiagnosticsPanel } from './diagnostics';
 import { mountWorktreesPanel } from './worktrees-panel';
 
@@ -181,9 +182,13 @@ export function mountProjects(host: HTMLElement, store: Store, api: OfficeApi | 
   store.watch(['lang'], relabel);
   store.watch(['settings', 'documents'], renderList);
   let timer: ReturnType<typeof setTimeout> | null = null;
+  let lastReload = 0;
   store.subscribe((topics) => {
-    if (!topics.has('worktrees')) return;
+    if (!topics.has('worktrees') || branches.open.size === 0) return;
     if (timer) clearTimeout(timer);
-    timer = setTimeout(() => reloadOpen(branches), 400);
+    timer = setTimeout(() => {
+      lastReload = store.now();
+      reloadOpen(branches);
+    }, reloadDelay(lastReload, store.now()));
   });
 }

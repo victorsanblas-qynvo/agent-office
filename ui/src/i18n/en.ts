@@ -1037,6 +1037,7 @@ export const en: Messages = {
   'settings.branches.restored': 'Branch {branch} restored at {sha}',
   'settings.branches.blocked.exists': 'A branch with that name already exists',
   'settings.branches.blocked.gone': 'Git no longer has that commit',
+  'settings.branches.blocked.superseded': 'A newer deletion of this branch exists',
   'settings.branches.blocked.unknown': 'Git could not check the branch',
 
   'needs.button': 'Needs you',

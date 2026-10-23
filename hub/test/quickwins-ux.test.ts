@@ -50,8 +50,31 @@ describe('undo of a discard', () => {
   });
 
   test('restoring a discarded plan strips the mark, commits, cancels the removal and logs it', async () => {
-    const docs = plansOffice({ undoMs: 80 });
+    const UNDO_MS = 61_234;
+    const docs = plansOffice({ undoMs: UNDO_MS });
     const removed = removals();
+    const armed: unknown[] = [];
+    const cleared: unknown[] = [];
+    const realSet = globalThis.setTimeout;
+    const realClear = globalThis.clearTimeout;
+    globalThis.setTimeout = ((fn: () => void, ms?: number, ...rest: unknown[]) => {
+      const handle = realSet(fn, ms, ...rest);
+      if (ms === UNDO_MS) armed.push(handle);
+      return handle;
+    }) as typeof setTimeout;
+    globalThis.clearTimeout = ((handle?: Parameters<typeof clearTimeout>[0]) => {
+      cleared.push(handle);
+      return realClear(handle);
+    }) as typeof clearTimeout;
+    try {
+      await restoreFlow(docs, removed, armed, cleared);
+    } finally {
+      globalThis.setTimeout = realSet;
+      globalThis.clearTimeout = realClear;
+    }
+  });
+
+  async function restoreFlow(docs: string, removed: string[], armed: unknown[], cleared: unknown[]): Promise<void> {
     chmodSync(join(docs, PLAN), 0o640);
     expect(await h.office.discardDocument(PLAN)).toBe('ok');
     await h.office.idle();
@@ -65,11 +88,12 @@ describe('undo of a discard', () => {
     expect(statSync(join(docs, PLAN)).mode & 0o777).toBe(0o640);
     expect(git(docs, 'log', '-1', '--format=%s')).toBe('redaccion: login restaurado');
     expect(h.office.snapshot().activity.map((a) => a.summary)).toContainEqual({ key: 'hub.act.planRestored', params: { path: PLAN } });
-    await Bun.sleep(200);
+    expect(armed).toHaveLength(1);
+    expect(cleared).toContain(armed[0]);
     expect(removed).toEqual([]);
     expect(await h.office.restoreDocument(PLAN)).toBe('not-discarded');
     expect(await h.office.restoreDocument('redaccion/planes/nada.md')).toBe('not-found');
-  });
+  }
 
   test('a discard that is not undone removes its sources after the window', async () => {
     plansOffice({ undoMs: 40 });

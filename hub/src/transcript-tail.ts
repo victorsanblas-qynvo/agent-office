@@ -4,6 +4,7 @@ import { record, text } from './state-machine';
 import type { TranscriptEntry } from './types';
 
 export const TAIL_BYTES = 256 * 1024;
+export const TAIL_LIMIT_BYTES = 2 * 1024 * 1024;
 export const TAIL_DEFAULT = 20;
 export const TAIL_MAX = 50;
 const TEXT_CHARS = 500;
@@ -15,23 +16,26 @@ export function clampTail(raw: string | undefined): number {
   return Number.isFinite(n) ? Math.min(TAIL_MAX, Math.max(1, n)) : TAIL_DEFAULT;
 }
 
-// The last bytes of the file, without the line the cut may have split.
+// The last bytes of the file, without the line the cut may have split; when the cut leaves no whole line, the read goes further back.
 function tailText(file: string): string {
   const fd = openSync(file, 'r');
   try {
     const size = fstatSync(fd).size;
-    const start = Math.max(0, size - TAIL_BYTES);
-    const buffer = Buffer.alloc(size - start);
-    let read = 0;
-    while (read < buffer.length) {
-      const got = readSync(fd, buffer, read, buffer.length - read, start + read);
-      if (got === 0) break;
-      read += got;
+    for (let bytes = TAIL_BYTES; ; bytes += TAIL_BYTES) {
+      const start = Math.max(0, size - bytes);
+      const buffer = Buffer.alloc(size - start);
+      let read = 0;
+      while (read < buffer.length) {
+        const got = readSync(fd, buffer, read, buffer.length - read, start + read);
+        if (got === 0) break;
+        read += got;
+      }
+      const raw = buffer.subarray(0, read).toString('utf8');
+      if (start === 0) return raw;
+      const newline = raw.indexOf('\n');
+      const whole = newline < 0 ? '' : raw.slice(newline + 1);
+      if (whole.trim() !== '' || bytes >= TAIL_LIMIT_BYTES) return whole;
     }
-    const raw = buffer.subarray(0, read).toString('utf8');
-    if (start === 0) return raw;
-    const newline = raw.indexOf('\n');
-    return newline < 0 ? '' : raw.slice(newline + 1);
   } finally {
     closeSync(fd);
   }

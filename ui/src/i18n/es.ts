@@ -1038,6 +1038,7 @@ export const es = {
   'settings.branches.restored': 'Rama {branch} restaurada en {sha}',
   'settings.branches.blocked.exists': 'Ya hay una rama con ese nombre',
   'settings.branches.blocked.gone': 'Git ya no tiene ese commit',
+  'settings.branches.blocked.superseded': 'Hay una eliminación más reciente de esta rama',
   'settings.branches.blocked.unknown': 'Git no pudo comprobar la rama',
 
   'needs.button': 'Te necesitan',
