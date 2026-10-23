@@ -43,6 +43,7 @@ import type {
   OfficeDigest,
   TimelineView,
   WeekDigest,
+  DeliveryMetrics,
   UsageSummary,
   WorktreeView,
 } from './types';
@@ -160,6 +161,10 @@ export class OfficeApi {
 
   digest(day: string): Promise<ApiData<OfficeDigest>> {
     return this.get(`/api/digest?day=${encodeURIComponent(day)}`);
+  }
+
+  deliveryMetrics(days: number): Promise<ApiData<DeliveryMetrics>> {
+    return this.get(`/api/metrics/delivery?days=${days}`);
   }
 
   timeline(hours: number): Promise<ApiData<TimelineView>> {

@@ -22,6 +22,7 @@ import { parseSearchParams } from './search';
 import type { SettingsService } from './settings';
 import { record, text } from './state-machine';
 import { parseFlakyDays } from './flaky-report';
+import { parseMetricDays } from './metrics';
 import { parseTimelineHours } from './timeline';
 import type { ChatKind, ChatPostRequest, ClientMessage, HookMeta, HubText, HubTextKey, OrderStatus, PlanDecision, ServerMessage } from './types';
 import type { RemoveResult } from './worktrees';
@@ -583,6 +584,11 @@ export function createApp(opts: ServerOptions, holdRequest: (req: Request) => vo
     }
     const result = office.dayDigest(day ?? null);
     return typeof result === 'string' ? c.json({ error: { key: 'hub.api.digestDay' } }, 400) : c.json(result);
+  });
+
+  app.get('/api/metrics/delivery', requirePanel, (c) => {
+    const days = parseMetricDays(c.req.query('days'));
+    return days === null ? c.json({ error: { key: 'hub.api.metricsDays' } }, 400) : c.json(office.deliveryMetrics(days));
   });
 
   app.get('/api/timeline', requirePanel, (c) => {
