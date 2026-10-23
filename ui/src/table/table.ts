@@ -29,6 +29,7 @@ import { readJson, writeJson } from '../prefs';
 import type { Store } from '../store';
 import { relativeTime } from '../time';
 import type { AgentState, AgentView, DocumentKind, DocumentStatus, DocumentView, FloorKind, FloorView, GuardAlert, GuardAlertLevel } from '../types';
+import { mountDigest } from './digest';
 import { mountHistory, readTableView, replayHref, VIEW_KEY, type TableView } from './history';
 import { mountUsageBlock } from './usage-block';
 
@@ -320,9 +321,12 @@ export function mountTable(host: HTMLElement, store: Store, api: OfficeApi | nul
     const history = mountHistory(historyHost, store, api, {
       openReplay: (sessionId) => window.open(replayHref(sessionId, location), '_blank', 'noopener'),
     });
+    const digest = mountDigest(store, api);
+    const digestHost = el('div', 'table-digest', digest.root);
     const views: readonly { view: TableView; label: MessageKey; button: HTMLButtonElement }[] = [
       { view: 'now', label: 'table.view.now', button: button('', 'table-switch-option') },
       { view: 'history', label: 'table.view.history', button: button('', 'table-switch-option') },
+      { view: 'digest', label: 'table.view.digest', button: button('', 'table-switch-option') },
     ];
     const switcher = el('div', 'table-switch', ...views.map((item) => item.button));
     switcher.setAttribute('role', 'group');
@@ -340,11 +344,13 @@ export function mountTable(host: HTMLElement, store: Store, api: OfficeApi | nul
       writeJson(VIEW_KEY, next);
       nowView.hidden = next !== 'now';
       historyHost.hidden = next !== 'history';
+      digestHost.hidden = next !== 'digest';
       paintSwitch();
       if (next === 'history') history.activate(focus);
+      if (next === 'digest') digest.activate();
     };
     for (const item of views) item.button.addEventListener('click', () => setView(item.view, item.view === 'history'));
-    host.replaceChildren(switcher, nowView, historyHost);
+    host.replaceChildren(switcher, nowView, historyHost, digestHost);
     setView(current, false);
     store.watch(['lang'], paintSwitch);
     showHistory = (): boolean => {

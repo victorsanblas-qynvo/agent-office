@@ -228,6 +228,7 @@ export const hubEs = {
   'hub.api.chatTooLong': 'El mensaje es demasiado largo',
   'hub.api.chatKind': 'Tipo de mensaje desconocido',
   'hub.api.usageRange': 'El rango debe ser today o week',
+  'hub.api.digestDay': 'El día debe ser AAAA-MM-DD y no futuro',
   'hub.api.chatAuthorUnknown': 'No hay ningún agente vivo con ese nombre en la planta',
   'hub.api.chatFloorUnknown': 'La carpeta no pertenece a ninguna planta gestionada',
   'hub.api.chatChannelUnknown': 'Ese canal no existe',

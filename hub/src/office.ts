@@ -67,7 +67,8 @@ import { settingsView } from './settings';
 import { StallDesk } from './stall-desk';
 import { DONE_PREFIX, EDIT_TOOLS, classify, record, text, type Classified } from './state-machine';
 import { SyncDesk, type SyncResult } from './sync';
-import { planDocSlugIn, planSlugIn } from './tokens';
+import { digest } from './digest';
+import { localDay, planDocSlugIn, planSlugIn } from './tokens';
 import type {
   ActivityView,
   ChatMessageView,
@@ -85,6 +86,7 @@ import type {
   MemoryView,
   MessageView,
   OfficeConfig,
+  OfficeDigest,
   OrderStatus,
   PlanDecision,
   ReportView,
@@ -685,6 +687,11 @@ export class Office {
 
   tokenSummary(range: UsageRange): UsageSummary {
     return this.meter.summary(range);
+  }
+
+  dayDigest(day: string | null): OfficeDigest | 'bad-day' | 'future-day' {
+    const now = this.now();
+    return digest(this.opts.db, day ?? localDay(now), now);
   }
 
   documents(): DocumentView[] {

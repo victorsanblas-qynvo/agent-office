@@ -28,6 +28,7 @@ import type {
   SettingsView,
   SkippedFile,
   UsageRange,
+  OfficeDigest,
   UsageSummary,
   WorktreeView,
 } from './types';
@@ -129,6 +130,10 @@ export class OfficeApi {
 
   usageSummary(range: UsageRange): Promise<ApiData<UsageSummary>> {
     return this.get(`/api/usage/summary?range=${range}`);
+  }
+
+  digest(day: string): Promise<ApiData<OfficeDigest>> {
+    return this.get(`/api/digest?day=${encodeURIComponent(day)}`);
   }
 
   documentContent(path: string): Promise<ApiData<DocumentContent>> {
