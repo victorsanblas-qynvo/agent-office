@@ -1,3 +1,4 @@
+import { focusable } from '../focus';
 import { fuzzyFilter } from '../fuzzy';
 import { canPin } from '../pins';
 import { currentLang, plural, t } from '../i18n';
@@ -24,6 +25,7 @@ export type PaletteTarget =
   | { type: 'messageAll' }
   | { type: 'pin'; key: string }
   | { type: 'newOrder' }
+  | { type: 'focus'; floor: string | null }
   | { type: 'lang' }
   | { type: 'history' }
   | { type: 'mute' }
@@ -51,6 +53,8 @@ export type PaletteContext = {
   messageAll: number;
   pins: readonly string[];
   newOrder: boolean;
+  // The floor the panel is focused on, if any.
+  focus: string | null;
   mute: boolean;
   muteSound: boolean;
   searches: readonly SavedSearch[];
@@ -71,6 +75,13 @@ function actions(context: PaletteContext): PaletteEntry[] {
   if (context.statusAll > 0) add('statusAll', t('palette.action.statusAll'), plural('palette.hint.leads', context.statusAll), { type: 'statusAll' }, true);
   if (context.messageAll > 0) add('messageAll', t('palette.action.messageAll'), plural('palette.hint.leads', context.messageAll), { type: 'messageAll' }, true);
   if (context.newOrder) add('newOrder', t('palette.action.newOrder'), t('palette.hint.board'), { type: 'newOrder' }, true);
+  const focusFloors = new Set(focusable(context.floors));
+  for (const floor of context.floors) {
+    if (!focusFloors.has(floor.slug) || floor.slug === context.focus) continue;
+    const name = floorLabel(floor);
+    out.push({ id: `action:focus:${floor.slug}`, group: 'action', label: t('palette.action.focus', { name }), hint: t('palette.hint.focus'), keywords: `${floor.slug} ${name}`, target: { type: 'focus', floor: floor.slug }, write: false });
+  }
+  if (context.focus !== null) add('focusClear', t('palette.action.focusClear'), t('palette.hint.focus'), { type: 'focus', floor: null }, false);
   add('lang', t(currentLang() === 'es' ? 'palette.action.langEn' : 'palette.action.langEs'), t('palette.hint.lang'), { type: 'lang' }, false);
   add('history', t('palette.action.history'), '/', { type: 'history' }, false);
   if (context.mute) add('mute', t('palette.action.mute'), t('palette.hint.notifications'), { type: 'mute' }, false);

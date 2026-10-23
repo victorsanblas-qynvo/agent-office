@@ -105,6 +105,17 @@ export function writePins(pins: readonly string[]): void {
   writeJson(PINS_KEY, pins);
 }
 
+export const FOCUS_KEY = 'agent-office.focusFloor';
+
+export function readFocus(): string | null {
+  const raw = readJson(FOCUS_KEY);
+  return typeof raw === 'string' && raw !== '' ? raw : null;
+}
+
+export function writeFocus(floor: string | null): void {
+  writeJson(FOCUS_KEY, floor);
+}
+
 export const SNOOZE_KEY = 'agent-office.snooze';
 
 // Postponed entries of the needs queue by need id; a null `until` lasts until the entry's signature changes.

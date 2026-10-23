@@ -3,7 +3,8 @@ import type { BoardHandle } from './board/board';
 import type { ChatHandle } from './chat/chat';
 import { t } from './i18n';
 import { agentName } from './labels';
-import { activeNeedsOf, needToast, type Need, type NeedCursor, type NeedKind } from './needs';
+import { needsFilterAfter } from './focus';
+import { activeNeedsOf, getFloorFilter, needToast, setFloorFilter, type Need, type NeedCursor, type NeedKind } from './needs';
 import type { NoticeTarget } from './notice-log';
 import type { Notifier } from './notify';
 import type { SoundDesk } from './sound';
@@ -155,6 +156,31 @@ function selectedAgent(nav: Nav): AgentView | undefined {
   return nav.store.selectedKey === null ? undefined : nav.store.agents.get(nav.store.selectedKey);
 }
 
+// Narrows the whole panel to one floor (or lifts it): the queue's chip, the Tablero and the store follow, and the
+// camera and the Chat go to the floor.
+export function focusFloor(nav: Nav, floor: string | null): void {
+  const { store } = nav;
+  const previous = store.focusedFloor();
+  setFloorFilter(needsFilterAfter(getFloorFilter(), previous, floor));
+  store.setFocus(floor);
+  if (floor !== null) goToFocus(nav, floor);
+}
+
+// The camera on the floor; the Chat on its channel, which only the floors the hub manages have.
+export function goToFocus(nav: Nav, floor: string): void {
+  nav.office()?.focusFloor(floor);
+  const kind = nav.store.floorBySlug(floor)?.kind;
+  if (kind === undefined || kind === 'managed') nav.chat()?.show(floor);
+}
+
+// A focus kept from the last visit: the queue's chip and the Chat start on it.
+export function restoreFocus(nav: Nav): void {
+  const floor = nav.store.focus;
+  if (floor === null) return;
+  setFloorFilter(floor);
+  goToFocus(nav, floor);
+}
+
 export function paletteContext(nav: Nav): PaletteContext {
   const { store } = nav;
   const selected = selectedAgent(nav);
@@ -177,6 +203,7 @@ export function paletteContext(nav: Nav): PaletteContext {
     messageAll: broadcastRunning() ? 0 : broadcastTargets(store, false).length,
     pins: store.pins,
     newOrder: nav.board().canCreate(),
+    focus: store.focusedFloor(),
     mute: nav.notifier?.preferences.enabled === true,
     muteSound: nav.sound?.preferences.enabled === true,
     searches: readSaved(),
@@ -232,6 +259,9 @@ export function runTarget(nav: Nav, target: PaletteTarget): void {
     case 'newOrder':
       nav.showTab('board');
       nav.board().newOrder();
+      break;
+    case 'focus':
+      focusFloor(nav, target.floor);
       break;
     case 'lang':
       store.setLang(store.lang === 'es' ? 'en' : 'es');

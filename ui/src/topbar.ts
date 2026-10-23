@@ -1,5 +1,6 @@
 import { button, el } from './dom';
 import { LANG_NAMES, LANGS, plural, t, type Lang, type MessageKey } from './i18n';
+import { mountFocusPill } from './focus-pill';
 import { mountNeedsMenu, type NeedsMenu } from './needs-menu';
 import type { Need } from './needs';
 import { mountNoticeBell, type NoticeBell } from './notice-bell';
@@ -34,12 +35,13 @@ export const TABS: readonly { tab: Tab; labelKey: MessageKey }[] = [
   { tab: 'settings', labelKey: 'topbar.tab.settings' },
 ];
 
-export function mountTopbar(store: Store, onTab: (tab: Tab) => void, onNeed: (need: Need) => void, onPin: (key: string) => void): Topbar {
+export function mountTopbar(store: Store, onTab: (tab: Tab) => void, onNeed: (need: Need) => void, onPin: (key: string) => void, onFocus: (floor: string | null) => void): Topbar {
   const dot = el('span', 'status-dot');
   const statusText = el('span', 'status-text');
   const needs = mountNeedsMenu(store, onNeed);
   const notices = mountNoticeBell(store);
   const pinned = mountPinnedStrip(store, onPin);
+  const focus = mountFocusPill(store, onFocus);
   const replayHost = el('div', 'replay-controls');
 
   const tabButtons = new Map<Tab, HTMLButtonElement>();
@@ -70,6 +72,7 @@ export function mountTopbar(store: Store, onTab: (tab: Tab) => void, onNeed: (ne
     el('div', 'status', dot, statusText),
     needs.root,
     notices.root,
+    focus,
     pinned,
     replayHost,
     tabs,

@@ -81,6 +81,7 @@ describe('palette entries for saved searches', () => {
     relaunchAll: 0,
     pins: [],
     newOrder: false,
+    focus: null,
     mute: false,
     muteSound: false,
     searches: [saved('Bloqueos', 'bloqueado')],

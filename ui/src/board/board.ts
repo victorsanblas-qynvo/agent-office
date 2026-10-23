@@ -11,6 +11,7 @@ import { relativeTime } from '../time';
 import type { OrderStatus, OrderView } from '../types';
 import { checksBadgeNode, folderBadgeNode } from './badges';
 import { boardMarkdown } from './board-markdown';
+import { applyFocus } from '../focus';
 import { ageBadge, agesDue, type AgeBadge, columnsOf, type Column, deliveryFloors, filterOrders, neighbours, neighbourStatus, nextCard, orderFloors } from './columns';
 import { mountOrderDetail, type OrderDetail } from './order-detail';
 import { openNewOrder } from './new-order';
@@ -203,7 +204,9 @@ export function mountBoard(host: HTMLElement, store: Store, api: OfficeApi | nul
     const previous = floor;
     filter.replaceChildren(new Option(t('board.filter.all'), ''), ...floors.map((slug) => new Option(slug, slug)));
     if (previous !== null && !floors.includes(previous)) floor = null;
-    filter.value = floor ?? '';
+    const focused = store.focusedFloor();
+    filter.value = applyFocus({ query, floor }, focused).floor ?? '';
+    filter.disabled = focused !== null;
   };
 
   const paintHighlight = (scroll: boolean): void => {
@@ -250,7 +253,7 @@ export function mountBoard(host: HTMLElement, store: Store, api: OfficeApi | nul
     agedAt = now;
     agedStale = readBoardStaleHours();
     const shown = filterOrders(store.orders, query, (slug) => (store.floorBySlug(slug) ? floorLabel(store.floorBySlug(slug) as never) : slug));
-    const grouped = columnsOf(shown, floor);
+    const grouped = columnsOf(shown, applyFocus({ query, floor }, store.focusedFloor()).floor);
     const total = grouped.reduce((sum, group) => sum + group.orders.length, 0);
     notice.textContent =
       api === null ? t(store.replay ? 'board.replay' : 'board.offline') : [total === 0 ? t(query.trim() !== '' && store.orders.length > 0 ? 'board.search.empty' : 'board.empty') : '', add.disabled ? t('board.new.none') : ''].filter((part) => part !== '').join(' ');
@@ -287,7 +290,7 @@ export function mountBoard(host: HTMLElement, store: Store, api: OfficeApi | nul
     const now = store.now();
     saveFile(`${t('board.export.file')}-${fileStamp(new Date(now))}.md`, boardMarkdown(shownColumns, now), 'text/markdown;charset=utf-8');
   });
-  store.watch(['orders', 'lang', 'floors', 'mode'], render);
+  store.watch(['orders', 'lang', 'floors', 'mode', 'focus'], render);
   // The age of a card moves on its own, and follows the stale threshold of Ajustes.
   store.watch(['tick'], () => {
     const now = store.now();
