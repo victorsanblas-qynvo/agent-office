@@ -1,10 +1,11 @@
 import type { OfficeApi } from '../api';
 import { button, el } from '../dom';
 import { currentLang, t } from '../i18n';
-import { floorLabel } from '../labels';
+import { agentName, floorLabel } from '../labels';
 import type { Store } from '../store';
 import { clockTime, relativeTime } from '../time';
-import type { CheckRunView, CheckView, CheckpointView, OrderDiff, OrderDiffFile, OrderView, SkippedFile } from '../types';
+import type { CheckRunView, CheckView, CheckpointView, OrderDiff, OrderDiffFile, OrderView, SearchHit, SkippedFile } from '../types';
+import { activityPath, activityTerms, orderTimeline } from './activity-model';
 import { checksBadgeNode, folderBadgeNode } from './badges';
 import { flakyChecks } from './flaky';
 import { diffStale, diffSummary, firstChangedLine, latestSha, orderSignature, patchRows, shouldReloadForChecks, statRows } from './diff-model';
@@ -16,7 +17,7 @@ import { openPrDraft } from './pr-draft';
 
 export type OrderDetail = { destroy(): void };
 
-type TabName = 'checks' | 'points' | 'diff';
+type TabName = 'checks' | 'points' | 'activity' | 'diff';
 
 function seconds(ms: number | null): string {
   if (ms === null) return '';
@@ -119,6 +120,10 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
   let diffFileError = '';
   let diffFileLoading = false;
   let patchCache: { file: OrderDiffFile; lang: string; root: string; node: HTMLElement } | null = null;
+  let activityHits: SearchHit[] = [];
+  let activityLoaded = false;
+  let activityLoading = false;
+  let activityError = '';
   let lastSignature = '';
   let lastRun: RunMark | null = null;
   let lastPaint = store.now();
@@ -139,7 +144,24 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
       skipped = checkpoints.data.skipped;
     }
     const current = order();
+    if (activityLoaded) void loadActivity();
     if (!current || signature(current) !== lastSignature) render();
+  };
+
+  const loadActivity = async (): Promise<void> => {
+    const current = order();
+    if (!api || !current || activityLoading) return;
+    activityLoading = true;
+    activityError = '';
+    render();
+    const results = await Promise.all(activityTerms(current).map((term) => api.search(activityPath(current, term))));
+    if (gone) return;
+    activityLoading = false;
+    activityLoaded = true;
+    const failed = results.find((result) => !result.ok);
+    if (failed && !failed.ok) activityError = failed.message;
+    activityHits = results.flatMap((result) => (result.ok ? result.data.hits : []));
+    render();
   };
 
   const loadDiff = async (): Promise<void> => {
@@ -273,6 +295,43 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
     return el('div', 'order-tab', list, left);
   };
 
+  const activityTab = (current: OrderView, now: number): HTMLElement => {
+    const reload = button(t('board.activity.reload'));
+    reload.disabled = activityLoading || !api;
+    reload.addEventListener('click', () => void loadActivity());
+    const live = store.checkRuns.get(orderId);
+    const shown = live && !runs.some((r) => r.id === live.id) ? [live, ...runs] : runs.map((r) => (live && r.id === live.id ? live : r));
+    const rows = orderTimeline(activityHits, shown, points, current, (key) => {
+      const known = store.agents.get(key);
+      return known ? agentName(known) : key;
+    });
+    const body = activityLoading && !activityLoaded
+      ? el('p', 'muted', t('board.loading'))
+      : rows.length === 0
+        ? el('p', 'muted', t('board.activity.none'))
+        : el(
+            'ul',
+            'activity-list',
+            ...rows.map((row) =>
+              el(
+                'li',
+                `activity-row activity-${row.kind}`,
+                ageNode(row.ts, now),
+                el('span', 'chip', t(`board.activity.kind.${row.kind}`)),
+                row.who ? el('b', '', row.who) : null,
+                el('span', 'activity-text', row.text),
+              ),
+            ),
+          );
+    return el(
+      'div',
+      'order-tab',
+      activityError !== '' ? el('p', 'order-warning', t('board.activity.loadFailed', { error: activityError })) : null,
+      el('div', 'order-actions', reload),
+      body,
+    );
+  };
+
   const openLink = (root: string | null, path: string, line?: number, label = t('board.diff.open')): HTMLAnchorElement | null => {
     const href = root === null ? null : editorLink(readEditor(), root, path, line);
     if (href === null) return null;
@@ -354,6 +413,10 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
       runs,
       points,
       skipped,
+      activityHits,
+      activityLoaded,
+      activityLoading,
+      activityError,
       diff?.head ?? null,
       diffError,
       diffLoading,
@@ -378,12 +441,13 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
     close.setAttribute('aria-label', t('board.drawer.close'));
     close.addEventListener('click', onClose);
     const tabs = el('div', 'order-tabs');
-    for (const name of hasFolder ? (['checks', 'points', 'diff'] as const) : (['checks', 'points'] as const)) {
+    for (const name of hasFolder ? (['checks', 'points', 'activity', 'diff'] as const) : (['checks', 'points', 'activity'] as const)) {
       const tabButton = button(t(`board.tab.${name}`), `order-tab-button${tab === name ? ' active' : ''}`);
       tabButton.setAttribute('aria-selected', String(tab === name));
       tabButton.addEventListener('click', () => {
         tab = name;
         if (name === 'diff' && !diff && !diffLoading) void loadDiff();
+        else if (name === 'activity' && !activityLoaded && !activityLoading) void loadActivity();
         else render();
       });
       tabs.append(tabButton);
@@ -408,7 +472,7 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
       current.description ? el('p', 'order-description', current.description) : null,
       actions(current),
       tabs,
-      tab === 'checks' ? checksTab(current, now) : tab === 'points' ? pointsTab(now) : diffTab(current),
+      tab === 'checks' ? checksTab(current, now) : tab === 'points' ? pointsTab(now) : tab === 'activity' ? activityTab(current, now) : diffTab(current),
     ];
     panel.replaceChildren(...parts.filter((part): part is Node => part !== null));
   }
