@@ -879,6 +879,7 @@ export const en: Messages = {
   'palette.group.floor': 'Floor',
   'palette.group.agent': 'Agent',
   'palette.group.plan': 'Plan',
+  'palette.group.order': 'Order',
   'palette.action.reply': 'Answer {name}',
   'palette.action.status': 'Ask {name} for status',
   'palette.action.relaunch': 'Relaunch {name}',

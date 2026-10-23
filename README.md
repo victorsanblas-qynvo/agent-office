@@ -87,7 +87,7 @@ Las teclas sueltas no actúan mientras escribes en un campo ni con un diálogo a
 | `?` | Ayuda de atajos |
 | `Esc` | Cierra, por este orden, paleta, ayuda, menú y visor |
 
-La paleta busca por letras sueltas, sin importar tildes, entre agentes, plantas, pestañas, planes y acciones (Responder, Pedir estado, Relanzar, Nuevo encargo, Cambiar idioma, Ver historial, Silenciar notificaciones, Silenciar sonidos). En el replay no salen las acciones que escriben.
+La paleta busca por letras sueltas, sin importar tildes, entre agentes, plantas, pestañas, planes, encargos del Tablero (por título, slug, rama o planta; abre el cajón del encargo) y acciones (Responder, Pedir estado, Relanzar, Nuevo encargo, Cambiar idioma, Ver historial, Silenciar notificaciones, Silenciar sonidos). En el replay no salen las acciones que escriben.
 
 ### Historial y búsqueda
 
