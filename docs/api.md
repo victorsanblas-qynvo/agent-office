@@ -73,6 +73,7 @@ Las llama la interfaz (`ui/src/api.ts`) con `X-Office-Panel`; el servidor MCP (`
 | `DELETE /api/worktrees/:orderId` | key o panel | Query `branch=1` borra también la rama, `force=1` ignora lo sin guardar | `200 {"ok":true}`. `400 hub.api.badId`; `404 hub.api.worktreeNotFound`; `409 hub.api.worktreeBusy`, `hub.api.worktreeDirty`, `hub.api.branchUnmerged`; `500 hub.api.worktreeFailed`. |
 | `GET /api/memory/:floor/:role` | key o panel | | `200` las lecciones del puesto. `400 hub.api.badMemoryTarget`. |
 | `POST /api/memory` | key o panel | `{"floor","role","text"}` | `200 {"lesson"}`. `400 hub.api.floorRequired`, `hub.api.roleInvalid`, `hub.api.lessonEmpty`; `400 hub.api.lessonSaveFailed`; `409 hub.api.lessonDuplicate`. |
+| `PUT /api/memory/:id` | key o panel | `{"text"}` | `200 {"lesson"}` con el texto cambiado (se recorta como al añadir). `400 hub.api.badId`, `hub.api.lessonEmpty`; `404 hub.api.lessonNotFound`; `409 hub.api.lessonDuplicate` si otra lección del puesto ya dice lo mismo. |
 | `DELETE /api/memory/:id` | key o panel | | `200 {"ok":true}`. `400 hub.api.badId`; `404 hub.api.lessonNotFound`. |
 | `GET /api/usage/summary` | key o panel | Query `range=today\|week` (por defecto `today`) | `200` tokens por agente, plan y día (`byDay`: los últimos 7 días locales, o solo hoy, con ceros), y ventanas del límite. `400 hub.api.usageRange`. |
 | `GET /api/reports/:agentKey` | key o panel | | `200` el informe del agente. `404 hub.api.noReport`. |

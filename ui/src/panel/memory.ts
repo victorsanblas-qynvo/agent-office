@@ -58,6 +58,9 @@ export function mountMemory(host: HTMLElement, store: Store, api: OfficeApi | nu
   let seenVersion = 0;
   let ticket = 0;
   let busy = false;
+  let editing: number | null = null;
+  let editDraft = '';
+  let editError = '';
 
   const versionOf = (current: Target): number => store.memoryVersion.get(memoryKey(current.floor, current.role)) ?? 0;
 
@@ -70,6 +73,8 @@ export function mountMemory(host: HTMLElement, store: Store, api: OfficeApi | nu
   const lessonItem = (lesson: LessonView, now: number): HTMLElement => {
     const remove = button('✕', 'lesson-delete', t('memory.delete'));
     remove.addEventListener('click', () => void removeLesson(lesson, remove));
+    const edit = button(t('memory.edit'), 'lesson-edit', t('memory.edit'));
+    edit.addEventListener('click', () => startEdit(lesson));
     const originText = lesson.origin === 'user' ? t('memory.origin.user') : t('memory.origin.agent');
     const origin = el('span', `chip lesson-origin lesson-origin-${lesson.origin}`, originText);
     const author = lesson.agentKey === null ? undefined : store.agents.get(lesson.agentKey);
@@ -77,9 +82,75 @@ export function mountMemory(host: HTMLElement, store: Store, api: OfficeApi | nu
     return el(
       'li',
       'lesson',
-      el('div', 'lesson-head', origin, el('time', 'muted', relativeTime(lesson.createdAt, now)), remove),
-      el('p', 'lesson-text', lesson.text),
+      el('div', 'lesson-head', origin, el('time', 'muted', relativeTime(lesson.createdAt, now)), edit, remove),
+      editing === lesson.id ? editForm(lesson) : el('p', 'lesson-text', lesson.text),
     );
+  };
+
+  const editForm = (lesson: LessonView): HTMLElement => {
+    const area = el('textarea', 'memory-text');
+    area.rows = 3;
+    area.maxLength = LESSON_MAX_CHARS;
+    area.value = editDraft;
+    area.setAttribute('aria-label', t('memory.editText'));
+    const save = button(t('memory.save'), 'primary');
+    const cancel = button(t('memory.cancel'));
+    const error = el('p', 'memory-status', editError);
+    const refresh = (): void => {
+      save.disabled = busy || area.value.trim() === '';
+    };
+    area.addEventListener('input', () => {
+      editDraft = area.value;
+      refresh();
+    });
+    area.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+        event.preventDefault();
+        if (!save.disabled) void saveEdit(lesson, area, save, error);
+      } else if (event.key === 'Escape') {
+        stopEdit();
+      }
+    });
+    save.addEventListener('click', () => void saveEdit(lesson, area, save, error));
+    cancel.addEventListener('click', stopEdit);
+    refresh();
+    queueMicrotask(() => area.focus());
+    return el('div', 'memory-add', area, el('div', 'memory-add-actions', save, cancel, error));
+  };
+
+  const startEdit = (lesson: LessonView): void => {
+    editing = lesson.id;
+    editDraft = lesson.text;
+    editError = '';
+    renderLists();
+  };
+
+  const stopEdit = (): void => {
+    editing = null;
+    editError = '';
+    renderLists();
+  };
+
+  const saveEdit = async (lesson: LessonView, area: HTMLTextAreaElement, save: HTMLButtonElement, error: HTMLElement): Promise<void> => {
+    const value = area.value.trim();
+    if (busy || value === '') return;
+    busy = true;
+    save.disabled = true;
+    save.textContent = t('memory.saving');
+    error.textContent = '';
+    const result = await client.editLesson(lesson.id, value);
+    busy = false;
+    if (result.ok) {
+      const updated = result.data.lesson;
+      if (data) data = { ...data, lessons: data.lessons.map((item) => (item.id === updated.id ? updated : item)) };
+      stopEdit();
+    } else {
+      editError = result.message;
+      save.disabled = false;
+      save.textContent = t('memory.save');
+      error.textContent = result.message;
+    }
+    refreshForm();
   };
 
   const renderLists = (): void => {
@@ -201,6 +272,8 @@ export function mountMemory(host: HTMLElement, store: Store, api: OfficeApi | nu
     failure = null;
     text.value = '';
     status.textContent = '';
+    editing = null;
+    editError = '';
     refreshForm();
     renderLists();
     void load();

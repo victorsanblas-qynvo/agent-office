@@ -153,7 +153,7 @@ Los lanzadores de los departamentos comprueban `GET /health` y no abren la sesi�
 
 - Un agente que aprende algo envía `LECCIÓN: …` a su jefe. El hub la guarda para la pareja planta y rol, sin duplicados y con tope por sesión (`memory.maxLessonsPerSession`, 3), y poda las más antiguas de origen agente por encima de `memory.maxLessons` (30); las que añades desde el panel no se podan.
 - Al arrancar, cada agente de la oficina recibe por hook las lecciones de su puesto y una línea de cada uno de los tres últimos informes, como contexto y con un tope de caracteres (`memory.maxContextChars`, 2 500). El revisor de planes es la excepción: no recibe memoria ni guarda informe. Los revisores de planes y de skills no escriben `LECCIÓN:`, y si alguno llega el hub lo descarta en silencio.
-- El panel muestra el **Informe** del agente seleccionado (ficheros, tests, veredictos, mensajes, preguntas, bloqueos, lecciones y cierre), que puedes bajar como Markdown con **Descargar .md**, y la **Memoria** de su puesto, donde puedes añadir y borrar lecciones.
+- El panel muestra el **Informe** del agente seleccionado (ficheros, tests, veredictos, mensajes, preguntas, bloqueos, lecciones y cierre), que puedes bajar como Markdown con **Descargar .md**, y la **Memoria** de su puesto, donde puedes añadir, editar y borrar lecciones.
 
 ### Puerta de tests
 

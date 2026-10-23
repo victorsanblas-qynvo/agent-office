@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { DEFAULT_CONFIG } from '../src/config';
 import { openDb } from '../src/db';
-import { captureLesson, deleteLesson, listLessons, memoryContext } from '../src/memory';
+import { captureLesson, deleteLesson, listLessons, memoryContext, updateLesson } from '../src/memory';
 import { buildReport, saveReport, savedReport, savedReports } from '../src/reports';
 
 const limits = DEFAULT_CONFIG.memory;
@@ -16,6 +16,37 @@ describe('lessons', () => {
     expect(captureLesson(db, { ...base, text: 'La migración de viajes exige backfill', now: at(3) }, limits).status).toBe('saved');
     expect(listLessons(db, 'mobile', 'dev').map((l) => l.text)).toEqual(['La migración de viajes exige backfill', 'No uses pumpAndSettle en los flow tests']);
     expect(listLessons(db, 'backend', 'dev')).toEqual([]);
+  });
+
+  test('editing a lesson rewrites its text and its dedupe key', () => {
+    const db = openDb(':memory:');
+    const base = { floor: 'mobile', role: 'dev' as const, origin: 'user' as const, agentKey: null };
+    const first = captureLesson(db, { ...base, text: 'Primera lección', now: at(1) }, limits);
+    const second = captureLesson(db, { ...base, text: 'Segunda lección', now: at(2) }, limits);
+    if (first.status !== 'saved' || second.status !== 'saved') throw new Error('setup');
+    const edited = updateLesson(db, first.lesson.id, '  Primera   lección corregida ');
+    expect(edited.status).toBe('updated');
+    if (edited.status === 'updated') expect(edited.lesson).toEqual({ ...first.lesson, text: 'Primera lección corregida' });
+    expect(listLessons(db, 'mobile', 'dev').map((l) => l.text)).toEqual(['Segunda lección', 'Primera lección corregida']);
+    expect(captureLesson(db, { ...base, text: 'primera lección corregida', now: at(3) }, limits).status).toBe('duplicate');
+    expect(captureLesson(db, { ...base, text: 'Primera lección', now: at(4) }, limits).status).toBe('saved');
+    expect(updateLesson(db, first.lesson.id, 'x'.repeat(600)).status).toBe('updated');
+    expect(listLessons(db, 'mobile', 'dev').find((l) => l.id === first.lesson.id)?.text.length).toBe(500);
+  });
+
+  test('editing refuses another lesson text of the same role, accepts its own and unknown ids are not found', () => {
+    const db = openDb(':memory:');
+    const base = { floor: 'mobile', role: 'dev' as const, origin: 'user' as const, agentKey: null };
+    const first = captureLesson(db, { ...base, text: 'Uno', now: at(1) }, limits);
+    const second = captureLesson(db, { ...base, text: 'Dos', now: at(2) }, limits);
+    const other = captureLesson(db, { ...base, role: 'tester', text: 'Tres', now: at(3) }, limits);
+    if (first.status !== 'saved' || second.status !== 'saved' || other.status !== 'saved') throw new Error('setup');
+    expect(updateLesson(db, first.lesson.id, ' dos. ').status).toBe('duplicate');
+    expect(updateLesson(db, first.lesson.id, 'UNO').status).toBe('updated');
+    expect(updateLesson(db, first.lesson.id, '   ').status).toBe('invalid');
+    expect(updateLesson(db, first.lesson.id, 'tres').status).toBe('updated');
+    expect(updateLesson(db, 9999, 'algo').status).toBe('notFound');
+    expect(listLessons(db, 'mobile', 'dev').map((l) => l.text)).toEqual(['Dos', 'tres']);
   });
 
   test('each agent saves at most the per-session cap', () => {
