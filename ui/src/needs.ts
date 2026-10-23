@@ -1,13 +1,15 @@
 import { t } from './i18n';
+import { hubText } from './i18n/hub';
 import { agentName, isAway } from './labels';
+import { readHungMinutes } from './prefs';
 import type { Store } from './store';
 import { clockMinutes } from './time';
 import type { AgentState, AgentView, DocumentView, OrderView, QuestionView, UsageView, UsageWindow } from './types';
 
-export type NeedKind = 'permission' | 'question' | 'blocked' | 'stalled' | 'plan' | 'checks' | 'limit';
+export type NeedKind = 'permission' | 'question' | 'blocked' | 'hung' | 'stalled' | 'plan' | 'checks' | 'limit';
 
 // Most urgent first: this is also the order of the queue.
-export const NEED_KINDS: readonly NeedKind[] = ['permission', 'question', 'blocked', 'stalled', 'plan', 'checks', 'limit'];
+export const NEED_KINDS: readonly NeedKind[] = ['permission', 'question', 'blocked', 'hung', 'stalled', 'plan', 'checks', 'limit'];
 
 export type Need = {
   id: string;
@@ -29,12 +31,17 @@ export type NeedSources = {
   orders: readonly OrderView[];
   usage: UsageView | null;
   now: number;
+  // Minutes a tool may run before it is hung; 0 is off.
+  hungAfterMinutes: number;
   stateOf(agent: AgentView): AgentState;
 };
 
 const RANK = new Map<NeedKind, number>(NEED_KINDS.map((kind, index) => [kind, index]));
 const LIMIT_PCT = 90;
 const LIMIT_SOON_MS = 30 * 60_000;
+const HUNG_DETAIL_MAX = 60;
+// Tools that wait for somebody by design.
+const PATIENT_TOOLS: ReadonlySet<string> = new Set(['AskUserQuestion', 'ExitPlanMode', 'Agent', 'Task']);
 
 function rankOf(need: Need): number {
   return need.imminent ? (RANK.get('permission') ?? 0) + 0.5 : (RANK.get(need.kind) ?? 0);
@@ -66,6 +73,18 @@ function agentNeed(kind: NeedKind, agent: AgentView | undefined, key: string, si
   };
 }
 
+function hungNeed(agent: AgentView, now: number, thresholdMs: number): Need | null {
+  const tool = agent.tool;
+  if (!tool || PATIENT_TOOLS.has(tool) || agent.waiting !== null) return null;
+  const ran = now - agent.updatedAt;
+  if (ran < thresholdMs) return null;
+  const line = hubText(agent.detail).replace(/\s+/g, ' ').trim();
+  const detail = line.length > HUNG_DETAIL_MAX ? `${line.slice(0, HUNG_DETAIL_MAX - 1)}…` : line;
+  const params = { agent: agentName(agent), min: Math.floor(ran / 60_000), tool };
+  const name = detail ? t('needs.hung.detail', { ...params, detail }) : t('needs.hung.name', params);
+  return { id: `hung:${agent.key}`, kind: 'hung', since: agent.updatedAt, name, agentKey: agent.key, floor: agent.floor, docPath: null, orderSlug: null };
+}
+
 function moreUrgent(a: Need, b: Need): boolean {
   const byKind = rankOf(a) - rankOf(b);
   return byKind !== 0 ? byKind < 0 : a.since < b.since;
@@ -91,6 +110,14 @@ export function collectNeeds(sources: NeedSources): Need[] {
     if (isAway(agent)) continue;
     if (sources.stateOf(agent) === 'blocked') offer(agentNeed('blocked', agent, agent.key, agent.stateSince, agent.floor));
     if (agent.stalledSince !== null) offer(agentNeed('stalled', agent, agent.key, agent.stalledSince, agent.floor));
+  }
+  if (sources.hungAfterMinutes > 0) {
+    const asking = new Set(sources.questions.map((question) => question.agentKey));
+    for (const agent of agents.values()) {
+      if (isAway(agent) || asking.has(agent.key) || sources.stateOf(agent) !== 'working') continue;
+      const need = hungNeed(agent, sources.now, sources.hungAfterMinutes * 60_000);
+      if (need) offer(need);
+    }
   }
 
   const needs = [...byAgent.values()];
@@ -139,6 +166,7 @@ export function needsOf(store: Store): Need[] {
     orders: store.orders,
     usage: store.usage,
     now: store.now(),
+    hungAfterMinutes: readHungMinutes(),
     stateOf: (agent) => store.shownState(agent),
   });
 }

@@ -11,7 +11,7 @@ const NOW = 1_000_000_000;
 const HOUR = 3_600_000;
 
 function sources(extra: Partial<NeedSources> & { agents?: ReturnType<typeof agent>[] } = {}): NeedSources {
-  return { agents: [], questions: [], documents: [], orders: [], usage: null, now: NOW, stateOf: (a) => a.state, ...extra };
+  return { agents: [], questions: [], documents: [], orders: [], usage: null, now: NOW, hungAfterMinutes: 10, stateOf: (a) => a.state, ...extra };
 }
 
 const kinds = (needs: Need[]): string[] => needs.map((need) => `${need.kind}:${need.agentKey ?? need.docPath ?? need.orderSlug}`);
@@ -145,6 +145,56 @@ describe('usage limits', () => {
   test('both windows at once give two entries', () => {
     const needs = limits(usage(win(60, NOW + 3 * HOUR, unsafe(NOW + HOUR)), win(91, NOW + 24 * HOUR)));
     expect(needs.map((need) => need.id).sort()).toEqual(['limit:five', 'limit:seven']);
+  });
+});
+
+describe('hung tools', () => {
+  const MIN = 60_000;
+  const busy = (extra: Partial<ReturnType<typeof agent>> = {}) => agent('lead', { tool: 'Bash', detail: 'bun test', updatedAt: NOW - 12 * MIN, ...extra });
+
+  test('below the threshold nothing is flagged', () => {
+    expect(collectNeeds(sources({ agents: [busy({ updatedAt: NOW - 9 * MIN })] }))).toEqual([]);
+  });
+
+  test('above it, one need with the minutes, the tool and the detail', () => {
+    const needs = collectNeeds(sources({ agents: [busy()] }));
+    expect(needs.map((need) => need.id)).toEqual(['hung:lead']);
+    expect(needLabel(needs[0])).toBe('lead lleva 12 min en Bash: bun test');
+    expect(needs[0].agentKey).toBe('lead');
+  });
+
+  test('without detail the label names only the tool', () => {
+    const needs = collectNeeds(sources({ agents: [busy({ detail: '' })] }));
+    expect(needLabel(needs[0])).toBe('lead lleva 12 min en Bash');
+  });
+
+  test('a long detail is cut to 60 characters', () => {
+    const needs = collectNeeds(sources({ agents: [busy({ detail: 'x'.repeat(100) })] }));
+    expect(needLabel(needs[0])).toBe(`lead lleva 12 min en Bash: ${'x'.repeat(59)}…`);
+  });
+
+  test('off, nothing is flagged', () => {
+    expect(collectNeeds(sources({ agents: [busy()], hungAfterMinutes: 0 }))).toEqual([]);
+  });
+
+  test('waiting, asking and patient tools are left out', () => {
+    const agents = [
+      busy({ key: 'idle', state: 'idle' }),
+      busy({ key: 'asking', state: 'asking' }),
+      busy({ key: 'waits', waiting: { who: 'x', what: 'y', since: 1 } }),
+      busy({ key: 'asker', tool: 'AskUserQuestion' }),
+      busy({ key: 'spawner', tool: 'Task' }),
+      busy({ key: 'away', away: true }),
+      busy({ key: 'question' }),
+      busy({ key: 'toolless', tool: null }),
+    ];
+    const needs = collectNeeds(sources({ agents, questions: [question('q', 'question', 5)] }));
+    expect(kinds(needs)).toEqual(['question:question']);
+  });
+
+  test('ranks after blocked and before stalled', () => {
+    const agents = [agent('stalled', { stalledSince: 10 }), busy({ key: 'hung' }), agent('blocked', { state: 'blocked' })];
+    expect(kinds(collectNeeds(sources({ agents })))).toEqual(['blocked:blocked', 'hung:hung', 'stalled:stalled']);
   });
 });
 

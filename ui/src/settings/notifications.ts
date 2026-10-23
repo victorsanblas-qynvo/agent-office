@@ -2,6 +2,7 @@ import { button, el } from '../dom';
 import { t, type MessageKey } from '../i18n';
 import { NOTIFY_EVENTS, notificationsSupported, type Notifier } from '../notify';
 import { FINISHED_MODES, readFinishedMode, writeFinishedMode, type FinishedMode } from '../panel/finished';
+import { HUNG_OPTIONS, readHungMinutes, writeHungMinutes } from '../prefs';
 import { toggleRow } from './settings';
 
 const HOLD_EVENTS: ReadonlySet<string> = new Set(['permission', 'question']);
@@ -30,6 +31,18 @@ export function mountNotifySection(notifier: Notifier): HTMLElement {
     'setting-row',
     el('span', 'setting-text', el('span', 'setting-label', t('settings.notifications.finished.label')), el('span', 'setting-hint muted', t('settings.notifications.finished.hint'))),
     finishedMode,
+  );
+
+  const hungAfter = el('select', 'setting-mode');
+  hungAfter.setAttribute('aria-label', t('settings.notifications.hung.label'));
+  for (const minutes of HUNG_OPTIONS) hungAfter.append(new Option(minutes === 0 ? t('settings.notifications.hung.off') : t('settings.notifications.hung.minutes', { n: minutes }), String(minutes)));
+  hungAfter.value = String(readHungMinutes());
+  hungAfter.addEventListener('change', () => writeHungMinutes(Number(hungAfter.value)));
+  const hungRow = el(
+    'label',
+    'setting-row',
+    el('span', 'setting-text', el('span', 'setting-label', t('settings.notifications.hung.label')), el('span', 'setting-hint muted', t('settings.notifications.hung.hint'))),
+    hungAfter,
   );
 
   const events = NOTIFY_EVENTS.map((event) => {
@@ -76,6 +89,7 @@ export function mountNotifySection(notifier: Notifier): HTMLElement {
     el('p', 'settings-hint muted', t('settings.notifications.hint')),
     general.root,
     finishedRow,
+    hungRow,
     el('div', 'notify-events', ...events.map((row) => row.root)),
     el('div', 'notify-actions', test),
   );
