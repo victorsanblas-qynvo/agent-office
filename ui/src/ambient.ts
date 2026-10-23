@@ -39,8 +39,11 @@ export function defaultAmbient(): AmbientPrefs {
 }
 
 export function readAmbientPrefs(): AmbientPrefs {
+  return normalizeAmbientPrefs(readJson(AMBIENT_KEY));
+}
+
+export function normalizeAmbientPrefs(raw: unknown): AmbientPrefs {
   const prefs = defaultAmbient();
-  const raw = readJson(AMBIENT_KEY);
   if (typeof raw !== 'object' || raw === null) return prefs;
   const record = raw as { dayNight?: unknown; coffee?: unknown };
   if (record.dayNight === 'clock' || record.dayNight === 'theme') prefs.dayNight = record.dayNight;

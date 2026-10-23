@@ -120,8 +120,11 @@ export function clampVolume(value: number): number {
 }
 
 export function readSoundPrefs(): SoundPrefs {
+  return normalizeSoundPrefs(readJson(SOUND_KEY));
+}
+
+export function normalizeSoundPrefs(raw: unknown): SoundPrefs {
   const prefs = defaultPrefs();
-  const raw = readJson(SOUND_KEY);
   if (typeof raw !== 'object' || raw === null) return prefs;
   const record = raw as { enabled?: unknown; volume?: unknown; events?: unknown };
   if (typeof record.enabled === 'boolean') prefs.enabled = record.enabled;

@@ -33,7 +33,10 @@ export function formatTokenShorthand(tokens: number): string {
 }
 
 export function readFloorBudgets(): FloorBudgets {
-  const raw = readJson(FLOOR_BUDGETS_KEY);
+  return normalizeFloorBudgets(readJson(FLOOR_BUDGETS_KEY));
+}
+
+export function normalizeFloorBudgets(raw: unknown): FloorBudgets {
   const budgets: FloorBudgets = {};
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return budgets;
   for (const [slug, value] of Object.entries(raw)) if (validBudget(value)) budgets[slug] = value;

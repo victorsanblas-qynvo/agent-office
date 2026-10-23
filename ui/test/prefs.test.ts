@@ -133,7 +133,8 @@ describe('floorMuted', () => {
 
   test('reads only a list of slugs', () => {
     const store = new Map<string, string>();
-    Object.assign(globalThis, { localStorage: { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => store.set(k, v) } });
+    const fake = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => store.set(k, v) };
+    Object.defineProperty(globalThis, 'localStorage', { value: fake, configurable: true, writable: true });
     expect(readMutedFloors()).toEqual([]);
     store.set(MUTED_FLOORS_KEY, '["mobile",3,"backend"]');
     expect(readMutedFloors()).toEqual(['mobile', 'backend']);
