@@ -4,12 +4,14 @@ import { currentLang, t } from '../i18n';
 import { floorLabel } from '../labels';
 import type { Store } from '../store';
 import { clockTime, relativeTime } from '../time';
-import type { CheckRunView, CheckView, CheckpointView, OrderView, SkippedFile } from '../types';
+import type { CheckRunView, CheckView, CheckpointView, OrderDiff, OrderDiffFile, OrderView, SkippedFile } from '../types';
 import { checksBadgeNode, folderBadgeNode } from './badges';
+import { diffSummary, patchRows, statRows } from './diff-model';
+import { parseDiff } from './diff-parse';
 
 export type OrderDetail = { destroy(): void };
 
-type TabName = 'checks' | 'points';
+type TabName = 'checks' | 'points' | 'diff';
 
 function seconds(ms: number | null): string {
   if (ms === null) return '';
@@ -89,6 +91,13 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
   let loaded = false;
   let error = '';
   let gone = false;
+  let diff: OrderDiff | null = null;
+  let diffError = '';
+  let diffLoading = false;
+  let diffPath: string | null = null;
+  let diffFile: OrderDiffFile | null = null;
+  let diffFileError = '';
+  let diffFileLoading = false;
 
   const order = (): OrderView | undefined => store.orders.find((o) => o.id === orderId);
 
@@ -105,6 +114,35 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
       points = checkpoints.data.checkpoints;
       skipped = checkpoints.data.skipped;
     }
+    render();
+  };
+
+  const loadDiff = async (): Promise<void> => {
+    if (!api || diffLoading) return;
+    diffLoading = true;
+    diffError = '';
+    render();
+    const result = await api.orderDiff(orderId);
+    if (gone) return;
+    diffLoading = false;
+    if (result.ok) diff = result.data;
+    else diffError = result.message;
+    render();
+    if (result.ok && diffPath !== null) void loadDiffFile(diffPath);
+  };
+
+  const loadDiffFile = async (path: string): Promise<void> => {
+    if (!api) return;
+    diffPath = path;
+    diffFile = null;
+    diffFileError = '';
+    diffFileLoading = true;
+    render();
+    const result = await api.orderDiffFile(orderId, path);
+    if (gone || diffPath !== path) return;
+    diffFileLoading = false;
+    if (result.ok) diffFile = result.data;
+    else diffFileError = result.message;
     render();
   };
 
@@ -204,6 +242,49 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
     return el('div', 'order-tab', list, left);
   };
 
+  const patchView = (): HTMLElement | null => {
+    if (diffPath === null) return el('p', 'muted', t('board.diff.pick'));
+    if (diffFileLoading) return el('p', 'muted', t('board.loading'));
+    if (diffFileError !== '') return el('p', 'order-warning', t('board.diff.loadFailed', { error: diffFileError }));
+    if (!diffFile) return null;
+    if (diffFile.binary) return el('p', 'muted', t('board.diff.patchBinary'));
+    const rows = parseDiff(diffFile.patch).flatMap(patchRows);
+    const lines = rows.map((row) =>
+      el('div', row.className, el('span', 'diff-no', row.oldNo), el('span', 'diff-no', row.newNo), el('span', 'diff-marker', row.marker), el('span', 'diff-text', row.text)),
+    );
+    return el(
+      'div',
+      'diff-patch-wrap',
+      diffFile.truncated ? el('p', 'order-warning', t('board.diff.patchTruncated')) : null,
+      lines.length === 0 ? el('p', 'muted', t('board.diff.patchEmpty')) : el('div', 'diff-patch', ...lines),
+    );
+  };
+
+  const diffTab = (): HTMLElement => {
+    const reload = button(t('board.diff.reload'));
+    reload.disabled = diffLoading || !api;
+    reload.addEventListener('click', () => void loadDiff());
+    if (diffError !== '') return el('div', 'order-tab', el('p', 'order-warning', t('board.diff.loadFailed', { error: diffError })), el('div', 'order-actions', reload));
+    if (!diff) return el('div', 'order-tab', el('p', 'muted', t('board.loading')));
+    const rows = statRows(diff).map((row) => {
+      const pick = button('', `${row.className}${row.path === diffPath ? ' active' : ''}`);
+      pick.append(
+        el('span', 'diff-file-path', row.label),
+        row.binary ? el('span', 'muted', t('board.diff.binary')) : el('span', 'diff-file-stat', el('span', 'diff-add-count', row.adds), ' ', el('span', 'diff-del-count', row.dels)),
+      );
+      pick.addEventListener('click', () => void loadDiffFile(row.path));
+      return el('li', '', pick);
+    });
+    return el(
+      'div',
+      'order-tab',
+      el('div', 'diff-head', el('b', '', diffSummary(diff)), reload),
+      diff.truncated ? el('p', 'order-warning', t('board.diff.truncated')) : null,
+      rows.length === 0 ? el('p', 'muted', t('board.diff.none')) : el('ul', 'diff-files', ...rows),
+      patchView(),
+    );
+  };
+
   function render(): void {
     const current = order();
     if (!current) {
@@ -216,12 +297,14 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
     close.setAttribute('aria-label', t('board.drawer.close'));
     close.addEventListener('click', onClose);
     const tabs = el('div', 'order-tabs');
-    for (const name of ['checks', 'points'] as const) {
+    const hasFolder = current.branch !== null || current.worktree !== null;
+    for (const name of hasFolder ? (['checks', 'points', 'diff'] as const) : (['checks', 'points'] as const)) {
       const tabButton = button(t(`board.tab.${name}`), `order-tab-button${tab === name ? ' active' : ''}`);
       tabButton.setAttribute('aria-selected', String(tab === name));
       tabButton.addEventListener('click', () => {
         tab = name;
-        render();
+        if (name === 'diff' && !diff && !diffLoading) void loadDiff();
+        else render();
       });
       tabs.append(tabButton);
     }
@@ -245,7 +328,7 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
       current.description ? el('p', 'order-description', current.description) : null,
       actions(current),
       tabs,
-      tab === 'checks' ? checksTab(current, now) : pointsTab(now),
+      tab === 'checks' ? checksTab(current, now) : tab === 'points' ? pointsTab(now) : diffTab(),
     ];
     panel.replaceChildren(...parts.filter((part): part is Node => part !== null));
   }
