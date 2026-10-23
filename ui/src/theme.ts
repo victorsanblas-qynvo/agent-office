@@ -6,9 +6,12 @@ export const THEME_KEY = 'agent-office.theme';
 export const THEME_OPTIONS: readonly ThemePref[] = ['auto', 'light', 'dark'];
 export const THEME_DEFAULT: ThemePref = 'auto';
 
-export function readTheme(): ThemePref {
-  const stored = readJson(THEME_KEY);
+export function normalizeTheme(stored: unknown): ThemePref {
   return THEME_OPTIONS.find((option) => option === stored) ?? THEME_DEFAULT;
+}
+
+export function readTheme(): ThemePref {
+  return normalizeTheme(readJson(THEME_KEY));
 }
 
 // Pure: the theme the panel shows, given the preference and whether the system prefers dark.
