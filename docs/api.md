@@ -85,6 +85,8 @@ Las llama la interfaz (`ui/src/api.ts`) con `X-Office-Panel`; el servidor MCP (`
 | `GET /api/replay/:sessionId` | key o panel | Query `compress=1` acorta los silencios de más de 60 s | `200` la grabación reconstruida de la sesión. `404 hub.api.noRecording`; `413 hub.api.recordingTooLarge` (más de 20 000 eventos). |
 | `GET /api/documents` | key o panel | | `200` los planes y skills con su estado. |
 | `GET /api/documents/content` | key o panel | Query `path` | `200` el contenido. `404 hub.api.documentNotFound`. |
+| `GET /api/documents/rounds` | key o panel | Query `path` | `200` las rondas del documento (commits de la carpeta de documentos, de la más nueva a la más vieja, hasta 50): `sha`, `at`, `subject` y `round` si el asunto la lleva. `404 hub.api.documentNotFound`. |
+| `GET /api/documents/rounds/diff` | key o panel | Query `path`, `from`, `to` (sha de 7 a 40 hex de rondas de ese documento) | `200` `{ path, from, to, patch, truncated }`, parche unificado de 400 KB como máximo. `400 hub.api.roundSha`, `404 hub.api.documentNotFound`. |
 | `POST /api/documents/discard` | key o panel | `{"path"}` | `200 {"ok":true}`. `400 hub.api.pathRequired`; `404 hub.api.planNotFound`; `409 hub.api.planClosed`. |
 | `POST /api/documents/restore` | key o panel | `{"path"}` | `200 {"ok":true}`. `400 hub.api.pathRequired`; `404 hub.api.planNotFound`; `409 hub.api.planNotDiscarded`. |
 | `POST /api/documents/decide` | key o panel | `{"path","decision":"ejecutar"\|"aparcar"\|"cerrar"}` | `200 {"ok":true}`. `400 hub.api.decisionFields`; `404 hub.api.planNotFound`; `409 hub.api.planBadState`, `hub.api.planBusy`, `hub.api.directorClosed`; `502 hub.api.directorUnreachable`. |

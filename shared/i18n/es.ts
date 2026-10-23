@@ -211,6 +211,8 @@ export const hubEs = {
   'hub.api.noRecording': 'No hay eventos guardados de esa sesión',
   'hub.api.recordingTooLarge': 'La sesión tiene demasiados eventos para reproducirla (más de {max})',
   'hub.api.documentNotFound': 'Documento no encontrado',
+  'hub.api.roundSha': 'Una de las rondas no existe en el historial de ese documento',
+  'hub.api.roundsFailed': 'No se pudo leer el historial del documento',
   'hub.api.pathRequired': 'path es obligatorio',
   'hub.api.planClosed': 'El plan se está ejecutando, está cerrado o descartado',
   'hub.api.planNotFound': 'Plan no encontrado',

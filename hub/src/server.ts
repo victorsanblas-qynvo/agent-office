@@ -515,6 +515,18 @@ export function createApp(opts: ServerOptions, holdRequest: (req: Request) => vo
     return content ? c.json(content) : c.json({ error: { key: 'hub.api.documentNotFound' } }, 404);
   });
 
+  app.get('/api/documents/rounds', requirePanel, async (c) => {
+    const result = await office.documentRounds(c.req.query('path') ?? '');
+    if (!result) return c.json({ error: { key: 'hub.api.documentNotFound' } }, 404);
+    return result.ok ? c.json(result.rounds) : c.json({ error: result.error }, result.status);
+  });
+
+  app.get('/api/documents/rounds/diff', requirePanel, async (c) => {
+    const result = await office.documentRoundDiff(c.req.query('path') ?? '', c.req.query('from') ?? '', c.req.query('to') ?? '');
+    if (!result) return c.json({ error: { key: 'hub.api.documentNotFound' } }, 404);
+    return result.ok ? c.json(result.diff) : c.json({ error: result.error }, result.status);
+  });
+
   app.post('/api/documents/discard', requirePanel, async (c) => {
     const path = text(record(await readJson(c)).path);
     if (!path) return c.json({ error: { key: 'hub.api.pathRequired' } }, 400);

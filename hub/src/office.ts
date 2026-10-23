@@ -13,6 +13,7 @@ import { ChatRoom, type ReadChatResult, type UserChatResult } from './chat-room'
 import { ContextDesk } from './context-desk';
 import { deliver } from './courier';
 import type { TextLang } from './render-text';
+import { documentRoundDiff, documentRounds, type RoundDiffResult, type RoundsResult } from './document-rounds';
 import { DeliveryDesk, type DiffFileResult, type DiffResult, type PrDraftResult } from './delivery-desk';
 import { DocumentDesk } from './documents';
 import { FloorDirtyError, FloorInUseError, purgeFloorData } from './floor-data';
@@ -716,6 +717,14 @@ export class Office {
 
   documentContent(path: string): DocumentContent | null {
     return this.docs.content(path);
+  }
+
+  documentRounds(path: string): Promise<RoundsResult | null> {
+    return this.docs.find(path) ? documentRounds(this.git, this.docsRoot(), path) : Promise.resolve(null);
+  }
+
+  documentRoundDiff(path: string, from: string, to: string): Promise<RoundDiffResult | null> {
+    return this.docs.find(path) ? documentRoundDiff(this.git, this.docsRoot(), path, from, to) : Promise.resolve(null);
   }
 
   discardDocument(path: string): Promise<DiscardResult> {

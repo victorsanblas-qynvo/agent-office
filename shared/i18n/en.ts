@@ -211,6 +211,8 @@ export const hubEn = {
   'hub.api.noRecording': 'There are no saved events for that session',
   'hub.api.recordingTooLarge': 'The session has too many events to replay (over {max})',
   'hub.api.documentNotFound': 'Document not found',
+  'hub.api.roundSha': 'One of the rounds is not in the history of that document',
+  'hub.api.roundsFailed': 'Could not read the document history',
   'hub.api.pathRequired': 'path is required',
   'hub.api.planClosed': 'The plan is running, closed or discarded',
   'hub.api.planNotFound': 'Plan not found',
