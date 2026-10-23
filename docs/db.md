@@ -315,9 +315,9 @@ Las tarjetas del Tablero (v5).
 | `floor`, `title`, `description` | | |
 | `status` | TEXT | `pendiente`, `en-curso`, `revision` o `hecho` |
 | `source` | TEXT | `director`, `plan`, `panel-lead` o `panel-director` |
-| `plan_slug`, `parent_id` | | plan y encargo padre (fases de un `PARTIR`) |
+| `plan_slug`, `parent_id` | | plan y encargo padre (fases de un `PARTIR`, o el encargo del que se bifurcó) |
 | `lead_session` | TEXT | sesión del jefe que lo lleva |
-| `branch`, `base_ref`, `base_sha` | TEXT | rama del encargo, rama base y su commit |
+| `branch`, `base_ref`, `base_sha` | TEXT | rama del encargo, rama base y el commit del que sale la carpeta (la punta de la base o, en una bifurcación, el punto de control, que se escribe antes de crearla) |
 | `base_stale` | INTEGER | 1 si no se pudo hacer `fetch` |
 | `worktree_path`, `worktree_state`, `setup_error` | TEXT | carpeta, estado (`creando`, `preparando`, `listo`, `error`, `retirado`) y error de preparación |
 | `review_state` | TEXT | `none` por defecto; reservado a la revisión automática, que no está hecha |
@@ -375,7 +375,7 @@ Commits que hace el hub en la rama de un encargo (v5).
 | `reason`, `label` | TEXT | por qué se hizo (`listo`, `comprobar`…) y el mensaje `encargo(<slug>): …` |
 | `created_at` | INTEGER | |
 
-Escribe: `checkpoints.ts`. No caduca; se borra con la planta. Índice: `checkpoints_order`.
+Escribe: `checkpoints.ts`. No caduca; se borra con la planta. Índice: `checkpoints_order`. Restaurar un punto (`checkpoint-restore.ts`) solo añade el punto de lo que no estuviera guardado; el `HEAD` anterior queda en la referencia `refs/office/<slug>/before-reset-<ts>` del repositorio de la planta.
 
 ## order_comments
 

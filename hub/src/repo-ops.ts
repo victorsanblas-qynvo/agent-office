@@ -44,6 +44,22 @@ function sha(value: string): string {
   return value;
 }
 
+const SAFETY_REF = /^refs\/office\/([a-z0-9][a-z0-9-]{0,60})\/before-reset-\d{1,16}$/;
+
+// The ref a restore leaves at the HEAD it replaced, so the reset can be undone.
+export function safetyRef(slug: string, ts: number): string {
+  return `refs/office/${slug}/before-reset-${Math.trunc(ts)}`;
+}
+
+export function validSafetyRef(value: unknown, slug: string): value is string {
+  return typeof value === 'string' && SAFETY_REF.exec(value)?.[1] === slug;
+}
+
+function safety(value: string): string {
+  if (!SAFETY_REF.test(value)) throw new RepoOpError(`ref no válida: ${value}`);
+  return value;
+}
+
 function writable(branch: string): string {
   if (!validOrderBranch(branch)) throw new RepoOpError(`solo se escribe en ramas encargo/<slug>: ${branch}`);
   return branch;
@@ -102,6 +118,13 @@ export const gitOps = {
   branchDeleteAt: (branch: string, tip: string): string[] => ['update-ref', '-d', `refs/heads/${writable(branch)}`, sha(tip)],
   // Creates the branch only while no branch of that name exists (the zero old value).
   branchCreateAt: (branch: string, tip: string): string[] => ['update-ref', `refs/heads/${writable(branch)}`, sha(tip), '0'.repeat(40)],
+  refTip: (name: string): string[] => ['rev-parse', '--verify', '--quiet', `${safety(name)}^{commit}`],
+  // Creates the ref only while no ref of that name exists.
+  refCreate: (name: string, tip: string): string[] => ['update-ref', safety(name), sha(tip), '0'.repeat(40)],
+  symbolicHead: (): string[] => ['symbolic-ref', '--quiet', 'HEAD'],
+  resetHard: (commit: string): string[] => ['reset', '--quiet', '--hard', sha(commit)],
+  // Untracked files and folders go; ignored ones (node_modules, .env) stay.
+  cleanUntracked: (): string[] => ['clean', '--quiet', '-f', '-d'],
   commitExists: (commit: string): string[] => ['rev-parse', '--verify', '--quiet', `${sha(commit)}^{commit}`],
   branchTip: (branch: string): string[] => ['rev-parse', '--verify', '--quiet', `refs/heads/${ref(branch, 'rama')}^{commit}`],
   branchExists: (branch: string): string[] => ['rev-parse', '--verify', '--quiet', `refs/heads/${ref(branch, 'rama')}`],

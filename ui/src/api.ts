@@ -227,6 +227,18 @@ export class OfficeApi {
     return this.get(`/api/board/orders/${id}/checkpoints`);
   }
 
+  resetToCheckpoint(id: number, checkpointId: number): Promise<ApiData<{ ok: true; safetyRef: string; head: string }>> {
+    return this.send('POST', `/api/board/orders/${id}/checkpoints/${checkpointId}/reset`, {});
+  }
+
+  undoCheckpointReset(id: number, safetyRef: string): Promise<ApiData<{ ok: true; safetyRef: string; head: string }>> {
+    return this.send('POST', `/api/board/orders/${id}/checkpoints/undo-reset`, { safetyRef });
+  }
+
+  forkFromCheckpoint(id: number, checkpointId: number): Promise<ApiData<{ order: OrderView }>> {
+    return this.send('POST', `/api/board/orders/${id}/checkpoints/${checkpointId}/fork`, { via: 'lead' });
+  }
+
   orderDiff(id: number): Promise<ApiData<OrderDiff>> {
     return this.get(`/api/board/orders/${id}/diff`);
   }

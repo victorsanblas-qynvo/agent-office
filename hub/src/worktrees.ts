@@ -115,9 +115,12 @@ export class WorktreeDesk {
       }
     }
     if (!sha) return { ok: false, error: 'base', detail: base };
+    // A fork leaves from a checkpoint of another order, not from the tip of its base.
+    const start = order.base_sha ?? sha;
+    if (start !== sha && (await run(git, repo, () => gitOps.commitExists(start))).code !== 0) return { ok: false, error: 'base', detail: start };
     if ((await run(git, repo, () => gitOps.branchExists(branch))).code === 0) return { ok: false, error: 'exists', detail: branch };
     mkdirSync(dirname(path), { recursive: true });
-    const added = await run(git, repo, () => gitOps.worktreeAdd(branch, path, sha));
+    const added = await run(git, repo, () => gitOps.worktreeAdd(branch, path, start));
     if (added.code !== 0) return { ok: false, error: 'git', detail: added.stderr.trim() };
     await this.markAndExclude(repo, path);
     await this.copyIncludes(repo, path);
@@ -127,7 +130,7 @@ export class WorktreeDesk {
     const row = store.update(order.id, {
       branch,
       base_ref: baseRef,
-      base_sha: sha,
+      base_sha: start,
       base_stale: stale ? 1 : 0,
       worktree_path: path,
       worktree_state: state,

@@ -16,6 +16,7 @@ import { editorLink } from './editor-link';
 import { readEditor } from '../prefs';
 import { REVIEW_MAX_BODY } from '../../../shared/review-message';
 import { openPrDraft } from './pr-draft';
+import { canRestore, pointNumbers } from './points-model';
 import { openReviewDialog } from './review-dialog';
 import {
   addDraft,
@@ -101,14 +102,16 @@ function runBlock(run: CheckRunView, now: number, first: boolean, flaky: Readonl
   return block;
 }
 
-function pointRow(point: CheckpointView, now: number): HTMLElement {
+function pointRow(point: CheckpointView, n: number | undefined, now: number, actions: HTMLElement | null): HTMLElement {
   return el(
     'li',
     'point-row',
+    n !== undefined ? el('span', 'muted', `#${n}`) : null,
     el('code', '', point.sha.slice(0, 7)),
     el('span', '', point.label),
     el('span', 'chip', point.reason),
     el('span', 'muted', `${clockTime(point.createdAt)} · `, ageNode(point.createdAt, now, '')),
+    actions,
   );
 }
 
@@ -129,6 +132,7 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
   let runs: CheckRunView[] = [];
   let points: CheckpointView[] = [];
   let skipped: SkippedFile[] = [];
+  let restored: { safetyRef: string; n: number } | null = null;
   let loaded = false;
   let error = '';
   let gone = false;
@@ -338,8 +342,55 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
     return el('div', 'order-tab', warning, failure, body);
   };
 
-  const pointsTab = (now: number): HTMLElement => {
-    const list = points.length > 0 ? el('ul', 'points-list', ...points.map((p) => pointRow(p, now))) : el('p', 'muted', t(loaded ? 'board.points.none' : 'board.loading'));
+  const restorePoint = (point: CheckpointView, n: number): void => {
+    if (!api || !window.confirm(t('board.points.restoreAsk', { n, sha: point.sha.slice(0, 7) }))) return;
+    void act(async () => {
+      const result = await api.resetToCheckpoint(orderId, point.id);
+      if (result.ok) restored = { safetyRef: result.data.safetyRef, n };
+      await reload();
+      return result.ok ? { ok: true } : result;
+    }, t('board.points.restored', { n }));
+  };
+
+  const undoRestore = (): void => {
+    const last = restored;
+    if (!api || !last) return;
+    void act(async () => {
+      const result = await api.undoCheckpointReset(orderId, last.safetyRef);
+      if (result.ok) restored = null;
+      await reload();
+      return result.ok ? { ok: true } : result;
+    }, t('board.points.undone'));
+  };
+
+  const forkPoint = (point: CheckpointView, n: number): void => {
+    if (!api || !window.confirm(t('board.points.forkAsk', { n, sha: point.sha.slice(0, 7) }))) return;
+    void (async () => {
+      const result = await api.forkFromCheckpoint(orderId, point.id);
+      if (!result.ok) store.toast(result.message, 'error');
+      else store.toast(t('board.points.forked', { title: result.data.order.title }), 'ok');
+    })();
+  };
+
+  const pointActions = (current: OrderView, point: CheckpointView, n: number | undefined): HTMLElement | null => {
+    if (!api || n === undefined) return null;
+    const restore = button(t('board.points.restore'), '', canRestore(current) ? '' : t('board.points.restoreBlocked'));
+    restore.disabled = !canRestore(current);
+    restore.addEventListener('click', () => restorePoint(point, n));
+    const fork = button(t('board.points.fork'));
+    fork.addEventListener('click', () => forkPoint(point, n));
+    return el('span', 'point-actions', restore, fork);
+  };
+
+  const pointsTab = (current: OrderView, now: number): HTMLElement => {
+    const numbers = pointNumbers(points);
+    const list =
+      points.length > 0
+        ? el('ul', 'points-list', ...points.map((p) => pointRow(p, numbers.get(p.id), now, pointActions(current, p, numbers.get(p.id)))))
+        : el('p', 'muted', t(loaded ? 'board.points.none' : 'board.loading'));
+    const undo = restored ? button(t('board.points.undo')) : null;
+    undo?.addEventListener('click', undoRestore);
+    const banner = restored ? el('div', 'order-warning points-restored', el('span', '', t('board.points.undoBanner', { n: restored.n, ref: restored.safetyRef })), undo) : null;
     const left =
       skipped.length > 0
         ? el(
@@ -349,7 +400,7 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
             el('ul', '', ...skipped.map((file) => el('li', '', el('code', '', file.path), ' ', el('span', 'muted', `${kilobytes(file.size)} · ${clockTime(file.mtime)}`)))),
           )
         : null;
-    return el('div', 'order-tab', list, left);
+    return el('div', 'order-tab', banner, list, left);
   };
 
   const activityTab = (current: OrderView, now: number): HTMLElement => {
@@ -589,6 +640,7 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
       runs,
       points,
       skipped,
+      restored,
       activityHits,
       activityLoaded,
       activityLoading,
@@ -649,7 +701,7 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
       current.description ? el('p', 'order-description', current.description) : null,
       actions(current),
       tabs,
-      tab === 'checks' ? checksTab(current, now) : tab === 'points' ? pointsTab(now) : tab === 'activity' ? activityTab(current, now) : diffTab(current),
+      tab === 'checks' ? checksTab(current, now) : tab === 'points' ? pointsTab(current, now) : tab === 'activity' ? activityTab(current, now) : diffTab(current),
     ];
     const typing = document.activeElement instanceof HTMLTextAreaElement && panel.contains(document.activeElement) ? document.activeElement : null;
     panel.replaceChildren(...parts.filter((part): part is Node => part !== null));

@@ -124,7 +124,16 @@ export class ChecksDesk {
 
   // One start of an order at a time: two at once would commit in the same folder and race for its index.
   start(orderId: number, trigger: CheckTrigger): Promise<StartResult> {
-    return this.starts.run(orderId.toString(), () => this.startNow(orderId, trigger));
+    return this.exclusive(orderId, () => this.startNow(orderId, trigger));
+  }
+
+  // Other git work in the folder of an order (a restore) waits for the same turn as its starts.
+  exclusive<T>(orderId: number, task: () => Promise<T>): Promise<T> {
+    return this.starts.run(orderId.toString(), task);
+  }
+
+  isRunning(orderId: number): boolean {
+    return this.active.has(orderId);
   }
 
   private async startNow(orderId: number, trigger: CheckTrigger): Promise<StartResult> {
