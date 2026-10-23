@@ -1,6 +1,7 @@
 import type { Database } from 'bun:sqlite';
-import { existsSync, lstatSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, lstatSync, readlinkSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { isInside, realPath } from './floors';
 import { remainingDirty } from './gate';
 import { matchesAny } from './glob';
 import { gitSync as realGitSync, type GitResult, type GitRunner } from './git';
@@ -158,7 +159,19 @@ function leftOut(root: string, file: string, maxBytes: number, globs: readonly s
   } catch {
     return null;
   }
+  if (stat.isSymbolicLink() && pointsOutside(root, file)) return { path: file, size: stat.size, mtime: Math.floor(stat.mtimeMs) };
   if (!stat.isFile()) return null;
   if (stat.size <= maxBytes && !matchesAny(globs, file)) return null;
   return { path: file, size: stat.size, mtime: Math.floor(stat.mtimeMs) };
+}
+
+function pointsOutside(root: string, file: string): boolean {
+  const link = join(root, file);
+  let target: string;
+  try {
+    target = resolve(dirname(link), readlinkSync(link));
+  } catch {
+    return false;
+  }
+  return !isInside(target, root) && !isInside(target, realPath(root));
 }

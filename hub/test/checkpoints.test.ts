@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { chmodSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, rmSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseSkipped, statusPaths } from '../src/checkpoints';
 import { deskRig, type DeskRig } from './desk-rig';
@@ -84,6 +84,20 @@ describe('commit', () => {
     const future = (Date.now() + 60_000) / 1000;
     utimesSync(join(rig.path, 'debug.log'), future, future);
     expect(rig.checkpoints.dirtyFiles(rig.order)).toEqual(['debug.log']);
+  });
+
+  test('a symlink that points outside the folder stays out and is remembered, one that points inside is committed', async () => {
+    rig = deskRig();
+    const outside = join(rig.root, 'deps');
+    mkdirSync(outside);
+    write(rig, '.gitignore', 'node_modules/\n');
+    symlinkSync(outside, join(rig.path, 'node_modules'), 'dir');
+    symlinkSync('README.md', join(rig.path, 'LEEME.md'));
+    const result = await rig.checkpoints.commit(rig.order, 'listo', 'listo');
+    expect(result.committed).toBe(true);
+    expect(result.skipped.map((file) => file.path)).toEqual(['node_modules']);
+    expect(git(rig.path, 'ls-tree', '-r', '--name-only', 'HEAD').split('\n').sort()).toEqual(['.gitignore', 'LEEME.md', 'README.md']);
+    expect(rig.checkpoints.dirtyFiles(rig.order)).toEqual([]);
   });
 
   test('a commit hook that fails leaves the changes, reports it and says so', async () => {

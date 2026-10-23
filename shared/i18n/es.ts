@@ -266,7 +266,7 @@ export const hubEs = {
   'hub.api.chatChannelUnknown': 'Ese canal no existe',
   'hub.api.chatChannelForbidden': 'Solo se puede escribir en el canal de la propia planta o en #global',
   'hub.api.chatSessionUnknown': 'La sesión que ejecuta el script no está abierta en esa planta',
-  'hub.api.relaunchBusy': 'El jefe o su equipo están trabajando: espera a que queden libres',
+  'hub.api.relaunchBusy': 'El jefe o su equipo están trabajando, o esa ventana se acaba de relanzar o ya tiene una sesión más nueva: espera un momento',
   'hub.api.relaunchNoWindow': 'No hay una ventana de tmux con el nombre de esta sesión',
   'hub.api.relaunchNoTmux': 'No hay una sesión de tmux llamada agent-office: abre las sesiones con tmux para poder relanzarlas',
   'hub.api.relaunchNoScript': 'Esta sesión no tiene lanzador en la oficina',

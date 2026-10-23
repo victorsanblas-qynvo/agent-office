@@ -20,6 +20,8 @@ import { RULES_NOTE } from './office-texts';
 import { canonicalRole, isOfficeRole } from './scope';
 import type { SessionBook } from './session-book';
 
+const RELAUNCH_COOLDOWN_MS = 30_000;
+
 export type RulesDeskOpts = {
   sql: Sql;
   now: () => number;
@@ -36,6 +38,8 @@ export class RulesDesk {
   private readonly tmux: TmuxFn;
   private readonly hashes = new Map<string, { mtime: number; size: number; hash: string | null }>();
   private lastLaunchCheck = 0;
+  private readonly relaunching = new Set<string>();
+  private readonly relaunchedAt = new Map<string, number>();
 
   constructor(private readonly opts: RulesDeskOpts) {
     this.tmux = opts.tmux ?? runTmux;
@@ -195,6 +199,23 @@ export class RulesDesk {
     if (!this.opts.free(session)) return 'busy';
     if (resume && !SAFE_ID.test(sessionId)) return 'failed';
     const name = session.name ?? '';
+    if (this.relaunching.has(name) || this.opts.now() - (this.relaunchedAt.get(name) ?? -Infinity) < RELAUNCH_COOLDOWN_MS || this.hasNewer(session)) return 'busy';
+    this.relaunching.add(name);
+    try {
+      return await this.respawn(sessionId, name, script, resume);
+    } finally {
+      this.relaunching.delete(name);
+    }
+  }
+
+  private hasNewer(session: SessionRuntime): boolean {
+    for (const other of this.opts.book.sessions.values()) {
+      if (other.sessionId !== session.sessionId && other.endedAt === null && other.name === session.name && other.startedAt > session.startedAt) return true;
+    }
+    return false;
+  }
+
+  private async respawn(sessionId: string, name: string, script: string, resume: boolean): Promise<RelaunchResult> {
     let windows: { code: number; stdout: string };
     try {
       windows = await this.tmux(['list-windows', '-t', TMUX_SESSION, '-F', '#{window_name}']);
@@ -210,6 +231,7 @@ export class RulesDesk {
     } catch {
       return 'failed';
     }
+    this.relaunchedAt.set(name, this.opts.now());
     this.opts.bus.pushActivity({ ts: this.opts.now(), agentKey: sessionId, event: 'Relaunch', tool: null, state: null, summary: { key: 'hub.act.relaunched', params: { who: name } } });
     return 'ok';
   }

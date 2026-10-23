@@ -126,9 +126,10 @@ export class WorktreeDesk {
     mkdirSync(dirname(path), { recursive: true });
     const added = await run(git, repo, () => (tip ? gitOps.worktreeAddExisting(branch, path) : gitOps.worktreeAdd(branch, path, sha)));
     if (added.code !== 0) return { ok: false, error: 'git', detail: added.stderr.trim() };
-    await this.markAndExclude(repo, path);
+    const linked = this.opts.config().floors[order.floor]?.linkDirs ?? [];
+    await this.markAndExclude(repo, path, linked);
     await this.copyIncludes(repo, path);
-    this.linkDirs(repo, path, this.opts.config().floors[order.floor]?.linkDirs ?? []);
+    this.linkDirs(repo, path, linked);
     const setup = setupOf(this.opts.config().floors[order.floor] ?? { path: repo, stack: 'generic' });
     const state: WorktreeState = setup ? 'preparando' : 'listo';
     const row = store.update(order.id, {
@@ -183,7 +184,7 @@ export class WorktreeDesk {
     return result.code === 0 && sha ? sha : null;
   }
 
-  private async markAndExclude(repo: string, path: string): Promise<void> {
+  private async markAndExclude(repo: string, path: string, linked: readonly string[]): Promise<void> {
     const dir = await run(this.opts.git, path, () => gitOps.gitDir());
     const adminDir = dir.stdout.trim();
     if (dir.code === 0 && adminDir) {
@@ -199,9 +200,11 @@ export class WorktreeDesk {
     const exclude = join(commonDir, 'info', 'exclude');
     try {
       const current = existsSync(exclude) ? readFileSync(exclude, 'utf8') : '';
-      if (current.split('\n').some((line) => line.trim() === EXCLUDE_LINE)) return;
+      const present = new Set(current.split('\n').map((line) => line.trim()));
+      const missing = [...new Set([EXCLUDE_LINE, ...linked.map((dir) => `/${dir}`)])].filter((line) => !present.has(line));
+      if (missing.length === 0) return;
       mkdirSync(dirname(exclude), { recursive: true });
-      appendFileSync(exclude, `${current === '' || current.endsWith('\n') ? '' : '\n'}${EXCLUDE_LINE}\n`);
+      appendFileSync(exclude, `${current === '' || current.endsWith('\n') ? '' : '\n'}${missing.join('\n')}\n`);
     } catch {
       // The folder shows as untracked in the main copy; nothing breaks.
     }
@@ -495,10 +498,10 @@ export class WorktreeDesk {
       const deleted = await run(this.opts.git, repo, () => (judged ? gitOps.branchDeleteAt(branch, tip) : gitOps.branchDelete(branch, false)));
       if (deleted.code !== 0) {
         if (!judged) return 'failed';
-        // The branch took a commit after it was judged: the folder is gone either way, the branch stays where it went.
+        // The folder is gone either way; a branch git could not delete, or that took a commit after it was judged, stays.
         const current = await this.branchTip(repo, branch);
-        if (current === tip) return 'failed';
         this.retire(orderId, path);
+        if (current === tip) return 'failed';
         if (!current) return 'ok';
         this.note({ key: 'hub.act.branchMoved', params: { branch, sha: current } });
         return 'branch-moved';
