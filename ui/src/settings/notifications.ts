@@ -2,7 +2,8 @@ import { button, el } from '../dom';
 import { t, type MessageKey } from '../i18n';
 import { NOTIFY_EVENTS, notificationsSupported, type Notifier } from '../notify';
 import { FINISHED_MODES, readFinishedMode, writeFinishedMode, type FinishedMode } from '../panel/finished';
-import { BOARD_STALE_OPTIONS, EDITOR_OPTIONS, CONTEXT_WARN_OPTIONS, HUNG_OPTIONS, REMIND_OPTIONS, inQuietHours, isClock, readBoardStaleHours, readEditor, writeEditor, readContextWarn, readHungMinutes, readQuietHours, readRemindMinutes, writeBoardStaleHours, writeContextWarn, writeHungMinutes, writeQuietHours, writeRemindMinutes } from '../prefs';
+import { floorLabel } from '../labels';
+import { BOARD_STALE_OPTIONS, EDITOR_OPTIONS, CONTEXT_WARN_OPTIONS, HUNG_OPTIONS, REMIND_OPTIONS, inQuietHours, isClock, readBoardStaleHours, readEditor, writeEditor, readContextWarn, readHungMinutes, readMutedFloors, readQuietHours, readRemindMinutes, writeBoardStaleHours, writeContextWarn, writeHungMinutes, writeMutedFloors, writeQuietHours, writeRemindMinutes } from '../prefs';
 import { toggleRow } from './settings';
 
 const HOLD_EVENTS: ReadonlySet<string> = new Set(['permission', 'question']);
@@ -140,6 +141,23 @@ export function mountNotifySection(notifier: Notifier): HTMLElement {
     el('span', 'setting-range-pair', quietFrom, quietTo),
   );
 
+  const muteRows = notifier.floors.map((floor) => {
+    const row = toggleRow(floorLabel(floor), '');
+    row.input.checked = readMutedFloors().includes(floor.slug);
+    row.input.addEventListener('change', () => {
+      const rest = readMutedFloors().filter((slug) => slug !== floor.slug);
+      writeMutedFloors(row.input.checked ? [...rest, floor.slug] : rest);
+    });
+    return row.root;
+  });
+  const muteBlock = el(
+    'div',
+    'notify-mute',
+    el('p', 'setting-label', t('settings.notifications.mute.title')),
+    el('p', 'settings-hint muted', t('settings.notifications.mute.hint')),
+    ...(muteRows.length > 0 ? muteRows : [el('p', 'settings-hint muted', t('settings.notifications.mute.none'))]),
+  );
+
   const events = NOTIFY_EVENTS.map((event) => {
     const row = toggleRow(t(`settings.notifications.event.${event}`), HOLD_EVENTS.has(event) ? t('settings.notifications.holdHint') : '');
     row.input.checked = notifier.preferences.events[event];
@@ -193,6 +211,7 @@ export function mountNotifySection(notifier: Notifier): HTMLElement {
     quietRow,
     quietPermissions.root,
     el('div', 'notify-events', ...events.map((row) => row.root)),
+    muteBlock,
     el('div', 'notify-actions', test),
   );
 }

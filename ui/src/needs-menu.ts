@@ -1,7 +1,8 @@
 import { button, el } from './dom';
 import { t } from './i18n';
-import { NEEDS_TOPICS, activeNeeds, canSnooze, loadSnoozes, menuStart, menuStep, needLabel, needsOf, pruneSnoozes, saveSnoozes, shouldPruneSnoozes, snoozeNeed, snoozedNeeds, triggerSignature, wakeNeed, type Need } from './needs';
-import type { Snoozes } from './prefs';
+import { NEEDS_TOPICS, activeNeeds, canSnooze, filterByFloor, floorChips, getFloorFilter, liveFloorFilter, loadSnoozes, menuStart, menuStep, needLabel, needsOf, pruneSnoozes, saveSnoozes, shouldPruneSnoozes, snoozeNeed, snoozedNeeds, triggerSignature, setFloorFilter, wakeNeed, type FloorChip, type Need } from './needs';
+import { floorLabel } from './labels';
+import { readMutedFloors, type Snoozes } from './prefs';
 import type { Store } from './store';
 import { relativeTime } from './time';
 
@@ -68,6 +69,33 @@ export function mountNeedsMenu(store: Store, onPick: (need: Need) => void): Need
     return group;
   };
 
+  const chipBar = (chips: readonly FloorChip[], filter: string | null): { root: HTMLElement; stops: HTMLElement[] } => {
+    const root = el('div', 'needs-floors');
+    root.setAttribute('role', 'group');
+    root.setAttribute('aria-label', t('needs.filter.label'));
+    const nodes = chips.map((chip) => {
+      const floor = chip.floor === null ? undefined : store.floorBySlug(chip.floor);
+      const name = chip.floor === null ? t('needs.filter.all') : floor ? floorLabel(floor) : chip.floor;
+      const node = button('', `needs-floor${chip.floor === filter ? ' active' : ''}`);
+      node.setAttribute('aria-pressed', String(chip.floor === filter));
+      node.append(name, ' ', el('b', 'needs-floor-count', String(chip.count)));
+      if (chip.muted) {
+        const icon = el('span', 'needs-floor-muted', '\u{1F515}');
+        icon.title = t('needs.filter.muted');
+        node.append(' ', icon);
+      }
+      node.addEventListener('click', () => {
+        setFloorFilter(chip.floor);
+        signature = '';
+        render();
+        if (isOpen()) menu.querySelector<HTMLElement>('.needs-floor.active')?.focus();
+      });
+      return node;
+    });
+    root.append(...nodes);
+    return { root, stops: nodes };
+  };
+
   const close = (): boolean => {
     if (!isOpen()) return false;
     menu.hidden = true;
@@ -82,6 +110,8 @@ export function mountNeedsMenu(store: Store, onPick: (need: Need) => void): Need
   };
 
   const open = (): void => {
+    signature = '';
+    render();
     if (menuStart(items.length, toggle ? 1 : 0) === null) return;
     paintAges();
     menu.hidden = false;
@@ -100,19 +130,28 @@ export function mountNeedsMenu(store: Store, onPick: (need: Need) => void): Need
         saveSnoozes(store, snoozes);
       }
     }
-    const needs = activeNeeds(all, snoozes, now);
-    const later = snoozedNeeds(all, snoozes, now);
-    const nextFace = triggerSignature(store.lang, needs.length, all.length);
+    const queue = activeNeeds(all, snoozes, now);
+    const muted = readMutedFloors();
+    const chips = floorChips(queue, muted);
+    const filter = liveFloorFilter(queue, getFloorFilter());
+    const needs = filterByFloor(queue, filter);
+    const later = filterByFloor(snoozedNeeds(all, snoozes, now), filter);
+    const nextFace = triggerSignature(store.lang, needs.length, all.length, filter);
     if (nextFace !== face) {
       face = nextFace;
       count.textContent = String(needs.length);
       trigger.disabled = all.length === 0;
       trigger.classList.toggle('has-pending', needs.length > 0);
       trigger.replaceChildren(t('needs.button'), ' ', count);
+      if (filter !== null) {
+        const mark = el('span', 'pending-filter', '\u25BD');
+        mark.title = t('needs.filter.on');
+        trigger.append(mark);
+      }
       trigger.title = t('needs.title');
       menu.setAttribute('aria-label', t('needs.title'));
     }
-    const next = JSON.stringify([store.lang, snoozedOpen, needs.map((need) => [need.id, need.kind, need.instance, need.name]), later.map((need) => [need.id, need.kind, need.instance, need.name])]);
+    const next = JSON.stringify([store.lang, snoozedOpen, filter, muted, chips.map((chip) => [chip.floor, chip.count]), needs.map((need) => [need.id, need.kind, need.instance, need.name]), later.map((need) => [need.id, need.kind, need.instance, need.name])]);
     if (all.length === 0 && isOpen()) close();
     if (next === signature) return;
     signature = next;
@@ -129,6 +168,8 @@ export function mountNeedsMenu(store: Store, onPick: (need: Need) => void): Need
     });
     stops = items.map((item) => item.node);
     toggle = null;
+    const bar = chips.length > 1 ? chipBar(chips, filter) : null;
+    if (bar) stops.unshift(...bar.stops);
     const rows = items.map((item) => (canSnooze(item.need) ? el('div', 'needs-row', item.node, snoozeControl(item.need)) : item.node));
     if (later.length > 0) {
       const shown = button(t('needs.snoozed', { n: later.length }), 'needs-snoozed-toggle muted');
@@ -151,7 +192,7 @@ export function mountNeedsMenu(store: Store, onPick: (need: Need) => void): Need
         }
       }
     }
-    menu.replaceChildren(...rows);
+    menu.replaceChildren(...(bar ? [bar.root] : []), ...rows);
     paintAges();
   };
 

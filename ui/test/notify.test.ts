@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
 import { applyLang, t } from '../src/i18n/index';
-import { QUIET_KEY } from '../src/prefs';
+import { MUTED_FLOORS_KEY, QUIET_KEY } from '../src/prefs';
 import { NOTIFY_EVENTS, Notifier, checkTransitionNotice, SEEN_LIMIT, type NotifyPrefs } from '../src/notify';
 import type { Store } from '../src/store';
 import type { AgentView, CheckRunView, DocumentView, OrderView, QuestionView, ServerMessage, Snapshot } from '../src/types';
@@ -117,6 +117,32 @@ describe('desktop notifier', () => {
     notifier.observe(snapshot({ questions: [question('q1')] }));
     expect(FakeNotification.created).toHaveLength(1);
     expect(FakeNotification.created[0]?.options.tag).toBe('question:q1');
+  });
+
+  describe('muted floors', () => {
+    const mute = (...floors: string[]): void => {
+      storage.set(MUTED_FLOORS_KEY, JSON.stringify(floors));
+    };
+
+    test('drop the notice of a muted floor and keep the others', () => {
+      mute('mobile');
+      notifier.observe({ type: 'question', data: question('q1') });
+      expect(FakeNotification.created).toHaveLength(0);
+      notifier.observe({ type: 'question', data: question('q2', { floor: 'backend' }) });
+      expect(FakeNotification.created).toHaveLength(1);
+    });
+
+    test('let a permission of a muted floor through', () => {
+      mute('mobile');
+      notifier.observe({ type: 'question', data: question('p1', { kind: 'permission' }) });
+      expect(FakeNotification.created).toHaveLength(1);
+    });
+
+    test('drop a blocked message from an agent on a muted floor', () => {
+      mute('mobile');
+      notifier.observe({ type: 'message', data: { id: 9, ts: 1, fromKey: LEAD, toName: 'x', toKey: null, text: 'BLOQUEADO: falta la key', floor: 'mobile' } as never });
+      expect(FakeNotification.created).toHaveLength(0);
+    });
   });
 
   describe('quiet hours', () => {

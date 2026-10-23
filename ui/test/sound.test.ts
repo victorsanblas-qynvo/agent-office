@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
 import { MERGE_MS, MIN_GAP_MS, SOUND_EVENTS, SOUND_KEY, SoundDesk, WebAudioEngine, clampVolume, notesOf, readSoundPrefs, testSequence, type Note, type ToneEngine } from '../src/sound';
 import type { AgentView, MessageView, OrderView, QuestionView, ServerMessage, Snapshot } from '../src/types';
-import { QUIET_KEY } from '../src/prefs';
+import { MUTED_FLOORS_KEY, QUIET_KEY } from '../src/prefs';
 import { agent, order, question } from './fixtures';
 
 const storage = new Map<string, string>();
@@ -328,5 +328,31 @@ describe('the WebAudio engine', () => {
       throw new Error('blocked');
     });
     broken.play(notesOf('error'), 1);
+  });
+});
+
+describe('muted floors', () => {
+  const mute = (...floors: string[]): void => {
+    storage.set(MUTED_FLOORS_KEY, JSON.stringify(floors));
+  };
+
+  test('a muted floor makes no sound and another floor does', () => {
+    mute('mobile');
+    desk.observe({ type: 'question', data: question('q1', LEAD, 1, { floor: 'mobile' }) as QuestionView });
+    expect(engine.played).toHaveLength(0);
+    desk.observe({ type: 'question', data: question('q2', LEAD, 2, { floor: 'backend' }) as QuestionView });
+    expect(engine.played).toHaveLength(1);
+  });
+
+  test('a permission of a muted floor still sounds', () => {
+    mute('mobile');
+    desk.observe({ type: 'question', data: question('p1', LEAD, 1, { kind: 'permission', floor: 'mobile' }) as QuestionView });
+    expect(engine.played).toHaveLength(1);
+  });
+
+  test('a stalled agent of a muted floor is silent', () => {
+    mute('mobile');
+    desk.observe({ type: 'agent', data: agent(LEAD, { floor: 'mobile', stalledSince: 5 }) });
+    expect(engine.played).toHaveLength(0);
   });
 });
