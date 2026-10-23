@@ -98,6 +98,8 @@ El hub guarda cada línea de actividad (`activity_log`) y mantiene un índice de
 
 **Reproducir sesión** en el Historial abre `?replay=/api/replay/<sesión>&compress=1` (conserva `view=3d`). El hub reconstruye la sesión desde los eventos guardados con una `Office` en memoria, sin guardia, documentos, medidor, sincronización, chat ni git; las plantas observadas, que no guardan contenido, salen en gris con lo que sí se guarda (herramienta y fichero). Los silencios de más de 60 s duran 5 s, y una sesión de más de 20 000 eventos no se reproduce (413). En un replay, el buscador de la línea de tiempo filtra en el navegador lo que la grabación ya entregó.
 
+La barra de progreso se puede pulsar o arrastrar para saltar a otro punto (muestra el tiempo bajo el cursor), y las flechas ← y → saltan 10 s (con Mayús, 60 s). **Exportar** descarga la grabación cargada como `agent-office-replay-AAAAMMDD-HHMM.json` e **Importar** carga un fichero así (hasta 50 MB y 20 000 eventos) sin escribir nada en el hub.
+
 ## Plantas, director y departamentos
 
 | | Observada | Gestionada |
