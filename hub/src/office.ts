@@ -75,6 +75,7 @@ import { StallDesk } from './stall-desk';
 import { DONE_PREFIX, EDIT_TOOLS, classify, record, text, type Classified } from './state-machine';
 import { SyncDesk, type SyncResult } from './sync';
 import { digest, weekDigest } from './digest';
+import { timeline } from './timeline';
 import { localDay, planDocSlugIn, planSlugIn } from './tokens';
 import type {
   ActivityView,
@@ -99,6 +100,7 @@ import type {
   FlakyCheckView,
   OfficeDigest,
   WeekDigest,
+  AgentTimeline,
   OrderCommentView,
   OrderStatus,
   PlanDecision,
@@ -766,6 +768,10 @@ export class Office {
   dayDigest(day: string | null): OfficeDigest | 'bad-day' | 'future-day' {
     const now = this.now();
     return digest(this.opts.db, day ?? localDay(now), now);
+  }
+
+  agentTimeline(hours: number): AgentTimeline[] {
+    return timeline(this.opts.db, hours, this.now());
   }
 
   rangeDigest(from: string, to: string): WeekDigest | 'bad-range' {
