@@ -2,7 +2,7 @@ import { button, el } from '../dom';
 import { t, type MessageKey } from '../i18n';
 import { NOTIFY_EVENTS, notificationsSupported, type Notifier } from '../notify';
 import { FINISHED_MODES, readFinishedMode, writeFinishedMode, type FinishedMode } from '../panel/finished';
-import { BOARD_STALE_OPTIONS, HUNG_OPTIONS, REMIND_OPTIONS, inQuietHours, isClock, readBoardStaleHours, readHungMinutes, readQuietHours, readRemindMinutes, writeBoardStaleHours, writeHungMinutes, writeQuietHours, writeRemindMinutes } from '../prefs';
+import { BOARD_STALE_OPTIONS, CONTEXT_WARN_OPTIONS, HUNG_OPTIONS, REMIND_OPTIONS, inQuietHours, isClock, readBoardStaleHours, readContextWarn, readHungMinutes, readQuietHours, readRemindMinutes, writeBoardStaleHours, writeContextWarn, writeHungMinutes, writeQuietHours, writeRemindMinutes } from '../prefs';
 import { toggleRow } from './settings';
 
 const HOLD_EVENTS: ReadonlySet<string> = new Set(['permission', 'question']);
@@ -43,6 +43,18 @@ export function mountNotifySection(notifier: Notifier): HTMLElement {
     'setting-row',
     el('span', 'setting-text', el('span', 'setting-label', t('settings.notifications.hung.label')), el('span', 'setting-hint muted', t('settings.notifications.hung.hint'))),
     hungAfter,
+  );
+
+  const contextWarn = el('select', 'setting-mode');
+  contextWarn.setAttribute('aria-label', t('settings.notifications.context.label'));
+  for (const pct of CONTEXT_WARN_OPTIONS) contextWarn.append(new Option(pct === 0 ? t('settings.notifications.context.off') : t('settings.notifications.context.pct', { n: pct }), String(pct)));
+  contextWarn.value = String(readContextWarn());
+  contextWarn.addEventListener('change', () => writeContextWarn(Number(contextWarn.value)));
+  const contextRow = el(
+    'label',
+    'setting-row',
+    el('span', 'setting-text', el('span', 'setting-label', t('settings.notifications.context.label')), el('span', 'setting-hint muted', t('settings.notifications.context.hint'))),
+    contextWarn,
   );
 
   const remindAfter = el('select', 'setting-mode');
@@ -158,6 +170,7 @@ export function mountNotifySection(notifier: Notifier): HTMLElement {
     general.root,
     finishedRow,
     hungRow,
+    contextRow,
     remindRow,
     staleRow,
     quietOn.root,

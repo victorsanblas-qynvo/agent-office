@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type { QuestionView } from '../src/types';
-import { SNOOZE_KEY, dueReminders, readSnoozes, writeSnoozes, QUIET_DEFAULT, inQuietHours, quietSilences, type QuietHours } from '../src/prefs';
+import { SNOOZE_KEY, dueReminders, readContextWarn, writeContextWarn, readSnoozes, writeSnoozes, QUIET_DEFAULT, inQuietHours, quietSilences, type QuietHours } from '../src/prefs';
 
 const at = (hour: number, minute = 0): Date => new Date(2026, 9, 23, hour, minute);
 const window = (from: string, to: string, extra: Partial<QuietHours> = {}): QuietHours => ({ ...QUIET_DEFAULT, enabled: true, from, to, ...extra });
@@ -94,5 +94,27 @@ describe('dueReminders', () => {
 
   test('0 turns the reminders off', () => {
     expect(dueReminders([open('a', 0)], 60 * MIN, 0, new Set())).toEqual([]);
+  });
+});
+
+describe('context warning threshold', () => {
+  const store = new Map<string, string>();
+  const original = globalThis.localStorage;
+  const fake = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v) };
+
+  test('defaults to 85 and only accepts the listed options', () => {
+    Object.defineProperty(globalThis, 'localStorage', { value: fake, configurable: true });
+    try {
+      store.clear();
+      expect(readContextWarn()).toBe(85);
+      writeContextWarn(90);
+      expect(readContextWarn()).toBe(90);
+      writeContextWarn(0);
+      expect(readContextWarn()).toBe(0);
+      writeContextWarn(77);
+      expect(readContextWarn()).toBe(85);
+    } finally {
+      Object.defineProperty(globalThis, 'localStorage', { value: original, configurable: true });
+    }
   });
 });

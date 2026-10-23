@@ -14,6 +14,20 @@ export function writeHungMinutes(minutes: number): void {
   writeJson(HUNG_KEY, minutes);
 }
 
+export const CONTEXT_WARN_KEY = 'agent-office.contextWarn';
+export const CONTEXT_WARN_OPTIONS: readonly number[] = [80, 85, 90, 0];
+export const CONTEXT_WARN_DEFAULT = 85;
+
+// Percentage of the context window from which an agent joins the queue; 0 turns the warning off.
+export function readContextWarn(): number {
+  const stored = readJson(CONTEXT_WARN_KEY);
+  return typeof stored === 'number' && CONTEXT_WARN_OPTIONS.includes(stored) ? stored : CONTEXT_WARN_DEFAULT;
+}
+
+export function writeContextWarn(pct: number): void {
+  writeJson(CONTEXT_WARN_KEY, pct);
+}
+
 export const BOARD_STALE_KEY = 'agent-office.boardStale';
 export const BOARD_STALE_OPTIONS: readonly number[] = [6, 12, 24, 48, 0];
 export const BOARD_STALE_DEFAULT = 24;

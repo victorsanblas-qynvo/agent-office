@@ -2,15 +2,15 @@ import { t } from './i18n';
 import { hubText } from './i18n/hub';
 import { collisions, heldClaims, type Collision } from './chat/claims';
 import { agentName, isAway } from './labels';
-import { readHungMinutes, readSnoozes, writeSnoozes, type Snoozes } from './prefs';
+import { readContextWarn, readHungMinutes, readSnoozes, writeSnoozes, type Snoozes } from './prefs';
 import type { Store, Topic } from './store';
 import { clockMinutes } from './time';
 import type { AgentState, AgentView, DocumentView, OrderView, QuestionView, UsageView, UsageWindow } from './types';
 
-export type NeedKind = 'permission' | 'question' | 'blocked' | 'hung' | 'stalled' | 'claim' | 'plan' | 'checks' | 'limit';
+export type NeedKind = 'permission' | 'question' | 'blocked' | 'hung' | 'stalled' | 'context' | 'claim' | 'plan' | 'checks' | 'limit';
 
 // Most urgent first: this is also the order of the queue.
-export const NEED_KINDS: readonly NeedKind[] = ['permission', 'question', 'blocked', 'hung', 'stalled', 'claim', 'plan', 'checks', 'limit'];
+export const NEED_KINDS: readonly NeedKind[] = ['permission', 'question', 'blocked', 'hung', 'stalled', 'context', 'claim', 'plan', 'checks', 'limit'];
 
 export type Need = {
   id: string;
@@ -39,6 +39,8 @@ export type NeedSources = {
   now: number;
   // Minutes a tool may run before it is hung; 0 is off.
   hungAfterMinutes: number;
+  // Percentage of the context window from which an agent is warned about; 0 is off.
+  contextWarnPct: number;
   stateOf(agent: AgentView): AgentState;
 };
 
@@ -49,6 +51,7 @@ const RANK = new Map<NeedKind, number>(NEED_KINDS.map((kind, index) => [kind, in
 const LIMIT_PCT = 90;
 const LIMIT_SOON_MS = 30 * 60_000;
 const LIMIT_FRESH_MS = 10 * 60_000;
+const CONTEXT_FRESH_MS = 10 * 60_000;
 const HUNG_DETAIL_MAX = 60;
 // The reset time of a window wobbles by a minute or so between samples; the hour names the window.
 const WINDOW_BUCKET_MS = 3_600_000;
@@ -107,6 +110,13 @@ function hungNeed(agent: AgentView, now: number, thresholdMs: number): Need | nu
   return { id: `hung:${agent.key}`, kind: 'hung', since: agent.toolSince, name, agentKey: agent.key, floor: agent.floor, docPath: null, orderSlug: null, instance: `${tool}:${agent.toolSince}` };
 }
 
+function contextNeed(agent: AgentView, now: number, warnPct: number): Need | null {
+  const context = agent.context;
+  if (!context || context.usedPct < warnPct || now - context.at > CONTEXT_FRESH_MS) return null;
+  const name = t('needs.context.name', { agent: agentName(agent), pct: Math.round(context.usedPct) });
+  return { id: `context:${agent.key}`, kind: 'context', since: context.at, name, agentKey: agent.key, floor: agent.floor, docPath: null, orderSlug: null, instance: String(context.compactions) };
+}
+
 function moreUrgent(a: Need, b: Need): boolean {
   const byKind = rankOf(a) - rankOf(b);
   return byKind !== 0 ? byKind < 0 : a.since < b.since;
@@ -139,6 +149,13 @@ export function collectNeeds(sources: NeedSources): Need[] {
     for (const agent of agents.values()) {
       if (isAway(agent) || asking.has(agent.key) || !HUNG_STATES.has(sources.stateOf(agent))) continue;
       const need = hungNeed(agent, sources.now, sources.hungAfterMinutes * 60_000);
+      if (need) offer(need);
+    }
+  }
+  if (sources.contextWarnPct > 0) {
+    for (const agent of agents.values()) {
+      if (isAway(agent) || sources.stateOf(agent) === 'done') continue;
+      const need = contextNeed(agent, sources.now, sources.contextWarnPct);
       if (need) offer(need);
     }
   }
@@ -203,6 +220,7 @@ export function needsOf(store: Store): Need[] {
     claims: collisions(heldClaims(store.chat, store.now())),
     now: store.now(),
     hungAfterMinutes: readHungMinutes(),
+    contextWarnPct: readContextWarn(),
     stateOf: (agent) => store.shownState(agent),
   });
 }
@@ -218,9 +236,10 @@ function hashOf(text: string): string {
 }
 
 // A short fingerprint of the occurrence and of what the entry says: `kind:instance:label`. A snooze "until it
-// changes" ends when any of it changes; a timed one only when the occurrence does.
+// changes" ends when any of it changes; a timed one only when the occurrence does. The context label carries a
+// percentage that moves with every sample, so only the occurrence counts there.
 export function needSignature(need: Pick<Need, 'kind' | 'name' | 'instance'>): string {
-  return `${need.kind}:${hashOf(need.instance)}:${hashOf(need.name)}`;
+  return `${need.kind}:${hashOf(need.instance)}:${hashOf(need.kind === 'context' ? '' : need.name)}`;
 }
 
 function occurrenceOf(signature: string): string {
