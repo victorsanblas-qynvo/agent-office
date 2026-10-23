@@ -2,7 +2,7 @@ import { button, el } from '../dom';
 import { t, type MessageKey } from '../i18n';
 import { NOTIFY_EVENTS, notificationsSupported, type Notifier } from '../notify';
 import { FINISHED_MODES, readFinishedMode, writeFinishedMode, type FinishedMode } from '../panel/finished';
-import { BOARD_STALE_OPTIONS, HUNG_OPTIONS, inQuietHours, isClock, readBoardStaleHours, readHungMinutes, readQuietHours, writeBoardStaleHours, writeHungMinutes, writeQuietHours } from '../prefs';
+import { BOARD_STALE_OPTIONS, HUNG_OPTIONS, REMIND_OPTIONS, inQuietHours, isClock, readBoardStaleHours, readHungMinutes, readQuietHours, readRemindMinutes, writeBoardStaleHours, writeHungMinutes, writeQuietHours, writeRemindMinutes } from '../prefs';
 import { toggleRow } from './settings';
 
 const HOLD_EVENTS: ReadonlySet<string> = new Set(['permission', 'question']);
@@ -43,6 +43,18 @@ export function mountNotifySection(notifier: Notifier): HTMLElement {
     'setting-row',
     el('span', 'setting-text', el('span', 'setting-label', t('settings.notifications.hung.label')), el('span', 'setting-hint muted', t('settings.notifications.hung.hint'))),
     hungAfter,
+  );
+
+  const remindAfter = el('select', 'setting-mode');
+  remindAfter.setAttribute('aria-label', t('settings.notifications.remind.label'));
+  for (const minutes of REMIND_OPTIONS) remindAfter.append(new Option(minutes === 0 ? t('settings.notifications.remind.off') : t('settings.notifications.hung.minutes', { n: minutes }), String(minutes)));
+  remindAfter.value = String(readRemindMinutes());
+  remindAfter.addEventListener('change', () => writeRemindMinutes(Number(remindAfter.value)));
+  const remindRow = el(
+    'label',
+    'setting-row',
+    el('span', 'setting-text', el('span', 'setting-label', t('settings.notifications.remind.label')), el('span', 'setting-hint muted', t('settings.notifications.remind.hint'))),
+    remindAfter,
   );
 
   const staleAfter = el('select', 'setting-mode');
@@ -90,6 +102,10 @@ export function mountNotifySection(notifier: Notifier): HTMLElement {
   };
   for (const control of [quietOn.input, quietFrom, quietTo, quietPermissions.input]) control.addEventListener('change', saveQuiet);
   syncQuiet();
+  const quietClock = setInterval(() => {
+    if (quietOn.root.isConnected) syncQuiet();
+    else clearInterval(quietClock);
+  }, 60_000);
   const quietRow = el(
     'label',
     'setting-row',
@@ -142,6 +158,7 @@ export function mountNotifySection(notifier: Notifier): HTMLElement {
     general.root,
     finishedRow,
     hungRow,
+    remindRow,
     staleRow,
     quietOn.root,
     quietRow,

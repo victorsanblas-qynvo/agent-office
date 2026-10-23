@@ -1,3 +1,5 @@
+import type { QuestionView } from './types';
+
 export const HUNG_KEY = 'agent-office.hung';
 export const HUNG_OPTIONS: readonly number[] = [5, 10, 20, 30, 0];
 export const HUNG_DEFAULT = 10;
@@ -24,6 +26,26 @@ export function readBoardStaleHours(): number {
 
 export function writeBoardStaleHours(hours: number): void {
   writeJson(BOARD_STALE_KEY, hours);
+}
+
+export const REMIND_KEY = 'agent-office.remind';
+export const REMIND_OPTIONS: readonly number[] = [5, 10, 15, 0];
+export const REMIND_DEFAULT = 10;
+
+// Minutes a permission or question may stay open before it is announced once more; 0 turns the reminder off.
+export function readRemindMinutes(): number {
+  const stored = readJson(REMIND_KEY);
+  return typeof stored === 'number' && REMIND_OPTIONS.includes(stored) ? stored : REMIND_DEFAULT;
+}
+
+export function writeRemindMinutes(minutes: number): void {
+  writeJson(REMIND_KEY, minutes);
+}
+
+// The still-open questions that have waited `minutes` and were not reminded yet; a closed one is no longer in the list.
+export function dueReminders(questions: readonly QuestionView[], now: number, minutes: number, alreadyReminded: ReadonlySet<string>): QuestionView[] {
+  if (minutes <= 0) return [];
+  return questions.filter((question) => !alreadyReminded.has(question.id) && now - question.createdAt >= minutes * 60_000);
 }
 
 export function readJson(key: string): unknown {

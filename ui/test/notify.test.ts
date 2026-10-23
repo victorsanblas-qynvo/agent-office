@@ -52,12 +52,12 @@ beforeEach(() => applyLang('es'));
 const LEAD = 'lead-1';
 const DEV = 'dev-1';
 
-function fakeStore(selected: string[]): Store {
+function fakeStore(selected: string[], questions: QuestionView[] = []): Store {
   const agents = new Map<string, Partial<AgentView>>([
     [LEAD, { key: LEAD, name: 'lead-mobile', role: 'office-lead-mobile', roleKind: 'lead', floor: 'mobile' }],
     [DEV, { key: DEV, name: 'dev-mobile', role: 'office-dev-mobile', roleKind: 'dev' }],
   ]);
-  return { agents, documents: [], orders: [], select: (key: string) => selected.push(key), floorBySlug: () => undefined } as unknown as Store;
+  return { agents, questions, documents: [], orders: [], select: (key: string) => selected.push(key), floorBySlug: () => undefined } as unknown as Store;
 }
 
 function allOn(): NotifyPrefs {
@@ -151,12 +151,95 @@ describe('desktop notifier', () => {
       expect(FakeNotification.created).toHaveLength(1);
     });
 
+    describe('deferred through the window', () => {
+      let clock: Date;
+      let open: QuestionView[];
+      let desk: Notifier;
+
+      beforeEach(() => {
+        clock = at(23);
+        open = [];
+        quiet(true);
+        desk = new Notifier(fakeStore(selected, open), () => clock);
+        desk.save(allOn());
+      });
+
+      test('a question still open when quiet hours end notifies on the next tick, once', () => {
+        const pending = question('q5', { createdAt: clock.getTime() });
+        open.push(pending);
+        desk.observe({ type: 'question', data: pending });
+        desk.tick();
+        expect(FakeNotification.created).toHaveLength(0);
+        clock = at(8);
+        desk.tick();
+        desk.tick();
+        expect(FakeNotification.created.map((n) => n.options.tag)).toEqual(['question:q5']);
+      });
+
+      test('a question closed before the window ends never notifies', () => {
+        const pending = question('q6', { createdAt: clock.getTime() });
+        open.push(pending);
+        desk.observe({ type: 'question', data: pending });
+        desk.observe({ type: 'question-closed', id: 'q6', outcome: 'answered' });
+        open.length = 0;
+        clock = at(8);
+        desk.tick();
+        expect(FakeNotification.created).toHaveLength(0);
+      });
+
+      test('a usage threshold crossed in the window warns after it', () => {
+        desk.observe({ type: 'usage', data: { fiveHour: { usedPct: 96, resetsAt: 1_800_000_000_000 }, sevenDay: null, at: 1 } });
+        expect(FakeNotification.created).toHaveLength(0);
+        clock = at(8);
+        desk.tick();
+        desk.tick();
+        expect(FakeNotification.created.map((n) => n.options.tag)).toEqual(['usage:five:1800000000000:80', 'usage:five:1800000000000:95']);
+      });
+
+      test('a reminder is held through the window and given once after it', () => {
+        quiet(false);
+        clock = at(21);
+        const pending = question('q7', { createdAt: clock.getTime() });
+        open.push(pending);
+        desk.observe({ type: 'question', data: pending });
+        expect(FakeNotification.created).toHaveLength(1);
+        clock = new Date(2026, 9, 23, 23, 30);
+        desk.tick();
+        expect(FakeNotification.created).toHaveLength(1);
+        clock = new Date(2026, 9, 24, 8, 0);
+        desk.tick();
+        desk.tick();
+        expect(FakeNotification.created.map((n) => n.options.tag)).toEqual(['question:q7', 'question:q7:remind']);
+      });
+    });
+
     test('a plain question is still quiet while a permission is allowed', () => {
       quiet(true);
       const night = new Notifier(fakeStore(selected), () => at(23));
       night.save(allOn());
       night.observe({ type: 'question', data: question('q9') });
       expect(FakeNotification.created).toHaveLength(0);
+    });
+  });
+
+  describe('reminders', () => {
+    const MIN = 60_000;
+    test('a question still open after the wait reminds once, and a closed one never does', () => {
+      let clock = new Date(2026, 9, 23, 12, 0);
+      const open = [question('q1', { createdAt: clock.getTime() }), question('p1', { kind: 'permission', createdAt: clock.getTime() })];
+      const desk = new Notifier(fakeStore(selected, open), () => clock);
+      desk.save(allOn());
+      for (const item of open) desk.observe({ type: 'question', data: item });
+      clock = new Date(clock.getTime() + 9 * MIN);
+      desk.tick();
+      expect(FakeNotification.created).toHaveLength(2);
+      clock = new Date(clock.getTime() + 1 * MIN);
+      open.pop();
+      desk.observe({ type: 'question-closed', id: 'p1', outcome: 'answered' });
+      desk.tick();
+      desk.tick();
+      expect(FakeNotification.created.map((n) => n.options.tag)).toEqual(['question:q1', 'question:p1', 'question:q1:remind']);
+      expect(FakeNotification.created[2]?.title).toBe(t('notify.remind.title', { agent: 'lead-mobile' }));
     });
   });
 

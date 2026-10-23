@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-import { SNOOZE_KEY, readSnoozes, writeSnoozes, QUIET_DEFAULT, inQuietHours, quietSilences, type QuietHours } from '../src/prefs';
+import type { QuestionView } from '../src/types';
+import { SNOOZE_KEY, dueReminders, readSnoozes, writeSnoozes, QUIET_DEFAULT, inQuietHours, quietSilences, type QuietHours } from '../src/prefs';
 
 const at = (hour: number, minute = 0): Date => new Date(2026, 9, 23, hour, minute);
 const window = (from: string, to: string, extra: Partial<QuietHours> = {}): QuietHours => ({ ...QUIET_DEFAULT, enabled: true, from, to, ...extra });
@@ -69,5 +70,29 @@ describe('snoozes', () => {
     } finally {
       Object.defineProperty(globalThis, 'localStorage', { value: original, configurable: true });
     }
+  });
+});
+
+describe('dueReminders', () => {
+  const MIN = 60_000;
+  const open = (id: string, createdAt: number): QuestionView => ({ id, createdAt }) as QuestionView;
+  const ids = (list: QuestionView[]): string[] => list.map((item) => item.id);
+
+  test('a question open for the wait is due, a younger one is not', () => {
+    const list = [open('old', 0), open('young', 6 * MIN)];
+    expect(ids(dueReminders(list, 10 * MIN, 10, new Set()))).toEqual(['old']);
+    expect(ids(dueReminders(list, 10 * MIN - 1, 10, new Set()))).toEqual([]);
+  });
+
+  test('one already reminded is skipped', () => {
+    expect(dueReminders([open('a', 0)], 20 * MIN, 10, new Set(['a']))).toEqual([]);
+  });
+
+  test('a closed question is not in the list, so nothing is due', () => {
+    expect(dueReminders([], 20 * MIN, 10, new Set())).toEqual([]);
+  });
+
+  test('0 turns the reminders off', () => {
+    expect(dueReminders([open('a', 0)], 60 * MIN, 0, new Set())).toEqual([]);
   });
 });

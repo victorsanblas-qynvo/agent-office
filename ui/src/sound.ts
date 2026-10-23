@@ -1,5 +1,5 @@
 import { isBlockedMessage, leadDeliveryFloor, type DeliveryContext } from './deliveries';
-import { quietSilences, readJson, readQuietHours, writeJson } from './prefs';
+import { dueReminders, inQuietHours, quietSilences, readJson, readQuietHours, readRemindMinutes, writeJson } from './prefs';
 import type { QuestionView, ServerMessage } from './types';
 
 export type SoundEvent = 'question' | 'delivery' | 'stalled' | 'error';
@@ -144,6 +144,8 @@ export class SoundDesk {
   private readonly lastOf = new Map<SoundEvent, number>();
   private readonly seen = new Set<string>();
   private readonly stalled = new Map<string, number | null>();
+  private readonly reminded = new Set<string>();
+  private wasQuiet: boolean;
   private lastAt = Number.NEGATIVE_INFINITY;
 
   constructor(
@@ -152,6 +154,7 @@ export class SoundDesk {
   ) {
     this.engine = options.engine ?? new WebAudioEngine();
     this.clock = options.clock ?? Date.now;
+    this.wasQuiet = inQuietHours(readQuietHours(), new Date(this.clock()));
     if (options.listen !== false && typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
       const unlock = (): void => {
         this.engine.unlock();
@@ -182,12 +185,36 @@ export class SoundDesk {
     this.engine.play(testSequence(), this.prefs.volume);
   }
 
+  // On the store tick, with the questions still open: the end of quiet hours sounds what is pending, and a question open long enough sounds once more.
+  tick(open: readonly QuestionView[]): void {
+    const now = this.clock();
+    const quiet = inQuietHours(readQuietHours(), new Date(now));
+    if (this.wasQuiet && !quiet) {
+      for (const question of open) {
+        if (this.seen.has(`question:${question.id}`)) continue;
+        this.question(question);
+        this.reminded.add(question.id);
+      }
+    }
+    this.wasQuiet = quiet;
+    const ids = new Set(open.map((question) => question.id));
+    for (const id of this.reminded) if (!ids.has(id)) this.reminded.delete(id);
+    for (const question of dueReminders(open, now, readRemindMinutes(), this.reminded)) {
+      const permission = question.kind === 'permission';
+      if (quietSilences(readQuietHours(), permission, new Date(now))) continue;
+      this.reminded.add(question.id);
+      this.emit('question', permission);
+    }
+  }
+
   observe(message: ServerMessage): void {
     switch (message.type) {
       case 'snapshot':
         this.stalled.clear();
         for (const agent of message.data.agents) this.stalled.set(agent.key, agent.stalledSince ?? null);
-        for (const question of message.data.questions) this.remember(`question:${question.id}`);
+        for (const question of message.data.questions) {
+          if (!this.silenced(question)) this.remember(`question:${question.id}`);
+        }
         break;
       case 'agent': {
         const before = this.stalled.get(message.data.key) ?? null;
@@ -216,8 +243,13 @@ export class SoundDesk {
   }
 
   private question(question: QuestionView): void {
-    if (!this.remember(`question:${question.id}`)) return;
+    if (this.seen.has(`question:${question.id}`) || this.silenced(question)) return;
+    this.remember(`question:${question.id}`);
     this.emit('question', question.kind === 'permission');
+  }
+
+  private silenced(question: QuestionView): boolean {
+    return quietSilences(readQuietHours(), question.kind === 'permission', new Date(this.clock()));
   }
 
   private remember(tag: string): boolean {
