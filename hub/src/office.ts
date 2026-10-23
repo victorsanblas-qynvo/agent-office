@@ -7,7 +7,7 @@ import { BoardDesk, type CreateOrderRequest, type CreateOrderResult, type MoveRe
 import { BranchRestoreDesk, type BranchRestoreResult } from './branch-restore';
 import { OrphanBranchDesk } from './orphan-branches';
 import { ChatDesk, GLOBAL_CHANNEL, SNAPSHOT_LIMIT } from './chat';
-import { RestoreDesk, type ForkRequest, type ResetResult, type RestoreFailure } from './checkpoint-restore';
+import { RestoreDesk, type ForkRequest, type PreviewResult, type ResetResult, type RestoreFailure } from './checkpoint-restore';
 import { CheckpointDesk } from './checkpoints';
 import { ChecksDesk } from './checks';
 import { flakyReport } from './flaky-report';
@@ -892,6 +892,10 @@ export class Office {
 
   orderSafetyRefs(id: number): Promise<SafetyRefView[]> {
     return this.restores.safetyRefs(id);
+  }
+
+  previewOrderReset(id: number, checkpointId: number): Promise<PreviewResult> {
+    return this.restores.preview(id, checkpointId);
   }
 
   resetOrderToCheckpoint(id: number, checkpointId: number, force = false): Promise<ResetResult> {

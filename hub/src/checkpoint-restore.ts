@@ -6,16 +6,20 @@ import { realPath } from './floors';
 import type { GitRunner } from './git';
 import type { OfficeBus } from './office-bus';
 import type { OrderRow, OrderStore } from './order-store';
-import { gitOps, run, safetyRef, validSafetyRef, validSha } from './repo-ops';
-import type { HubText, SafetyRefView } from './types';
+import { gitOps, parseNumstat, run, safetyRef, validSafetyRef, validSha } from './repo-ops';
+import type { HubText, RestorePreview, SafetyRefView } from './types';
 
 const REMOTE = 'origin/';
 const SAFETY_TRIES = 1000;
 const LEFTOVERS_SHOWN = 10;
+const PREVIEW_COMMITS = 50;
+const PREVIEW_TIMEOUT_MS = 15_000;
 
 export type RestoreFailure = { ok: false; status: 400 | 404 | 409 | 500; error: HubText };
 
 export type ResetResult = { ok: true; safetyRef: string; head: string } | RestoreFailure;
+
+export type PreviewResult = { ok: true; preview: RestorePreview } | RestoreFailure;
 
 export type ForkRequest = { title?: string; via?: 'lead' | 'director' };
 
@@ -53,6 +57,33 @@ export class RestoreDesk {
 
   reset(orderId: number, checkpointId: number, force = false): Promise<ResetResult> {
     return this.restore(orderId, { kind: 'checkpoint', id: checkpointId, force });
+  }
+
+  // What a reset to the checkpoint would do, without touching the folder. A done order is not blocked: the panel asks for that confirmation itself.
+  async preview(orderId: number, checkpointId: number): Promise<PreviewResult> {
+    const checked = await this.ready(orderId, { kind: 'checkpoint', id: checkpointId, force: true });
+    const none: RestorePreview = { dropped: [], droppedTotal: 0, stat: { files: 0, adds: 0, dels: 0 }, dirty: [], blocked: null };
+    if (!checked.ok) return checked.status === 409 ? { ok: true, preview: { ...none, blocked: checked.error } } : checked;
+    const { path, sha } = checked.ready;
+    const { git } = this.opts;
+    const head = await this.head(path);
+    if (!head) return fail(500, { key: 'hub.api.restoreFailed' });
+    const [log, count, numstat, status] = await Promise.all([
+      run(git, path, () => gitOps.logSubjects(sha, head, PREVIEW_COMMITS), PREVIEW_TIMEOUT_MS),
+      run(git, path, () => gitOps.revCount(sha, head), PREVIEW_TIMEOUT_MS),
+      run(git, path, () => gitOps.diffNumstat(sha, head), PREVIEW_TIMEOUT_MS),
+      run(git, path, () => gitOps.status(), PREVIEW_TIMEOUT_MS),
+    ]);
+    if (log.code !== 0 || numstat.code !== 0 || status.code !== 0) return fail(500, { key: 'hub.api.restoreFailed' });
+    const dropped = log.stdout.split('\n').filter((subject) => subject.trim() !== '');
+    const total = count.code === 0 ? Number.parseInt(count.stdout.trim(), 10) : Number.NaN;
+    const stat = { files: 0, adds: 0, dels: 0 };
+    for (const entry of parseNumstat(numstat.stdout)) {
+      stat.files += 1;
+      stat.adds += entry.adds ?? 0;
+      stat.dels += entry.dels ?? 0;
+    }
+    return { ok: true, preview: { dropped, droppedTotal: Number.isInteger(total) ? Math.max(total, dropped.length) : dropped.length, stat, dirty: statusPaths(status.stdout), blocked: null } };
   }
 
   async undo(orderId: number, ref: unknown, force = false): Promise<ResetResult> {

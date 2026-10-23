@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { canRestore, newestFirst, pointNumbers, restoreBlock, restoreNeedsForce } from '../src/board/points-model';
+import { previewLines } from '../src/board/restore-preview';
+import { applyLang } from '../src/i18n';
 import type { CheckpointView, OrderView, SafetyRefView } from '../src/types';
 import { order } from './fixtures';
 
@@ -46,5 +48,21 @@ describe('newestFirst', () => {
   test('sorts the safety refs from the newest', () => {
     const ref = (at: number): SafetyRefView => ({ ref: `refs/office/a/before-reset-${at}`, sha: 'a'.repeat(40), at });
     expect(newestFirst([ref(5), ref(30), ref(12)]).map((entry) => entry.at)).toEqual([30, 12, 5]);
+  });
+});
+
+describe('previewLines', () => {
+  const none = { dropped: [], droppedTotal: 0, stat: { files: 0, adds: 0, dels: 0 }, dirty: [], blocked: null };
+
+  test('counts the commits beyond the ones listed and cuts the dirty files', () => {
+    const dirty = Array.from({ length: 12 }, (_, i) => `f${i}.txt`);
+    const lines = previewLines({ ...none, dropped: ['a', 'b'], droppedTotal: 60, dirty });
+    expect(lines).toMatchObject({ blocked: null, dropped: ['a', 'b'], more: 58, dirtyMore: 2 });
+    expect(lines.dirty).toHaveLength(10);
+  });
+
+  test('turns the blocking reason into text', () => {
+    applyLang('es');
+    expect(previewLines({ ...none, blocked: { key: 'hub.api.restorePrOpen' } }).blocked).toContain('PR abierta');
   });
 });

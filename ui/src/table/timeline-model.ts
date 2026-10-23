@@ -1,6 +1,7 @@
 import { STATE_COLORS, stateLabel } from '../labels';
 import { clockMinutes, duration } from '../time';
 import type { AgentState, TimelineSegment } from '../types';
+import { EMPTY_FILTERS, type HistoryFilters } from './history';
 
 export const TIMELINE_HOURS = [1, 4, 8, 24] as const;
 export const DEFAULT_TIMELINE_HOURS = 4;
@@ -46,4 +47,15 @@ export function hourTicks(from: number, to: number, widthPx: number): { left: nu
     ticks.push({ left: Math.round(((at - from) / span) * widthPx), label: clockMinutes(at) });
   }
   return ticks;
+}
+
+function localDay(at: number): string {
+  const date = new Date(at);
+  const pad = (value: number): string => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+// Pure: the history filters for the agent of a bar and the local days its segment starts and ends on.
+export function segmentFilters(agentKey: string, segment: Pick<TimelineSegment, 'from' | 'to'>): HistoryFilters {
+  return { ...EMPTY_FILTERS, agent: agentKey, from: localDay(segment.from), to: localDay(segment.to) };
 }

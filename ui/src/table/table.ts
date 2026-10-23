@@ -327,7 +327,7 @@ export function mountTable(host: HTMLElement, store: Store, api: OfficeApi | nul
     });
     const digest = mountDigest(store, api);
     const digestHost = el('div', 'table-digest', digest.root);
-    const timeline = mountTimeline(store, api);
+    const timeline = mountTimeline(store, api, (filters) => void showSearch({ name: '', filters }));
     const timelineHost = el('div', 'table-timeline', timeline.root);
     const views: readonly { view: TableView; label: MessageKey; button: HTMLButtonElement }[] = [
       { view: 'now', label: 'table.view.now', button: button('', 'table-switch-option') },

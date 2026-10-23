@@ -5,7 +5,8 @@ import { agentName, floorLabel } from '../labels';
 import type { Store } from '../store';
 import type { AgentTimeline } from '../types';
 import { readJson, writeJson } from '../prefs';
-import { hourTicks, layoutSegments, PX_PER_HOUR, readTimelineHours, segmentColor, TIMELINE_HOURS } from './timeline-model';
+import type { HistoryFilters } from './history';
+import { hourTicks, layoutSegments, PX_PER_HOUR, readTimelineHours, segmentColor, segmentFilters, TIMELINE_HOURS } from './timeline-model';
 
 // Pure over the store: the agent's name when the office knows it, else the start of its key.
 export function timelineAgentName(store: Pick<Store, 'agents'>, key: string): string {
@@ -15,7 +16,7 @@ export function timelineAgentName(store: Pick<Store, 'agents'>, key: string): st
 
 const HOURS_KEY = 'agent-office.table.timeline.hours';
 
-export function mountTimeline(store: Store, api: OfficeApi): { root: HTMLElement; activate(): void } {
+export function mountTimeline(store: Store, api: OfficeApi, openHistory: (filters: HistoryFilters) => void): { root: HTMLElement; activate(): void } {
   let hours = readTimelineHours(readJson(HOURS_KEY));
   let agents: AgentTimeline[] | null = null;
   let until = store.now();
@@ -53,8 +54,12 @@ export function mountTimeline(store: Store, api: OfficeApi): { root: HTMLElement
       }
       const lane = el('div', 'timeline-lane');
       lane.style.width = `${width}px`;
-      for (const placed of layoutSegments(agent.segments, from, until, width)) {
-        const bar = el('span', 'timeline-bar');
+      for (const segment of agent.segments) {
+        const placed = layoutSegments([segment], from, until, width)[0];
+        if (!placed) continue;
+        const bar = el('button', 'timeline-bar');
+        bar.type = 'button';
+        bar.addEventListener('click', () => openHistory(segmentFilters(agent.agent, segment)));
         bar.style.left = `${placed.left}px`;
         bar.style.width = `${placed.width}px`;
         bar.style.background = segmentColor(placed.state);

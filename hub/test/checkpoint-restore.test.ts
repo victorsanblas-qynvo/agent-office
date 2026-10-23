@@ -435,6 +435,70 @@ describe('the base of a fork', () => {
   });
 });
 
+describe('preview of a restore', () => {
+  const preview = (r: Rig, id: number, cp: number) => api(r)('GET', `/api/board/orders/${id}/checkpoints/${cp}/preview`);
+  const refs = (folder: string) => git(folder, 'for-each-ref', '--format=%(refname) %(objectname)');
+
+  test('lists the commits dropped oldest first, the diff stat and the files saved first, and writes nothing', async () => {
+    const { card: c, folder } = await card();
+    const r = rig as Rig;
+    const p1 = await point(r, c.id, folder, { 'a.txt': 'uno' });
+    const p2 = await point(r, c.id, folder, { 'b.txt': 'dos\ntres' });
+    write(folder, 'c.txt', 'sin guardar');
+    write(folder, 'a.txt', 'uno cambiado');
+    const status = git(folder, 'status', '--porcelain');
+    const before = { head: head(folder), refs: refs(folder), checkpoints: r.h.office.orderCheckpoints(c.id)?.checkpoints.length, told: leadMessages(r).length };
+
+    const result = await preview(r, c.id, p1.id);
+
+    expect(result.status).toBe(200);
+    expect(result.body).toEqual({
+      dropped: [`encargo(${c.slug}): comprobación (panel)`],
+      droppedTotal: 1,
+      stat: { files: 1, adds: 2, dels: 0 },
+      dirty: ['a.txt', 'c.txt'],
+      blocked: null,
+    });
+    expect(head(folder)).toBe(before.head);
+    expect(head(folder)).toBe(p2.sha);
+    expect(refs(folder)).toBe(before.refs);
+    expect(git(folder, 'status', '--porcelain')).toBe(status);
+    expect(r.h.office.orderCheckpoints(c.id)?.checkpoints.length).toBe(before.checkpoints);
+    expect(leadMessages(r)).toHaveLength(before.told);
+  });
+
+  test('a checkpoint at HEAD drops nothing', async () => {
+    const { card: c, folder } = await card();
+    const r = rig as Rig;
+    await point(r, c.id, folder, { 'a.txt': 'uno' });
+    const p2 = await point(r, c.id, folder, { 'b.txt': 'dos' });
+    expect((await preview(r, c.id, p2.id)).body).toEqual({ dropped: [], droppedTotal: 0, stat: { files: 0, adds: 0, dels: 0 }, dirty: [], blocked: null });
+  });
+
+  test('says why a restore is blocked and leaves the lists empty', async () => {
+    const { card: c, folder } = await card();
+    const r = rig as Rig;
+    const p1 = await point(r, c.id, folder, { 'a.txt': 'uno' });
+    await point(r, c.id, folder, { 'b.txt': 'dos' });
+    r.h.db.query("UPDATE orders SET pr_url = 'https://example.test/pr/1', pr_state = 'open' WHERE id = ?").run(c.id);
+    expect(await preview(r, c.id, p1.id)).toEqual({
+      status: 200,
+      body: { dropped: [], droppedTotal: 0, stat: { files: 0, adds: 0, dels: 0 }, dirty: [], blocked: { key: 'hub.api.restorePrOpen' } },
+    });
+  });
+
+  test('an order already done is not blocked, a missing order or checkpoint is a 404 and a bad id a 400', async () => {
+    const { card: c, folder } = await card();
+    const r = rig as Rig;
+    const p1 = await point(r, c.id, folder, { 'a.txt': 'uno' });
+    r.h.db.query("UPDATE orders SET status = 'hecho' WHERE id = ?").run(c.id);
+    expect((await preview(r, c.id, p1.id)).body.blocked).toBeNull();
+    expect(await preview(r, c.id, 9999)).toMatchObject({ status: 404, body: { error: { key: 'hub.api.checkpointNotFound' } } });
+    expect(await preview(r, 9999, p1.id)).toMatchObject({ status: 404, body: { error: { key: 'hub.api.orderNotFound' } } });
+    expect(await api(r)('GET', `/api/board/orders/${c.id}/checkpoints/abc/preview`)).toMatchObject({ status: 400, body: { error: { key: 'hub.api.badId' } } });
+  });
+});
+
 describe('routes', () => {
   test('need the panel credential', async () => {
     rig = deliveryRig();
@@ -443,5 +507,7 @@ describe('routes', () => {
       const response = await app.request(`http://127.0.0.1:${PORT}${path}`, { method: 'POST', headers: { host: `127.0.0.1:${PORT}` } });
       expect(response.status).toBe(401);
     }
+    const response = await app.request(`http://127.0.0.1:${PORT}/api/board/orders/1/checkpoints/1/preview`, { headers: { host: `127.0.0.1:${PORT}` } });
+    expect(response.status).toBe(401);
   });
 });
