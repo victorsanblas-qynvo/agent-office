@@ -24,6 +24,8 @@ const SAME_KEYS: MessageKey[] = [
   'verdict.tests',
   'table.docs.skills',
   'hub.detail.tests',
+  'hub.pr.commits',
+  'hub.pr.diff',
   'hub.act.tests',
   'hub.act.ok',
   'hub.report.counts',

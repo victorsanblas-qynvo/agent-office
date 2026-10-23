@@ -1,6 +1,9 @@
 // The parts of the lead, dev and tester templates that depend on whether the floor works with a folder per order.
 // Off is the text as it was before the Tablero; on is the cycle of the order folders and the office checks.
 
+import { renderHubText, type TextLang } from './render-text';
+import type { CheckStatus, HubText } from './types';
+
 export type DeliveryTextVars = {
   slug: string;
   path: string;
@@ -90,4 +93,68 @@ export function deliveryTextVars(delivery: boolean, v: DeliveryTextVars): Record
     testerTools: 'Read, Grep, Glob, Bash, SendMessage, EnterWorktree',
     testerFolderRule: ON_TESTER_FOLDER(v),
   };
+}
+
+export const PR_MAX_SUMMARY = 1500;
+export const PR_MAX_COMMITS = 50;
+
+export type PrDraftInput = {
+  title: string;
+  brief: string;
+  branch: string;
+  base: string;
+  commits: string[];
+  checks: { name: string; status: CheckStatus; durationMs: number | null }[];
+  totals: { files: number; adds: number; dels: number };
+  lang: TextLang;
+};
+
+function trimBrief(text: string): string {
+  const clean = text.trim();
+  return clean.length <= PR_MAX_SUMMARY ? clean : `${clean.slice(0, PR_MAX_SUMMARY).trimEnd()}…`;
+}
+
+function cell(value: string): string {
+  return value.replace(/\|/g, '\\|').replace(/\s+/g, ' ');
+}
+
+function seconds(ms: number | null): string {
+  return ms === null ? '—' : `${(ms / 1000).toFixed(1)} s`;
+}
+
+// Pure: the title and the Markdown body to paste into the pull request of an order.
+export function prDraft(input: PrDraftInput): { title: string; body: string } {
+  const say = (value: HubText): string => renderHubText(value, input.lang);
+  const subjects = input.commits.map((subject) => subject.trim()).filter((subject) => subject !== '');
+  const shown = subjects.slice(0, PR_MAX_COMMITS).map((subject) => `- ${subject}`);
+  if (subjects.length > PR_MAX_COMMITS) shown.push(`- ${say({ key: 'hub.pr.commitsMore', params: { n: subjects.length - PR_MAX_COMMITS } })}`);
+  const checks =
+    input.checks.length === 0
+      ? [say({ key: 'hub.pr.noChecks' })]
+      : [
+          `| ${say({ key: 'hub.pr.colCheck' })} | ${say({ key: 'hub.pr.colResult' })} | ${say({ key: 'hub.pr.colDuration' })} |`,
+          '| --- | --- | --- |',
+          ...input.checks.map((check) => `| ${cell(check.name)} | ${say({ key: `hub.pr.status.${check.status}` })} | ${seconds(check.durationMs)} |`),
+        ];
+  const body = [
+    `## ${say({ key: 'hub.pr.summary' })}`,
+    '',
+    trimBrief(input.brief) || input.title,
+    '',
+    say({ key: 'hub.pr.branches', params: { branch: `\`${input.branch}\``, base: `\`${input.base}\`` } }),
+    '',
+    `## ${say({ key: 'hub.pr.commits' })}`,
+    '',
+    ...(shown.length > 0 ? shown : [say({ key: 'hub.pr.noCommits' })]),
+    '',
+    `## ${say({ key: 'hub.pr.checks' })}`,
+    '',
+    ...checks,
+    '',
+    `## ${say({ key: 'hub.pr.diff' })}`,
+    '',
+    say({ key: 'hub.pr.diffTotals', params: input.totals }),
+    '',
+  ].join('\n');
+  return { title: input.title, body };
 }

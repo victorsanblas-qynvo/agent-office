@@ -268,6 +268,7 @@ export type HubTextParams = {
   'hub.api.orderNoBranch': undefined;
   'hub.api.diffPath': undefined;
   'hub.api.diffFailed': undefined;
+  'hub.api.logFailed': undefined;
 
   'hub.layouts.unavailable': undefined;
   'hub.layouts.invalid': undefined;
@@ -298,6 +299,25 @@ export type HubTextParams = {
   'hub.floors.liveCopy': { path: string };
   'hub.floors.slugTaken': { slug: string; path: string };
   'hub.floors.pathTaken': { path: string; other: string };
+
+  'hub.pr.summary': undefined;
+  'hub.pr.commits': undefined;
+  'hub.pr.commitsMore': { n: number };
+  'hub.pr.noCommits': undefined;
+  'hub.pr.checks': undefined;
+  'hub.pr.noChecks': undefined;
+  'hub.pr.colCheck': undefined;
+  'hub.pr.colResult': undefined;
+  'hub.pr.colDuration': undefined;
+  'hub.pr.diff': undefined;
+  'hub.pr.diffTotals': { files: number; adds: number; dels: number };
+  'hub.pr.branches': { branch: string; base: string };
+  'hub.pr.status.pending': undefined;
+  'hub.pr.status.running': undefined;
+  'hub.pr.status.passed': undefined;
+  'hub.pr.status.failed': undefined;
+  'hub.pr.status.timeout': undefined;
+  'hub.pr.status.cancelled': undefined;
 };
 
 export type HubTextKey = keyof HubTextParams;

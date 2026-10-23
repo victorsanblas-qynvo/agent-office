@@ -370,6 +370,14 @@ export function createApp(opts: ServerOptions, holdRequest: (req: Request) => vo
     return result.ok ? c.json(result.diff) : c.json({ error: result.error }, result.status);
   });
 
+  app.get('/api/board/orders/:id/pr-draft', requirePanel, async (c) => {
+    const id = idOf(c.req.param('id'));
+    if (id === null) return c.json({ error: { key: 'hub.api.badId' } }, 400);
+    holdRequest(c.req.raw);
+    const result = await office.orderPrDraft(id, c.req.query('lang') === 'en' ? 'en' : 'es');
+    return result.ok ? c.json(result.draft) : c.json({ error: result.error }, result.status);
+  });
+
   app.get('/api/board/orders/:id/diff/file', requirePanel, async (c) => {
     const id = idOf(c.req.param('id'));
     const path = c.req.query('path');

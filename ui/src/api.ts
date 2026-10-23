@@ -1,4 +1,4 @@
-import { t } from './i18n';
+import { type Lang, t } from './i18n';
 import { errorText } from './i18n/hub';
 import type {
   AnswerRequest,
@@ -197,6 +197,10 @@ export class OfficeApi {
 
   orderDiffFile(id: number, path: string): Promise<ApiData<OrderDiffFile>> {
     return this.get(`/api/board/orders/${id}/diff/file?path=${encodeURIComponent(path)}`);
+  }
+
+  orderPrDraft(id: number, lang: Lang): Promise<ApiData<{ title: string; body: string }>> {
+    return this.get(`/api/board/orders/${id}/pr-draft?lang=${lang}`);
   }
 
   markFinishedSeen(id: number): Promise<ApiData<{ ok: true }>> {
