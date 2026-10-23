@@ -1,7 +1,7 @@
 import { button, el } from './dom';
 import { t } from './i18n';
-import { NEEDS_TOPICS, activeNeeds, canSnooze, needLabel, needsOf, pruneSnoozes, snoozeNeed, snoozedNeeds, wakeNeed, type Need } from './needs';
-import { readSnoozes, writeSnoozes, type Snoozes } from './prefs';
+import { NEEDS_TOPICS, activeNeeds, canSnooze, loadSnoozes, menuStart, menuStep, needLabel, needsOf, pruneSnoozes, saveSnoozes, shouldPruneSnoozes, snoozeNeed, snoozedNeeds, triggerSignature, wakeNeed, type Need } from './needs';
+import type { Snoozes } from './prefs';
 import type { Store } from './store';
 import { relativeTime } from './time';
 
@@ -25,8 +25,12 @@ export function mountNeedsMenu(store: Store, onPick: (need: Need) => void): Need
   const root = el('div', 'needs', trigger, menu);
 
   let items: Item[] = [];
+  // What the arrows walk: the entries, the toggle of the postponed ones and their wake buttons.
+  let stops: HTMLElement[] = [];
+  let toggle: HTMLButtonElement | null = null;
   let signature = '';
-  let snoozes: Snoozes = readSnoozes();
+  let face = '';
+  let snoozes: Snoozes = loadSnoozes(store);
   let snoozedOpen = false;
 
   const SNOOZE_CHOICES: readonly { key: 'needs.snooze.15m' | 'needs.snooze.1h' | 'needs.snooze.change'; minutes: number | null }[] = [
@@ -35,29 +39,34 @@ export function mountNeedsMenu(store: Store, onPick: (need: Need) => void): Need
     { key: 'needs.snooze.change', minutes: null },
   ];
 
+  const isOpen = (): boolean => !menu.hidden;
+
+  const focusStart = (): void => {
+    const start = menuStart(items.length, toggle ? 1 : 0);
+    if (start === 'entry') items[0]?.node.focus();
+    else if (start === 'snoozed') toggle?.focus();
+  };
+
   const save = (next: Snoozes): void => {
     snoozes = next;
-    writeSnoozes(snoozes);
+    saveSnoozes(store, snoozes);
     signature = '';
     render();
+    if (isOpen()) focusStart();
   };
 
-  const snoozeControl = (need: Need): HTMLSelectElement => {
-    const select = el('select', 'needs-snooze');
-    select.title = t('needs.snooze');
-    select.setAttribute('aria-label', t('needs.snooze'));
-    const head = el('option', '', t('needs.snooze'));
-    head.value = '';
-    select.append(head, ...SNOOZE_CHOICES.map((choice) => Object.assign(el('option', '', t(choice.key)), { value: String(choice.minutes) })));
-    select.addEventListener('change', () => {
-      if (select.value === '') return;
-      const minutes = select.value === 'null' ? null : Number(select.value);
-      save(snoozeNeed(snoozes, need, minutes === null ? null : store.now() + minutes * 60_000));
-    });
-    return select;
+  const snoozeControl = (need: Need): HTMLElement => {
+    const group = el('div', 'needs-snooze');
+    group.setAttribute('role', 'group');
+    group.setAttribute('aria-label', t('needs.snooze'));
+    group.title = t('needs.snooze');
+    for (const choice of SNOOZE_CHOICES) {
+      const option = button(t(choice.key), 'needs-snooze-choice');
+      option.addEventListener('click', () => save(snoozeNeed(snoozes, need, choice.minutes === null ? null : store.now() + choice.minutes * 60_000)));
+      group.append(option);
+    }
+    return group;
   };
-
-  const isOpen = (): boolean => !menu.hidden;
 
   const close = (): boolean => {
     if (!isOpen()) return false;
@@ -73,32 +82,37 @@ export function mountNeedsMenu(store: Store, onPick: (need: Need) => void): Need
   };
 
   const open = (): void => {
-    if (items.length === 0) return;
+    if (menuStart(items.length, toggle ? 1 : 0) === null) return;
     paintAges();
     menu.hidden = false;
     trigger.setAttribute('aria-expanded', 'true');
-    items[0]?.node.focus();
+    focusStart();
   };
 
   const render = (): void => {
     const all = needsOf(store);
     const now = store.now();
-    if (all.length > 0) {
+    snoozes = loadSnoozes(store);
+    if (shouldPruneSnoozes(store)) {
       const pruned = pruneSnoozes(snoozes, all, now);
       if (Object.keys(pruned).length !== Object.keys(snoozes).length) {
         snoozes = pruned;
-        writeSnoozes(snoozes);
+        saveSnoozes(store, snoozes);
       }
     }
     const needs = activeNeeds(all, snoozes, now);
     const later = snoozedNeeds(all, snoozes, now);
-    count.textContent = String(needs.length);
-    trigger.disabled = all.length === 0;
-    trigger.classList.toggle('has-pending', needs.length > 0);
-    trigger.replaceChildren(t('needs.button'), ' ', count);
-    trigger.title = t('needs.title');
-    menu.setAttribute('aria-label', t('needs.title'));
-    const next = JSON.stringify([store.lang, snoozedOpen, needs.map((need) => [need.id, need.kind, need.name]), later.map((need) => [need.id, need.kind, need.name])]);
+    const nextFace = triggerSignature(store.lang, needs.length, all.length);
+    if (nextFace !== face) {
+      face = nextFace;
+      count.textContent = String(needs.length);
+      trigger.disabled = all.length === 0;
+      trigger.classList.toggle('has-pending', needs.length > 0);
+      trigger.replaceChildren(t('needs.button'), ' ', count);
+      trigger.title = t('needs.title');
+      menu.setAttribute('aria-label', t('needs.title'));
+    }
+    const next = JSON.stringify([store.lang, snoozedOpen, needs.map((need) => [need.id, need.kind, need.instance, need.name]), later.map((need) => [need.id, need.kind, need.instance, need.name])]);
     if (all.length === 0 && isOpen()) close();
     if (next === signature) return;
     signature = next;
@@ -113,20 +127,26 @@ export function mountNeedsMenu(store: Store, onPick: (need: Need) => void): Need
       });
       return { need, node, age };
     });
+    stops = items.map((item) => item.node);
+    toggle = null;
     const rows = items.map((item) => (canSnooze(item.need) ? el('div', 'needs-row', item.node, snoozeControl(item.need)) : item.node));
     if (later.length > 0) {
-      const toggle = button(t('needs.snoozed', { n: later.length }), 'needs-snoozed-toggle muted');
-      toggle.setAttribute('aria-expanded', String(snoozedOpen));
-      toggle.addEventListener('click', () => {
+      const shown = button(t('needs.snoozed', { n: later.length }), 'needs-snoozed-toggle muted');
+      shown.setAttribute('aria-expanded', String(snoozedOpen));
+      shown.addEventListener('click', () => {
         snoozedOpen = !snoozedOpen;
         signature = '';
         render();
+        toggle?.focus();
       });
-      rows.push(toggle);
+      toggle = shown;
+      stops.push(shown);
+      rows.push(shown);
       if (snoozedOpen) {
         for (const need of later) {
           const wake = button(t('needs.wake'), 'needs-wake');
           wake.addEventListener('click', () => save(wakeNeed(snoozes, need.id)));
+          stops.push(wake);
           rows.push(el('div', `needs-row needs-asleep needs-${need.kind}`, el('span', 'needs-label', needLabel(need)), wake));
         }
       }
@@ -138,10 +158,11 @@ export function mountNeedsMenu(store: Store, onPick: (need: Need) => void): Need
   trigger.addEventListener('click', () => (isOpen() ? close() : open()));
   menu.addEventListener('keydown', (event) => {
     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+    const at = stops.findIndex((stop) => stop === document.activeElement);
+    const next = menuStep(at, event.key === 'ArrowDown' ? 1 : -1, stops.length);
+    if (next === null) return;
     event.preventDefault();
-    const at = items.findIndex((item) => item.node === document.activeElement);
-    const step = event.key === 'ArrowDown' ? 1 : -1;
-    items[(at + step + items.length) % items.length]?.node.focus();
+    stops[next]?.focus();
   });
   document.addEventListener('pointerdown', (event) => {
     if (isOpen() && event.target instanceof Node && !root.contains(event.target)) {

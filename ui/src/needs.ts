@@ -2,7 +2,7 @@ import { t } from './i18n';
 import { hubText } from './i18n/hub';
 import { collisions, heldClaims, type Collision } from './chat/claims';
 import { agentName, isAway } from './labels';
-import { readHungMinutes, readSnoozes, type Snoozes } from './prefs';
+import { readHungMinutes, readSnoozes, writeSnoozes, type Snoozes } from './prefs';
 import type { Store, Topic } from './store';
 import { clockMinutes } from './time';
 import type { AgentState, AgentView, DocumentView, OrderView, QuestionView, UsageView, UsageWindow } from './types';
@@ -17,6 +17,8 @@ export type Need = {
   kind: NeedKind;
   since: number;
   name: string;
+  // Which occurrence this is (the question, the blocking, the window...): a new one is a new entry.
+  instance: string;
   agentKey: string | null;
   floor: string | null;
   docPath: string | null;
@@ -48,6 +50,8 @@ const LIMIT_PCT = 90;
 const LIMIT_SOON_MS = 30 * 60_000;
 const LIMIT_FRESH_MS = 10 * 60_000;
 const HUNG_DETAIL_MAX = 60;
+// The reset time of a window wobbles by a minute or so between samples; the hour names the window.
+const WINDOW_BUCKET_MS = 3_600_000;
 // Tools that wait for somebody by design.
 const PATIENT_TOOLS: ReadonlySet<string> = new Set(['AskUserQuestion', 'ExitPlanMode', 'Agent', 'Task']);
 
@@ -69,17 +73,19 @@ function limitNeed(id: 'five' | 'seven', sample: UsageWindow | null, now: number
   if (out) name = t('needs.limit.out', { window });
   else if (exhaustsAt !== null) name = t('needs.limit.exhausts', { window, time: clockMinutes(exhaustsAt) });
   else name = t('needs.limit.high', { window, pct: Math.round(sample.usedPct) });
-  const need: Need = { id: `limit:${id}`, kind: 'limit', since: at, name, agentKey: null, floor: null, docPath: null, orderSlug: null };
+  const instance = String(Math.round(sample.resetsAt / WINDOW_BUCKET_MS));
+  const need: Need = { id: `limit:${id}`, kind: 'limit', since: at, name, instance, agentKey: null, floor: null, docPath: null, orderSlug: null };
   if (out || (exhaustsAt !== null && exhaustsAt - now < LIMIT_SOON_MS)) need.imminent = true;
   return need;
 }
 
-function agentNeed(kind: NeedKind, agent: AgentView | undefined, key: string, since: number, floor: string | null): Need {
+function agentNeed(kind: NeedKind, agent: AgentView | undefined, key: string, since: number, floor: string | null, instance: string): Need {
   return {
     id: `agent:${key}`,
     kind,
     since,
     name: agent ? agentName(agent) : key.slice(0, 8),
+    instance,
     agentKey: key,
     floor,
     docPath: null,
@@ -94,9 +100,10 @@ function hungNeed(agent: AgentView, now: number, thresholdMs: number): Need | nu
   if (ran < thresholdMs) return null;
   const line = hubText(agent.detail).replace(/\s+/g, ' ').trim();
   const detail = line.length > HUNG_DETAIL_MAX ? `${line.slice(0, HUNG_DETAIL_MAX - 1)}…` : line;
-  const params = { agent: agentName(agent), min: Math.floor(ran / 60_000), tool };
+  const params = { agent: agentName(agent), tool };
   const name = detail ? t('needs.hung.detail', { ...params, detail }) : t('needs.hung.name', params);
-  return { id: `hung:${agent.key}`, kind: 'hung', since: agent.updatedAt, name, agentKey: agent.key, floor: agent.floor, docPath: null, orderSlug: null };
+  const instance = `${tool}:${agent.updatedAt}`;
+  return { id: `hung:${agent.key}`, kind: 'hung', since: agent.updatedAt, name, instance, agentKey: agent.key, floor: agent.floor, docPath: null, orderSlug: null };
 }
 
 function moreUrgent(a: Need, b: Need): boolean {
@@ -111,19 +118,20 @@ export function collectNeeds(sources: NeedSources): Need[] {
   for (const agent of sources.agents) agents.set(agent.key, agent);
   const byAgent = new Map<string, Need>();
   const offer = (need: Need): void => {
-    const known = byAgent.get(need.id);
-    if (!known || moreUrgent(need, known)) byAgent.set(need.id, need);
+    const owner = need.agentKey ?? need.id;
+    const known = byAgent.get(owner);
+    if (!known || moreUrgent(need, known)) byAgent.set(owner, need);
   };
 
   for (const question of sources.questions) {
     const agent = agents.get(question.agentKey);
     if (agent && isAway(agent)) continue;
-    offer(agentNeed(question.kind === 'permission' ? 'permission' : 'question', agent, question.agentKey, question.createdAt, question.floor));
+    offer(agentNeed(question.kind === 'permission' ? 'permission' : 'question', agent, question.agentKey, question.createdAt, question.floor, question.id));
   }
   for (const agent of agents.values()) {
     if (isAway(agent)) continue;
-    if (sources.stateOf(agent) === 'blocked') offer(agentNeed('blocked', agent, agent.key, agent.stateSince, agent.floor));
-    if (agent.stalledSince !== null) offer(agentNeed('stalled', agent, agent.key, agent.stalledSince, agent.floor));
+    if (sources.stateOf(agent) === 'blocked') offer(agentNeed('blocked', agent, agent.key, agent.stateSince, agent.floor, String(agent.stateSince)));
+    if (agent.stalledSince !== null) offer(agentNeed('stalled', agent, agent.key, agent.stalledSince, agent.floor, String(agent.stalledSince)));
   }
   if (sources.hungAfterMinutes > 0) {
     const asking = new Set(sources.questions.map((question) => question.agentKey));
@@ -142,6 +150,7 @@ export function collectNeeds(sources: NeedSources): Need[] {
       kind: 'plan',
       since: doc.deliveredAt ?? doc.updatedAt,
       name: doc.title,
+      instance: String(doc.deliveredAt ?? doc.updatedAt),
       agentKey: null,
       floor: doc.base[0]?.floor ?? null,
       docPath: doc.path,
@@ -156,6 +165,7 @@ export function collectNeeds(sources: NeedSources): Need[] {
       kind: 'checks',
       since: order.updatedAt,
       name: order.title,
+      instance: order.checks.sha ?? '',
       agentKey: null,
       floor: order.floor,
       docPath: null,
@@ -169,7 +179,8 @@ export function collectNeeds(sources: NeedSources): Need[] {
       rest > 0
         ? t('needs.claim.many', { path: collision.path, a: first.name, b: second.name, n: rest })
         : t('needs.claim.two', { path: collision.path, a: first.name, b: second.name });
-    needs.push({ id: `claim:${collision.channel}:${collision.path}`, kind: 'claim', since: collision.since, name, agentKey: null, floor: first.floor, docPath: null, orderSlug: null, channel: collision.channel });
+    const instance = collision.holders.map((holder) => holder.key).sort().join(',');
+    needs.push({ id: `claim:${collision.channel}:${collision.path}`, kind: 'claim', since: collision.since, name, instance, agentKey: null, floor: first.floor, docPath: null, orderSlug: null, channel: collision.channel });
   }
   const usage = sources.usage;
   if (usage) {
@@ -199,12 +210,20 @@ export function needLabel(need: Pick<Need, 'kind' | 'name'>): string {
   return t(`needs.kind.${need.kind}`, { name: need.name });
 }
 
-// A short fingerprint of what the entry says: when it changes, a snooze "until it changes" ends.
-export function needSignature(need: Pick<Need, 'kind' | 'name'>): string {
-  const text = `${need.kind}|${need.name}`;
+function hashOf(text: string): string {
   let hash = 5381;
   for (let i = 0; i < text.length; i += 1) hash = (Math.imul(hash, 33) + text.charCodeAt(i)) | 0;
-  return `${need.kind}:${(hash >>> 0).toString(36)}`;
+  return (hash >>> 0).toString(36);
+}
+
+// A short fingerprint of the occurrence and of what the entry says: `kind:instance:label`. A snooze "until it
+// changes" ends when any of it changes; a timed one only when the occurrence does.
+export function needSignature(need: Pick<Need, 'kind' | 'name' | 'instance'>): string {
+  return `${need.kind}:${hashOf(need.instance)}:${hashOf(need.name)}`;
+}
+
+function occurrenceOf(signature: string): string {
+  return signature.slice(0, signature.lastIndexOf(':'));
 }
 
 // A permission blocks an agent, so it can never be postponed.
@@ -214,8 +233,10 @@ export function canSnooze(need: Pick<Need, 'kind'>): boolean {
 
 function isSnoozed(need: Need, snoozes: Snoozes, now: number): boolean {
   const entry = snoozes[need.id];
-  if (!entry || !canSnooze(need) || entry.sig !== needSignature(need)) return false;
-  return entry.until === null || now < entry.until;
+  if (!entry || !canSnooze(need)) return false;
+  const signature = needSignature(need);
+  if (entry.until === null) return entry.sig === signature;
+  return now < entry.until && occurrenceOf(entry.sig) === occurrenceOf(signature);
 }
 
 export function activeNeeds(needs: readonly Need[], snoozes: Snoozes, now: number): Need[] {
@@ -245,9 +266,53 @@ export function wakeNeed(snoozes: Snoozes, id: string): Snoozes {
   return rest;
 }
 
+type SnoozeMode = Pick<Store, 'replay' | 'connection'>;
+
+// Only the live office keeps snoozes: a replay postpones for its own page and never touches the stored ones.
+export function shouldPersistSnoozes(mode: SnoozeMode): boolean {
+  return !mode.replay && mode.connection !== 'replay';
+}
+
+// Pruning drops what is gone from the queue, so it needs the queue of a live snapshot, not an empty or stale one.
+export function shouldPruneSnoozes(mode: SnoozeMode): boolean {
+  return shouldPersistSnoozes(mode) && mode.connection === 'online';
+}
+
+let pageSnoozes: Snoozes | null = null;
+
+// Read on every use, so another tab's snoozes count here too.
+export function loadSnoozes(mode: SnoozeMode): Snoozes {
+  if (shouldPersistSnoozes(mode)) return readSnoozes();
+  pageSnoozes ??= readSnoozes();
+  return pageSnoozes;
+}
+
+export function saveSnoozes(mode: SnoozeMode, snoozes: Snoozes): void {
+  if (shouldPersistSnoozes(mode)) writeSnoozes(snoozes);
+  else pageSnoozes = snoozes;
+}
+
 // What N and Shift+N walk: the queue without the postponed entries.
 export function activeNeedsOf(store: Store): Need[] {
-  return activeNeeds(needsOf(store), readSnoozes(), store.now());
+  return activeNeeds(needsOf(store), loadSnoozes(store), store.now());
+}
+
+// Where the menu puts the focus when it opens: the first entry, or the postponed ones when all of them are.
+export function menuStart(active: number, snoozed: number): 'entry' | 'snoozed' | null {
+  if (active > 0) return 'entry';
+  return snoozed > 0 ? 'snoozed' : null;
+}
+
+// The arrows walk the menu and wrap around; from outside it they start at the first (or the last) stop.
+export function menuStep(at: number, direction: 1 | -1, length: number): number | null {
+  if (length === 0) return null;
+  if (at < 0) return direction === 1 ? 0 : length - 1;
+  return (at + direction + length) % length;
+}
+
+// What the trigger shows; the menu rewrites it only when this changes.
+export function triggerSignature(lang: string, active: number, total: number): string {
+  return `${lang}|${active}|${total === 0 ? 'off' : 'on'}`;
 }
 
 export function needToast(position: number, total: number, need: Need): string {
