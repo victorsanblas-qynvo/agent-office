@@ -23,6 +23,7 @@ export const agent = (key: string, extra: Partial<AgentView> = {}): AgentView =>
   tokens: null,
   waiting: null,
   stalledSince: null,
+  toolSince: null,
   context: null,
   ...extra,
 });

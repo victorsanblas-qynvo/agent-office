@@ -177,10 +177,10 @@ describe('usage limits', () => {
 
 describe('hung tools', () => {
   const MIN = 60_000;
-  const busy = (extra: Partial<ReturnType<typeof agent>> = {}) => agent('lead', { tool: 'Bash', detail: 'bun test', updatedAt: NOW - 12 * MIN, ...extra });
+  const busy = (extra: Partial<ReturnType<typeof agent>> = {}) => agent('lead', { state: 'testing', tool: 'Bash', detail: 'bun test', toolSince: NOW - 12 * MIN, updatedAt: NOW, ...extra });
 
   test('below the threshold nothing is flagged', () => {
-    expect(collectNeeds(sources({ agents: [busy({ updatedAt: NOW - 9 * MIN })] }))).toEqual([]);
+    expect(collectNeeds(sources({ agents: [busy({ toolSince: NOW - 9 * MIN })] }))).toEqual([]);
   });
 
   test('above it, one need with the tool and the detail', () => {
@@ -200,6 +200,27 @@ describe('hung tools', () => {
     expect(needLabel(needs[0])).toBe(`lead lleva rato en Bash: ${'x'.repeat(59)}…`);
   });
 
+  test('reading and checking states count too', () => {
+    const agents = [busy({ key: 'reader', state: 'reading' }), busy({ key: 'checker', state: 'checking' }), busy({ key: 'worker', state: 'working' })];
+    expect(collectNeeds(sources({ agents })).map((need) => need.id).sort()).toEqual(['hung:checker', 'hung:reader', 'hung:worker']);
+  });
+
+  test('no open tool is not flagged, however old the last update', () => {
+    expect(collectNeeds(sources({ agents: [busy({ toolSince: null, updatedAt: NOW - 60 * MIN })] }))).toEqual([]);
+  });
+
+  test('the time runs from when the tool opened, not the last update', () => {
+    const needs = collectNeeds(sources({ agents: [busy({ toolSince: NOW - 25 * MIN, updatedAt: NOW - 1 * MIN })] }));
+    expect(needLabel(needs[0])).toBe('lead lleva rato en Bash: bun test');
+    expect(needs[0].since).toBe(NOW - 25 * MIN);
+  });
+
+  test('its snooze signature survives the minutes ticking', () => {
+    const early = collectNeeds(sources({ agents: [busy()], now: NOW }))[0];
+    const later = collectNeeds(sources({ agents: [busy()], now: NOW + 3 * MIN }))[0];
+    expect(needSignature(early)).toBe(needSignature(later));
+  });
+
   test('off, nothing is flagged', () => {
     expect(collectNeeds(sources({ agents: [busy()], hungAfterMinutes: 0 }))).toEqual([]);
   });
@@ -212,6 +233,7 @@ describe('hung tools', () => {
       busy({ key: 'asker', tool: 'AskUserQuestion' }),
       busy({ key: 'spawner', tool: 'Task' }),
       busy({ key: 'away', away: true }),
+      busy({ key: 'closed', toolSince: null }),
       busy({ key: 'question' }),
       busy({ key: 'toolless', tool: null }),
     ];

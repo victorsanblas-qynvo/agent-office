@@ -1026,3 +1026,42 @@ describe('agents going home', () => {
     expect(h.messages.filter((m) => m.type === 'agent-gone')).toHaveLength(1);
   });
 });
+
+describe('open tool start', () => {
+  const MIN = 60_000;
+  const pre = (id: string, tool = 'Bash') => ev(LEAD, observedRepo(), 'PreToolUse', { tool_name: tool, tool_use_id: id, tool_input: { command: 'sleep 1' } });
+  const post = (id: string, hook = 'PostToolUse') => ev(LEAD, observedRepo(), hook, { tool_name: 'Bash', tool_use_id: id, tool_input: { command: 'sleep 1' } });
+
+  test('toolSince is set on PreToolUse and cleared on PostToolUse', () => {
+    h = harness();
+    h.office.ingest(ev(LEAD, observedRepo(), 'SessionStart', { source: 'startup' }), leadMeta);
+    expect(agent(LEAD)?.toolSince).toBeNull();
+    const opened = h.clock.now;
+    h.office.ingest(pre('t1'));
+    expect(agent(LEAD)?.toolSince).toBe(opened);
+    h.clock.advance(MIN);
+    h.office.ingest(post('t1'));
+    expect(agent(LEAD)?.toolSince).toBeNull();
+  });
+
+  test('PostToolUseFailure clears it too', () => {
+    h = harness();
+    h.office.ingest(ev(LEAD, observedRepo(), 'SessionStart', { source: 'startup' }), leadMeta);
+    h.office.ingest(pre('t1'));
+    h.office.ingest(post('t1', 'PostToolUseFailure'));
+    expect(agent(LEAD)?.toolSince).toBeNull();
+  });
+
+  test('with two open tools it is the earliest, and closing it leaves the other', () => {
+    h = harness();
+    h.office.ingest(ev(LEAD, observedRepo(), 'SessionStart', { source: 'startup' }), leadMeta);
+    const first = h.clock.now;
+    h.office.ingest(pre('t1'));
+    h.clock.advance(MIN);
+    const second = h.clock.now;
+    h.office.ingest(pre('t2', 'Read'));
+    expect(agent(LEAD)?.toolSince).toBe(first);
+    h.office.ingest(post('t1'));
+    expect(agent(LEAD)?.toolSince).toBe(second);
+  });
+});

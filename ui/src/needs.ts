@@ -53,6 +53,8 @@ const HUNG_DETAIL_MAX = 60;
 // The reset time of a window wobbles by a minute or so between samples; the hour names the window.
 const WINDOW_BUCKET_MS = 3_600_000;
 // Tools that wait for somebody by design.
+// The shown states a running tool can sit under.
+const HUNG_STATES: ReadonlySet<AgentState> = new Set(['working', 'reading', 'testing', 'checking']);
 const PATIENT_TOOLS: ReadonlySet<string> = new Set(['AskUserQuestion', 'ExitPlanMode', 'Agent', 'Task']);
 
 function rankOf(need: Need): number {
@@ -95,15 +97,14 @@ function agentNeed(kind: NeedKind, agent: AgentView | undefined, key: string, si
 
 function hungNeed(agent: AgentView, now: number, thresholdMs: number): Need | null {
   const tool = agent.tool;
-  if (!tool || PATIENT_TOOLS.has(tool) || agent.waiting !== null) return null;
-  const ran = now - agent.updatedAt;
+  if (agent.toolSince === null || !tool || PATIENT_TOOLS.has(tool) || agent.waiting !== null) return null;
+  const ran = now - agent.toolSince;
   if (ran < thresholdMs) return null;
   const line = hubText(agent.detail).replace(/\s+/g, ' ').trim();
   const detail = line.length > HUNG_DETAIL_MAX ? `${line.slice(0, HUNG_DETAIL_MAX - 1)}…` : line;
   const params = { agent: agentName(agent), tool };
   const name = detail ? t('needs.hung.detail', { ...params, detail }) : t('needs.hung.name', params);
-  const instance = `${tool}:${agent.updatedAt}`;
-  return { id: `hung:${agent.key}`, kind: 'hung', since: agent.updatedAt, name, instance, agentKey: agent.key, floor: agent.floor, docPath: null, orderSlug: null };
+  return { id: `hung:${agent.key}`, kind: 'hung', since: agent.toolSince, name, agentKey: agent.key, floor: agent.floor, docPath: null, orderSlug: null, instance: `${tool}:${agent.toolSince}` };
 }
 
 function moreUrgent(a: Need, b: Need): boolean {
@@ -136,7 +137,7 @@ export function collectNeeds(sources: NeedSources): Need[] {
   if (sources.hungAfterMinutes > 0) {
     const asking = new Set(sources.questions.map((question) => question.agentKey));
     for (const agent of agents.values()) {
-      if (isAway(agent) || asking.has(agent.key) || sources.stateOf(agent) !== 'working') continue;
+      if (isAway(agent) || asking.has(agent.key) || !HUNG_STATES.has(sources.stateOf(agent))) continue;
       const need = hungNeed(agent, sources.now, sources.hungAfterMinutes * 60_000);
       if (need) offer(need);
     }

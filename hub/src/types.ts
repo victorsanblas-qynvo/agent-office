@@ -515,6 +515,8 @@ export type AgentView = {
   tokens: TokenTotals | null;
   waiting: { who: string; what: string; since: number } | null;
   stalledSince: number | null;
+  // When the oldest tool still open began; null with none open. Not persisted.
+  toolSince: number | null;
   context: AgentContext | null;
 };
 
