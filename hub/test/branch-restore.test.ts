@@ -121,4 +121,33 @@ describe('deleted branches', () => {
     expect(await restore({ branch, sha }, 'otra')).toMatchObject({ status: 404, body: { error: { key: 'hub.api.floorNotManaged' } } });
     expect(git(rig.repo, 'branch', '--list', 'encargo/*')).toBe('');
   });
+
+  test('older deletions of the same branch are superseded and cannot be restored', async () => {
+    rig = deliveryRig();
+    const call = api(rig);
+    const { branch, sha } = await deletedOrder(rig, 'Pantalla de login');
+    rig.h.clock.advance(60_000);
+    const older = sha;
+    const newer = git(rig.repo, 'rev-parse', 'origin/develop');
+    const summary = JSON.stringify({ key: 'hub.act.branchDeleted', params: { branch, sha: newer } });
+    rig.h.db.query("INSERT INTO activity_log (ts, agent_key, floor, event, summary) VALUES (?, 'panel', 'mobile', 'Worktrees', ?)").run(rig.h.clock.now, summary);
+    const listed = (await call('GET', '/api/floors/mobile/deleted-branches')).body.branches as Record<string, any>[];
+    expect(listed.map((b) => [b.sha, b.restorable, b.reason])).toEqual([
+      [newer, true, null],
+      [older, false, 'superseded'],
+    ]);
+    expect(await call('POST', '/api/floors/mobile/deleted-branches/restore', { branch, sha: older })).toMatchObject({ status: 404 });
+  });
+
+  test('the git checks of a listing are cached for 30 seconds', async () => {
+    rig = deliveryRig();
+    const call = api(rig);
+    const { branch, sha } = await deletedOrder(rig, 'Pantalla de login');
+    const first = (await call('GET', '/api/floors/mobile/deleted-branches')).body.branches;
+    expect(first[0]).toMatchObject({ restorable: true });
+    git(rig.repo, 'branch', branch, sha);
+    expect((await call('GET', '/api/floors/mobile/deleted-branches')).body.branches[0]).toMatchObject({ restorable: true });
+    rig.h.clock.advance(31_000);
+    expect((await call('GET', '/api/floors/mobile/deleted-branches')).body.branches[0]).toMatchObject({ restorable: false, reason: 'exists' });
+  });
 });

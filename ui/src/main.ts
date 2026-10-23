@@ -6,7 +6,7 @@ import { el } from './dom';
 import { Heartbeat } from './heartbeat';
 import { mountHelp } from './help';
 import { applyLang, readStoredLang, t, type MessageKey, type Params } from './i18n';
-import { mountKeys } from './keys';
+import { boardKeysReady, mountKeys } from './keys';
 import { LiveConnection } from './live';
 import { goToAgent, goToNeed, paletteContext, runKey, runTarget, type Nav } from './navigate';
 import { NeedCursor } from './needs';
@@ -159,7 +159,7 @@ async function boot(): Promise<void> {
   mountKeys({
     run: (action) => runKey(nav, action, cursor, { palette: palette.open, help: help.toggle }),
     layers: [palette.close, help.close, topbar.needs.close, closeDocument, () => tab === 'board' && board.clearHighlight()],
-    boardReady: (move) => tab === 'board' && (move !== 'open' || board.hasHighlight()),
+    boardReady: (move) => boardKeysReady(tab === 'board', document.querySelector('.order-drawer-backdrop') !== null, move === 'open', board.hasHighlight()),
     modalOpen: () => palette.isOpen() || help.isOpen() || document.querySelector('.dialog-backdrop, .modal-backdrop') !== null,
   });
 

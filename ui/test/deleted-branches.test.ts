@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { applyLang, t } from '../src/i18n';
-import { blockedKey, restorableCount, shortSha } from '../src/settings/deleted-branches-model';
+import { blockedKey, reloadDelay, restorableCount, shortSha } from '../src/settings/deleted-branches-model';
 import type { DeletedBranchView } from '../src/types';
 
 const view = (over: Partial<DeletedBranchView> = {}): DeletedBranchView => ({
@@ -29,5 +29,17 @@ describe('deleted branches', () => {
 
   test('the sha is shown with its first seven characters', () => {
     expect(shortSha(view().sha)).toBe('0123456');
+  });
+});
+
+describe('reloadDelay', () => {
+  test('waits the debounce, stretched to keep ten seconds between reloads', () => {
+    expect(reloadDelay(0, 100_000)).toBe(400);
+    expect(reloadDelay(100_000, 103_000)).toBe(7000);
+    expect(reloadDelay(100_000, 109_900)).toBe(400);
+  });
+
+  test('a superseded deletion is blocked with its own message', () => {
+    expect(blockedKey(view({ restorable: false, reason: 'superseded' }))).toBe('settings.branches.blocked.superseded');
   });
 });

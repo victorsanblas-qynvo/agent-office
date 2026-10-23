@@ -109,6 +109,18 @@ describe('transcript tail', () => {
     expect(body.entries.map((e: any) => e.text)).toEqual(['uno', 'dos']);
   });
 
+  test('a last line longer than the window is still read by going further back', async () => {
+    const call = rig([user('antes'), user('z'.repeat(300 * 1024))]);
+    const { body } = await call('/api/sessions/s-1/tail');
+    expect(body.entries.at(-1).text).toBe('z'.repeat(500));
+  });
+
+  test('a line past the 2 MB limit gives an empty tail', () => {
+    rig([user('antes'), user('z'.repeat(2.5 * 1024 * 1024))]);
+    const file = join(h!.root, 'claude-home', 'projects', projectSlug(join(h!.root, 'repo')), 's-1.jsonl');
+    expect(readTranscriptTail(file, 5, KEY)).toEqual([]);
+  });
+
   test('lines that are not JSON are skipped', async () => {
     const call = rig([user('antes'), '{"type":"assistant","message":', 'basura', '[1,2]', user('despues')]);
     const { body } = await call('/api/sessions/s-1/tail');

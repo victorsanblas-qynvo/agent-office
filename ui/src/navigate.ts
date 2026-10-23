@@ -182,7 +182,7 @@ export function runTarget(nav: Nav, target: PaletteTarget): void {
       void requestRelaunchAll(nav.api, store);
       break;
     case 'pin':
-      store.setPins(togglePin(store.pins, target.key));
+      store.setPins(togglePin(store.pins, target.key, store.agents));
       break;
     case 'newOrder':
       nav.showTab('board');

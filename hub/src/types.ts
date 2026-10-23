@@ -889,7 +889,7 @@ export type WorktreeView = {
 };
 
 // Why a deleted branch cannot come back: a branch has that name again, git no longer has the commit, or git did not answer.
-export type DeletedBranchBlock = 'exists' | 'gone' | 'unknown';
+export type DeletedBranchBlock = 'exists' | 'gone' | 'unknown' | 'superseded';
 
 export type DeletedBranchView = { floor: string; branch: string; sha: string; at: number; restorable: boolean; reason: DeletedBranchBlock | null };
 

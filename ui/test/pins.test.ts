@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { canPin, MAX_PINS, pinnedRows, togglePin } from '../src/pins';
 import { pinSignature } from '../src/pinned-strip';
+import { headerSignature, type HeaderFacts } from '../src/panel/header';
 import type { AgentView } from '../src/types';
 import { agent } from './fixtures';
 
@@ -59,5 +60,36 @@ describe('pinSignature', () => {
     expect(pinSignature('es', [face({ openTool: 'Bash' })])).not.toBe(base);
     expect(pinSignature('es', [face({ context: { usedPct: 42, tokens: 1, window: 2, compactions: 0, source: 'transcript', at: 1 } })])).not.toBe(base);
     expect(pinSignature('es', [{ ...face(), state: 'idle' }])).not.toBe(base);
+  });
+});
+
+describe('dead pins', () => {
+  const ended = ['a', 'b', 'c', 'd'];
+  const agents = map(...ended.map((key) => agent(key, { endedAt: 5000 })), agent('e'));
+
+  test('ended pins do not use up the cap', () => {
+    expect(canPin(ended, 'e', agents)).toBe(true);
+    expect(canPin(ended, 'e')).toBe(false);
+  });
+
+  test('pinning drops the pins of agents that ended or are gone', () => {
+    expect(togglePin(ended, 'e', agents)).toEqual(['e']);
+    expect(togglePin(['a', 'gone', 'e'], 'f', map(agent('e'), agent('f')))).toEqual(['e', 'f']);
+  });
+
+  test('without a loaded snapshot the pins are kept', () => {
+    expect(togglePin(ended, 'e', new Map())).toEqual(ended);
+  });
+});
+
+describe('headerSignature', () => {
+  const facts: HeaderFacts = { lang: 'es', key: 'a', name: 'A', state: 'working', role: 'r', floor: 'f', ended: false, pinned: false, pinnable: true, replay: false };
+
+  test('is stable for equal facts and changes with any of them', () => {
+    const base = headerSignature(facts);
+    expect(headerSignature({ ...facts })).toBe(base);
+    expect(headerSignature({ ...facts, state: 'idle' })).not.toBe(base);
+    expect(headerSignature({ ...facts, pinned: true })).not.toBe(base);
+    expect(headerSignature({ ...facts, pinnable: false })).not.toBe(base);
   });
 });
