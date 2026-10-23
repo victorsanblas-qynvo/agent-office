@@ -8,6 +8,7 @@ import type { DocumentStatus, HubText, SettingsView } from '../types';
 import { deliveryEditor, type DeliveryContext } from './floor-delivery';
 import { deliverySwitch } from './floor-delivery-switch';
 import type { FloorDeliveryDraft } from './floor-delivery-model';
+import { flakyChecks } from './flaky-checks';
 import { deletedBranches, deletedBranchesContext, reloadOpen } from './deleted-branches';
 import { mountDiagnosticsPanel } from './diagnostics';
 import { mountWorktreesPanel } from './worktrees-panel';
@@ -95,6 +96,7 @@ export function mountProjects(host: HTMLElement, store: Store, api: OfficeApi | 
       header,
       deliverySwitch(floor, delivery),
       floor.delivery ? deliveryEditor(floor, delivery) : el('p', 'setting-hint muted delivery-off', t('settings.delivery.off')),
+      flakyChecks(floor.slug, store, client),
       deletedBranches(floor.slug, branches),
     );
   };

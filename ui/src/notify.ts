@@ -1,5 +1,5 @@
 import { isBlockedMessage, leadDeliveryFloor } from './deliveries';
-import { plural, t } from './i18n';
+import { currentLang, plural, t, translatorFor, type Lang } from './i18n';
 import { agentName, floorLabel } from './labels';
 import { openDocument } from './panel/deliverables';
 import type { Store } from './store';
@@ -24,6 +24,44 @@ export function checkTransitionNotice(prev: Pick<CheckRunView, 'id' | 'status'> 
   if (next.status !== 'failed') return null;
   const failing = next.checks.find((check) => check.status === 'failed' || check.status === 'timeout');
   return { orderId: next.orderId, tag: `checks:${next.id}`, key: 'notify.checks.failed', body: failing?.name ?? '' };
+}
+
+export type RecapKind = 'delivery' | 'blocked' | 'checks' | 'plans' | 'alerts' | 'stalled';
+
+export const RECAP_KINDS: readonly RecapKind[] = ['delivery', 'blocked', 'checks', 'plans', 'alerts', 'stalled'];
+
+export type RecapCounts = Record<RecapKind, number>;
+
+const RECAP_OF: Partial<Record<NotifyEvent, RecapKind>> = { done: 'delivery', blocked: 'blocked', checks: 'checks', document: 'plans', alert: 'alerts', stalled: 'stalled' };
+
+// What quiet hours dropped, by kind; it lives in memory and is emptied when the recap is taken.
+export class QuietRecap {
+  private counts: RecapCounts = emptyRecap();
+
+  add(kind: RecapKind): void {
+    this.counts[kind] += 1;
+  }
+
+  get total(): number {
+    return RECAP_KINDS.reduce((sum, kind) => sum + this.counts[kind], 0);
+  }
+
+  take(): RecapCounts {
+    const taken = this.counts;
+    this.counts = emptyRecap();
+    return taken;
+  }
+}
+
+function emptyRecap(): RecapCounts {
+  return { delivery: 0, blocked: 0, checks: 0, plans: 0, alerts: 0, stalled: 0 };
+}
+
+// One line for the whole quiet stretch, only the kinds that dropped something; null when nothing did.
+export function recapText(counts: RecapCounts, lang: Lang): string | null {
+  const tr = translatorFor(lang);
+  const parts = RECAP_KINDS.filter((kind) => counts[kind] > 0).map((kind) => tr.plural(`notify.recap.${kind}`, counts[kind]));
+  return parts.length > 0 ? tr.t('notify.recap.title', { parts: parts.join(', ') }) : null;
 }
 
 // Events held back through quiet hours instead of dropped: they stay open (a question) or true (a usage level) after the window; a check result is dropped in quiet hours.
@@ -73,6 +111,7 @@ export class Notifier {
   private readonly lastRuns = new Map<number, CheckRunView>();
   private lastUsage: UsageView | null = null;
   private wasQuiet: boolean;
+  private readonly recap = new QuietRecap();
   // Where the notification of a finished order takes the user when it is clicked.
   openFinished: ((view: FinishedView) => void) | null = null;
   // Where the notification of a check result takes the user: the Tablero with that order's drawer.
@@ -123,6 +162,7 @@ export class Notifier {
         this.reminded.add(question.id);
       }
       this.usage(this.lastUsage, true);
+      this.showRecap();
     }
     this.wasQuiet = quiet;
     const ids = new Set(open.map((question) => question.id));
@@ -132,6 +172,26 @@ export class Notifier {
       if (quietSilences(readQuietHours(), permission, date)) continue;
       this.reminded.add(question.id);
       this.show(permission ? 'permission' : 'question', `question:${question.id}:remind`, t('notify.remind.title', { agent: this.name(question.agentKey) }), t('notify.openPanel'), this.select(question.agentKey), question.floor);
+    }
+  }
+
+  // The panel in front gets the recap as a toast; the desktop notice carries only counts, never a text.
+  private showRecap(): void {
+    const text = recapText(this.recap.take(), currentLang());
+    if (text === null || !this.prefs.enabled) return;
+    if (document.visibilityState === 'visible' && document.hasFocus()) {
+      this.store.toast(text, 'info');
+      return;
+    }
+    if (permissionState() !== 'granted') return;
+    try {
+      const notification = new Notification(text, { tag: 'quiet-recap' });
+      notification.onclick = () => {
+        window.focus();
+        notification.close();
+      };
+    } catch {
+      // A browser may expose Notification but refuse the constructor; one failed notice must not break the tick.
     }
   }
 
@@ -231,7 +291,7 @@ export class Notifier {
     if (!notice) return;
     const order = this.store.orders.find((item) => item.id === run.orderId);
     if (!order) return;
-    this.show('checks', notice.tag, t(notice.key, { title: order.title }), notice.body, () => this.openOrder?.(order));
+    this.show('checks', notice.tag, t(notice.key, { title: order.title }), notice.body, () => this.openOrder?.(order), null, notice.key === 'notify.checks.failed');
   }
 
   // 80 % and 95 % of each window warn once; the tag carries the reset of the window, so the next one warns again.
@@ -311,7 +371,7 @@ export class Notifier {
     return floors.length > 0 && floors.every((slug) => muted.includes(slug)) ? (floors[0] ?? null) : null;
   }
 
-  private show(event: NotifyEvent, tag: string, title: string, body: string, onClick: () => void, floor: string | null = null): void {
+  private show(event: NotifyEvent, tag: string, title: string, body: string, onClick: () => void, floor: string | null = null, countable = true): void {
     if (!this.prefs.enabled || !this.prefs.events[event] || permissionState() !== 'granted') return;
     if (this.seen.has(tag)) return;
     if (floorMuted(readMutedFloors(), floor, event === 'permission')) {
@@ -322,7 +382,11 @@ export class Notifier {
     if (quiet && DEFERRED_EVENTS.has(event)) return;
     this.seen.add(tag);
     if (this.seen.size > SEEN_LIMIT) this.seen.delete(this.seen.values().next().value as string);
-    if (quiet) return;
+    if (quiet) {
+      const kind = RECAP_OF[event];
+      if (kind && countable) this.recap.add(kind);
+      return;
+    }
     // The panel in front already shows it.
     if (document.visibilityState === 'visible' && document.hasFocus()) return;
     let notification: Notification;

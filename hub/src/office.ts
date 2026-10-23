@@ -8,6 +8,7 @@ import { BranchRestoreDesk, type BranchRestoreResult } from './branch-restore';
 import { ChatDesk, GLOBAL_CHANNEL, SNAPSHOT_LIMIT } from './chat';
 import { CheckpointDesk } from './checkpoints';
 import { ChecksDesk } from './checks';
+import { flakyReport } from './flaky-report';
 import { withoutChatCalls } from './chat-commands';
 import { ChatRoom, type ReadChatResult, type UserChatResult } from './chat-room';
 import { ContextDesk } from './context-desk';
@@ -91,6 +92,7 @@ import type {
   MemoryView,
   MessageView,
   OfficeConfig,
+  FlakyCheckView,
   OfficeDigest,
   OrderCommentView,
   OrderStatus,
@@ -737,6 +739,11 @@ export class Office {
   dayDigest(day: string | null): OfficeDigest | 'bad-day' | 'future-day' {
     const now = this.now();
     return digest(this.opts.db, day ?? localDay(now), now);
+  }
+
+  flakyChecks(days: number, floor?: string): FlakyCheckView[] | 'bad-floor' {
+    if (floor !== undefined && !this.floors.views().some((view) => view.slug === floor)) return 'bad-floor';
+    return flakyReport(this.opts.db, this.now(), days, floor);
   }
 
   documents(): DocumentView[] {
