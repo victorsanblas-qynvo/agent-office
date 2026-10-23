@@ -4,6 +4,7 @@ import { agentName, floorLabel } from './labels';
 import { openDocument } from './panel/deliverables';
 import type { Store } from './store';
 import { dueReminders, floorMuted, inQuietHours, quietSilences, readMutedFloors, readQuietHours, readRemindMinutes } from './prefs';
+import { NoticeLog, type NoticeOutcome } from './notice-log';
 import { forecastText } from './usage-card';
 import { finishedNotice, readFinishedMode, wantsDesktop } from './panel/finished';
 import type { AgentView, CheckRunView, FloorView, DocumentView, FinishedView, GuardAlert, MessageView, OrderView, QuestionView, ServerMessage, UsageView, UsageWindow } from './types';
@@ -112,6 +113,8 @@ export class Notifier {
   private lastUsage: UsageView | null = null;
   private wasQuiet: boolean;
   private readonly recap = new QuietRecap();
+  private readonly logged = new Set<string>();
+  readonly notices = new NoticeLog();
   // Where the notification of a finished order takes the user when it is clicked.
   openFinished: ((view: FinishedView) => void) | null = null;
   // Where the notification of a check result takes the user: the Tablero with that order's drawer.
@@ -371,31 +374,53 @@ export class Notifier {
     return floors.length > 0 && floors.every((slug) => muted.includes(slug)) ? (floors[0] ?? null) : null;
   }
 
+  // Every candidate lands in the inbox once per outcome, before or after the gate decides.
+  private record(event: NotifyEvent, tag: string, title: string, body: string, onClick: () => void, floor: string | null, outcome: NoticeOutcome): void {
+    const id = `${tag}|${outcome}`;
+    if (this.logged.has(id)) return;
+    this.logged.add(id);
+    if (this.logged.size > SEEN_LIMIT) this.logged.delete(this.logged.values().next().value as string);
+    this.notices.push({ at: this.now().getTime(), kind: event, title, ...(body ? { body } : {}), ...(floor ? { floor } : {}), target: onClick, outcome });
+  }
+
   private show(event: NotifyEvent, tag: string, title: string, body: string, onClick: () => void, floor: string | null = null, countable = true): void {
-    if (!this.prefs.enabled || !this.prefs.events[event] || permissionState() !== 'granted') return;
+    if (!this.prefs.enabled || !this.prefs.events[event] || permissionState() !== 'granted') {
+      this.record(event, tag, title, body, onClick, floor, 'off');
+      return;
+    }
     if (this.seen.has(tag)) return;
     if (floorMuted(readMutedFloors(), floor, event === 'permission')) {
       this.seen.add(tag);
+      this.record(event, tag, title, body, onClick, floor, 'muted');
       return;
     }
     const quiet = quietSilences(readQuietHours(), event === 'permission', this.now());
-    if (quiet && DEFERRED_EVENTS.has(event)) return;
+    if (quiet && DEFERRED_EVENTS.has(event)) {
+      this.record(event, tag, title, body, onClick, floor, 'deferred');
+      return;
+    }
     this.seen.add(tag);
     if (this.seen.size > SEEN_LIMIT) this.seen.delete(this.seen.values().next().value as string);
     if (quiet) {
       const kind = RECAP_OF[event];
       if (kind && countable) this.recap.add(kind);
+      this.record(event, tag, title, body, onClick, floor, 'quiet');
       return;
     }
     // The panel in front already shows it.
-    if (document.visibilityState === 'visible' && document.hasFocus()) return;
+    if (document.visibilityState === 'visible' && document.hasFocus()) {
+      this.record(event, tag, title, body, onClick, floor, 'front');
+      return;
+    }
     let notification: Notification;
     try {
       notification = new Notification(title, { body, tag });
     } catch {
       // A browser may expose Notification but refuse the constructor; one failed notice must not break the stream.
+      this.record(event, tag, title, body, onClick, floor, 'off');
       return;
     }
+    this.record(event, tag, title, body, onClick, floor, 'shown');
     this.shown.set(tag, notification);
     if (this.shown.size > SEEN_LIMIT) this.shown.delete(this.shown.keys().next().value as string);
     notification.onclick = () => {

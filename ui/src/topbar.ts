@@ -2,6 +2,7 @@ import { button, el } from './dom';
 import { LANG_NAMES, LANGS, plural, t, type Lang, type MessageKey } from './i18n';
 import { mountNeedsMenu, type NeedsMenu } from './needs-menu';
 import type { Need } from './needs';
+import { mountNoticeBell, type NoticeBell } from './notice-bell';
 import { mountPinnedStrip } from './pinned-strip';
 import type { ConnectionStatus, Store } from './store';
 
@@ -11,6 +12,7 @@ export type Topbar = {
   root: HTMLElement;
   replayHost: HTMLElement;
   needs: NeedsMenu;
+  notices: NoticeBell;
   setTab(tab: Tab): void;
 };
 
@@ -36,6 +38,7 @@ export function mountTopbar(store: Store, onTab: (tab: Tab) => void, onNeed: (ne
   const dot = el('span', 'status-dot');
   const statusText = el('span', 'status-text');
   const needs = mountNeedsMenu(store, onNeed);
+  const notices = mountNoticeBell(store);
   const pinned = mountPinnedStrip(store, onPin);
   const replayHost = el('div', 'replay-controls');
 
@@ -66,6 +69,7 @@ export function mountTopbar(store: Store, onTab: (tab: Tab) => void, onNeed: (ne
     el('h1', 'brand', 'Agent Office'),
     el('div', 'status', dot, statusText),
     needs.root,
+    notices.root,
     pinned,
     replayHost,
     tabs,
@@ -111,5 +115,5 @@ export function mountTopbar(store: Store, onTab: (tab: Tab) => void, onNeed: (ne
   };
   setTab('office');
 
-  return { root, replayHost, needs, setTab };
+  return { root, replayHost, needs, notices, setTab };
 }
