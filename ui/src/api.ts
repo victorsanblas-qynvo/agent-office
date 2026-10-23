@@ -33,6 +33,7 @@ import type {
   SettingsUpdate,
   SettingsView,
   SkippedFile,
+  TranscriptTail,
   UsageRange,
   OfficeDigest,
   UsageSummary,
@@ -100,6 +101,10 @@ export class OfficeApi {
 
   requestStatus(sessionId: string): Promise<ApiData<{ ok: true }>> {
     return this.send('POST', `/api/sessions/${encodeURIComponent(sessionId)}/status`, {});
+  }
+
+  tail(sessionId: string, n: number): Promise<ApiData<TranscriptTail>> {
+    return this.get(`/api/sessions/${encodeURIComponent(sessionId)}/tail?n=${n}`);
   }
 
   relaunch(sessionId: string): Promise<ApiData<{ ok: true }>> {

@@ -1,12 +1,13 @@
 import type { OfficeApi } from '../api';
-import { append, el, setStateColor } from '../dom';
+import { append, button, el, setStateColor } from '../dom';
 import { t } from '../i18n';
 import { hubText } from '../i18n/hub';
 import { AWAY_ICON, contextFill, contextLevel, contextLine, contextOf, doingPhrase, isAway, STATE_COLORS, STATE_ICONS, tokensLine } from '../labels';
 import type { Store } from '../store';
 import { clockTime, relativeTime } from '../time';
-import type { ActivityView, AgentView } from '../types';
+import type { ActivityView, AgentView, TranscriptEntry } from '../types';
 import { panelSection } from './section';
+import { tailDue, tailIcon, TAIL_LIMIT, type TailMark } from './tail-model';
 import { canAskStatus, runSessionAction, stalledText, statusButton } from './session-controls';
 
 const STEP_LIMIT = 5;
@@ -75,9 +76,51 @@ function stalledLine(store: Store, agent: AgentView, now: number, times: TimeNod
   return el('div', 'now-actions', mark, canAskStatus(store, agent) ? statusButton(agent) : null);
 }
 
+type TailState = { key: string; entries: TranscriptEntry[]; failed: boolean } | null;
+
+function tailRow(entry: TranscriptEntry, now: number): HTMLElement {
+  return el('li', 'now-tail-row', el('span', 'now-tail-icon', tailIcon(entry.role)), el('span', 'now-tail-text', entry.text), el('time', 'muted', relativeTime(entry.ts, now)));
+}
+
 export function mountNow(host: HTMLElement, store: Store, api: OfficeApi | null): void {
   let times: TimeNode[] = [];
   const section = panelSection({ id: 'now', title: () => t('now.title'), host });
+  let tail: TailState = null;
+  let mark: TailMark | null = null;
+  let loading = false;
+  let tailHidden = false;
+  const tailTitle = el('summary', 'now-tail-title section-title');
+  const tailReload = button('', 'session-action');
+  const tailList = el('div', 'now-tail-list');
+  const tailBox = el('details', 'now-tail', tailTitle, el('div', 'now-tail-actions', tailReload), tailList);
+  tailBox.hidden = true;
+
+  const paintTail = (key: string | null): void => {
+    const shown = tail !== null && tail.key === key ? tail : null;
+    tailBox.hidden = shown === null || (shown.entries.length === 0 && !shown.failed && tailHidden);
+    tailTitle.textContent = t('now.tail.title');
+    tailReload.textContent = t('now.tail.reload');
+    if (shown === null) return;
+    const now = store.now();
+    tailList.replaceChildren(
+      shown.failed
+        ? el('p', 'muted hint', t('now.tail.error'))
+        : shown.entries.length > 0
+          ? el('ul', 'now-tail-rows', ...shown.entries.map((entry) => tailRow(entry, now)))
+          : el('p', 'muted hint', t('now.tail.empty')),
+    );
+  };
+  const loadTail = async (agent: AgentView): Promise<void> => {
+    if (!api || loading) return;
+    loading = true;
+    mark = { key: agent.key, stateSince: agent.stateSince, at: store.now() };
+    const result = await api.tail(agent.sessionId, TAIL_LIMIT);
+    loading = false;
+    if (store.selectedKey !== agent.key) return;
+    tailHidden = result.ok && result.data.hidden === true;
+    tail = { key: agent.key, entries: result.ok ? result.data.entries : [], failed: !result.ok };
+    paintTail(agent.key);
+  };
 
   store.watch(['selection', 'agents', 'activity', 'lang'], () => {
     times = [];
@@ -85,6 +128,8 @@ export function mountNow(host: HTMLElement, store: Store, api: OfficeApi | null)
     const agent = key === null ? undefined : store.agents.get(key);
     if (key === null || !agent) {
       host.hidden = true;
+      tail = null;
+      mark = null;
       section.body.replaceChildren();
       section.setMeta(null);
       return;
@@ -114,7 +159,20 @@ export function mountNow(host: HTMLElement, store: Store, api: OfficeApi | null)
       agent.task ? el('p', 'now-task', el('span', 'muted', `${t('now.task')} `), agent.task) : null,
       el('h4', 'now-steps-title section-title', t('now.steps')),
       steps.length > 0 ? el('ul', 'now-steps', ...steps.map(stepItem)) : el('p', 'muted hint', t('now.noActivity')),
+      tailBox,
     ]);
+    const mainAgent = api !== null && agent.key === agent.sessionId;
+    if (!mainAgent) tailBox.hidden = true;
+    else {
+      paintTail(key);
+      if (tailDue(mark, key, agent.stateSince, now)) void loadTail(agent);
+    }
+  });
+
+  tailReload.addEventListener('click', () => {
+    const key = store.selectedKey;
+    const agent = key === null ? undefined : store.agents.get(key);
+    if (agent) void loadTail(agent);
   });
 
   host.addEventListener('click', (event) => {

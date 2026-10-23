@@ -9,6 +9,7 @@ import { clampWait, errorTextFor } from './chat';
 import type { FloorAdmin } from './floor-admin';
 import { hookResponse, runHook } from './hook';
 import { MAX_LAYOUTS_BYTES } from './layouts';
+import { clampTail } from './transcript-tail';
 import { isRoleId } from './memory';
 import type { Log } from './log';
 import { isHookEvent, type Office, type RelaunchResult } from './office';
@@ -257,6 +258,13 @@ export function createApp(opts: ServerOptions, holdRequest: (req: Request) => vo
     if (result === 'not-found') return c.json({ error: { key: 'hub.api.sessionNotFound' } }, 404);
     if (result === 'not-office') return c.json({ error: { key: 'hub.api.sessionNotOffice' } }, 403);
     return c.json({ error: { key: 'hub.api.orderFailed' } }, 502);
+  });
+
+  app.get('/api/sessions/:id/tail', requirePanel, (c) => {
+    const result = office.transcriptTail(c.req.param('id') ?? '', clampTail(c.req.query('n')), opts.key());
+    if (result === 'not-found') return c.json({ error: { key: 'hub.api.sessionNotFound' } }, 404);
+    if (result === 'missing') return c.json({ error: { key: 'hub.api.transcriptMissing' } }, 410);
+    return c.json(result);
   });
 
   app.post('/api/sessions/:id/relaunch', requirePanel, async (c) => {
