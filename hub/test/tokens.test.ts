@@ -403,6 +403,29 @@ describe('TokenMeter', () => {
       [OPUS, 50],
     ]);
   });
+
+  test('summary byDay zero-fills seven local days oldest first and buckets across midnight', () => {
+    const m = meter();
+    const local = (back: number, hour: number, minute: number): number => {
+      const d = new Date(NOW);
+      d.setDate(d.getDate() - back);
+      d.setHours(hour, minute, 0, 0);
+      return d.getTime();
+    };
+    const plain = { input: 0, cacheRead: 0, cacheCreate: 0 };
+    writeFileSync(
+      m.main,
+      line('a', 10, { at: local(2, 23, 59), ...plain }) + line('b', 20, { at: local(1, 0, 1), ...plain }) + line('c', 5, { at: NOW, ...plain }) + line('d', 99, { at: local(9, 12, 0), ...plain }),
+    );
+    m.meter.readNow(m.agent);
+
+    const week = m.meter.summary('week');
+    const days = Array.from({ length: 7 }, (_, i) => localDay(local(6 - i, 12, 0)));
+    expect(week.byDay.map((d) => d.day)).toEqual(days);
+    expect(week.byDay.map((d) => d.tokens)).toEqual([0, 0, 0, 0, 10, 20, 5]);
+
+    expect(m.meter.summary('today').byDay).toEqual([{ day: localDay(NOW), tokens: 5 }]);
+  });
 });
 
 describe('Office', () => {
@@ -675,6 +698,7 @@ describe('GET /api/usage/summary', () => {
       byRole: [{ key: 'dev', agents: 1 }],
       byModel: [{ key: SONNET }],
       byFloor: [{ key: 'mobile' }],
+      byDay: [{ tokens: expect.any(Number) }],
       byPlan: [],
     });
     expect(((await (await fetch(`${base}/api/usage/summary?range=week`, { headers })).json()) as { range: string }).range).toBe('week');

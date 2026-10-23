@@ -74,7 +74,7 @@ Las llama la interfaz (`ui/src/api.ts`) con `X-Office-Panel`; el servidor MCP (`
 | `GET /api/memory/:floor/:role` | key o panel | | `200` las lecciones del puesto. `400 hub.api.badMemoryTarget`. |
 | `POST /api/memory` | key o panel | `{"floor","role","text"}` | `200 {"lesson"}`. `400 hub.api.floorRequired`, `hub.api.roleInvalid`, `hub.api.lessonEmpty`; `400 hub.api.lessonSaveFailed`; `409 hub.api.lessonDuplicate`. |
 | `DELETE /api/memory/:id` | key o panel | | `200 {"ok":true}`. `400 hub.api.badId`; `404 hub.api.lessonNotFound`. |
-| `GET /api/usage/summary` | key o panel | Query `range=today\|week` (por defecto `today`) | `200` tokens por agente, día y plan, y ventanas del límite. `400 hub.api.usageRange`. |
+| `GET /api/usage/summary` | key o panel | Query `range=today\|week` (por defecto `today`) | `200` tokens por agente, plan y día (`byDay`: los últimos 7 días locales, o solo hoy, con ceros), y ventanas del límite. `400 hub.api.usageRange`. |
 | `GET /api/reports/:agentKey` | key o panel | | `200` el informe del agente. `404 hub.api.noReport`. |
 | `GET /api/search` | key o panel | Query: `q`, `floor`, `agent`, `kind`, `from`, `to`, `before`, `limit` (hasta 100) | `200` resultados de actividad, mensajes, chat y agentes. `400 hub.api.searchBad`. |
 | `GET /api/replay/:sessionId` | key o panel | Query `compress=1` acorta los silencios de más de 60 s | `200` la grabación reconstruida de la sesión. `404 hub.api.noRecording`; `413 hub.api.recordingTooLarge` (más de 20 000 eventos). |

@@ -1,10 +1,10 @@
 import type { OfficeApi } from '../api';
 import { button, el } from '../dom';
-import { plural, t } from '../i18n';
+import { currentLang, plural, t } from '../i18n';
 import { hubText } from '../i18n/hub';
 import { floorLabel, formatTokens, tokenParts, tokenWritten } from '../labels';
 import type { Store } from '../store';
-import type { HubText, TokenRow, UsageRange, UsageSummary } from '../types';
+import type { HubText, TokenRow, UsageDay, UsageRange, UsageSummary } from '../types';
 import { mountUsageCard } from '../usage-card';
 
 export const SPEND_REFRESH_MS = 60_000;
@@ -17,6 +17,70 @@ const RANGES: readonly { range: UsageRange; label: 'usage.spend.today' | 'usage.
 export function spendDue(now: number, loadedAt: number | null, visible: boolean, loading: boolean): boolean {
   if (!visible || loading) return false;
   return loadedAt === null || now - loadedAt >= SPEND_REFRESH_MS;
+}
+
+export type DayBar = { day: string; label: string; value: number; pct: number; isToday: boolean };
+
+export type PlanRow = { key: string; tokens: number; other: boolean };
+
+const PLAN_ROWS = 5;
+
+function dayKey(at: Date): string {
+  const pad = (value: number): string => String(value).padStart(2, '0');
+  return `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}`;
+}
+
+export function dayBars(byDay: readonly UsageDay[], now: number): DayBar[] {
+  const today = dayKey(new Date(now));
+  const max = Math.max(0, ...byDay.map((entry) => entry.tokens));
+  return byDay.map(({ day, tokens }) => {
+    const [year, month, date] = day.split('-').map(Number);
+    return {
+      day,
+      label: new Date(year, month - 1, date).toLocaleDateString(currentLang(), { weekday: 'short' }),
+      value: tokens,
+      pct: max > 0 ? (tokens / max) * 100 : 0,
+      isToday: day === today,
+    };
+  });
+}
+
+export function planRows(rows: readonly TokenRow[]): PlanRow[] {
+  const sized = rows.map((row) => ({ key: row.key, tokens: row.tokens.input + row.tokens.cacheRead + row.tokens.cacheCreate + row.tokens.output }));
+  sized.sort((a, b) => b.tokens - a.tokens || a.key.localeCompare(b.key));
+  const top = sized.slice(0, PLAN_ROWS).map((row) => ({ ...row, other: false }));
+  const rest = sized.slice(PLAN_ROWS);
+  if (rest.length === 0) return top;
+  return [...top, { key: '', tokens: rest.reduce((sum, row) => sum + row.tokens, 0), other: true }];
+}
+
+function dayChart(byDay: readonly UsageDay[], now: number): HTMLElement {
+  const cols = dayBars(byDay, now).map((bar) => {
+    const text = `${bar.label}: ${formatTokens(bar.value)}`;
+    const fill = el('span', bar.isToday ? 'usage-day-fill today' : 'usage-day-fill');
+    fill.style.height = `${bar.pct}%`;
+    const col = el('div', 'usage-day', el('span', 'usage-day-track', fill), el('span', 'usage-day-label', bar.label));
+    col.title = `${text} (${bar.value})`;
+    col.setAttribute('role', 'img');
+    col.setAttribute('aria-label', `${text} (${bar.value})`);
+    return col;
+  });
+  return el('div', 'usage-spend-group', el('h3', 'section-title', t('usage.spend.byDay')), el('div', 'usage-days', ...cols));
+}
+
+function planList(rows: readonly TokenRow[]): HTMLElement {
+  const items = planRows(rows).map((row) => {
+    const name = row.other ? t('usage.spend.otherPlans') : row.key;
+    const label = el('span', 'usage-spend-name', name);
+    label.title = name;
+    return el('li', '', label, el('span', 'num', formatTokens(row.tokens)));
+  });
+  return el(
+    'div',
+    'usage-spend-group',
+    el('h3', 'section-title', t('usage.spend.byPlan')),
+    items.length > 0 ? el('ul', 'usage-plans', ...items) : el('p', 'muted hint', t('usage.spend.empty')),
+  );
 }
 
 function headCell(label: string, numeric: boolean): HTMLElement {
@@ -121,9 +185,11 @@ export function mountUsageBlock(store: Store, api: OfficeApi, visible: () => boo
       return;
     }
     tables.replaceChildren(
+      ...(range === 'week' ? [dayChart(summary.byDay, store.now())] : []),
       spendTable(t('usage.spend.byRole'), summary.byRole, roleName),
       spendTable(t('usage.spend.byModel'), summary.byModel, (key) => key || '—'),
       spendTable(t('usage.spend.byFloor'), summary.byFloor, floorName),
+      planList(summary.byPlan),
     );
   }
 
