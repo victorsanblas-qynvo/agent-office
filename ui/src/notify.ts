@@ -1,13 +1,12 @@
 import { isBlockedMessage, leadDeliveryFloor } from './deliveries';
 import { currentLang, plural, t, translatorFor, type Lang } from './i18n';
 import { agentName, floorLabel } from './labels';
-import { openDocument } from './panel/deliverables';
 import type { Store } from './store';
 import { dueReminders, floorMuted, inQuietHours, quietSilences, readMutedFloors, readQuietHours, readRemindMinutes } from './prefs';
-import { NoticeLog, type NoticeOutcome } from './notice-log';
+import { keepNotices, NoticeLog, readNotices, type NoticeOutcome, type NoticeTarget } from './notice-log';
 import { forecastText } from './usage-card';
 import { finishedNotice, readFinishedMode, wantsDesktop } from './panel/finished';
-import type { AgentView, CheckRunView, FloorView, DocumentView, FinishedView, GuardAlert, MessageView, OrderView, QuestionView, ServerMessage, UsageView, UsageWindow } from './types';
+import type { AgentView, CheckRunView, FloorView, DocumentView, FinishedView, GuardAlert, MessageView, QuestionView, ServerMessage, UsageView, UsageWindow } from './types';
 
 export type NotifyEvent = 'permission' | 'question' | 'blocked' | 'done' | 'document' | 'alert' | 'stalled' | 'usage' | 'checks';
 
@@ -102,6 +101,11 @@ function readPrefs(): NotifyPrefs {
   return prefs;
 }
 
+function finishedTarget(view: FinishedView): NoticeTarget {
+  const floor = view.floors[0];
+  return view.kind === 'order' && floor !== undefined ? { kind: 'order', id: view.id, floor, slug: view.slug } : { kind: 'tab', tab: 'board' };
+}
+
 export class Notifier {
   private prefs: NotifyPrefs = readPrefs();
   private readonly seen = new Set<string>();
@@ -115,16 +119,22 @@ export class Notifier {
   private readonly recap = new QuietRecap();
   private readonly logged = new Set<string>();
   readonly notices = new NoticeLog();
-  // Where the notification of a finished order takes the user when it is clicked.
-  openFinished: ((view: FinishedView) => void) | null = null;
-  // Where the notification of a check result takes the user: the Tablero with that order's drawer.
-  openOrder: ((order: OrderView) => void) | null = null;
+  private readonly keeper: { flush(): void };
+  // Where a clicked notification, or a notice of the inbox, takes the user.
+  openTarget: ((target: NoticeTarget) => void) | null = null;
 
   constructor(
     private readonly store: Store,
     private readonly now: () => Date = () => new Date(),
   ) {
     this.wasQuiet = inQuietHours(readQuietHours(), this.now());
+    const kept = readNotices();
+    this.notices.restore(kept.entries, kept.readAt);
+    this.keeper = keepNotices(this.notices);
+  }
+
+  flushNotices(): void {
+    this.keeper.flush();
   }
 
   get floors(): readonly FloorView[] {
@@ -174,7 +184,7 @@ export class Notifier {
       const permission = question.kind === 'permission';
       if (quietSilences(readQuietHours(), permission, date)) continue;
       this.reminded.add(question.id);
-      this.show(permission ? 'permission' : 'question', `question:${question.id}:remind`, t('notify.remind.title', { agent: this.name(question.agentKey) }), t('notify.openPanel'), this.select(question.agentKey), question.floor);
+      this.show(permission ? 'permission' : 'question', `question:${question.id}:remind`, t('notify.remind.title', { agent: this.name(question.agentKey) }), t('notify.openPanel'), { kind: 'question', id: question.id }, question.floor);
     }
   }
 
@@ -251,10 +261,8 @@ export class Notifier {
     return agent ? agentName(agent) : key.slice(0, 8);
   }
 
-  private select(key: string): () => void {
-    return () => {
-      if (this.store.agents.has(key)) this.store.select(key);
-    };
+  private agentTarget(key: string): NoticeTarget {
+    return { kind: 'agent', key };
   }
 
   // Bodies stay generic on purpose: the command of a permission, the question and the text of a BLOQUEADO or a
@@ -264,9 +272,9 @@ export class Notifier {
     const agent = this.name(question.agentKey);
     if (question.kind === 'permission') {
       const title = question.tool ? t('notify.permission.tool', { agent, tool: question.tool }) : t('notify.permission.title', { agent });
-      this.show('permission', `question:${question.id}`, title, t('notify.openPanel'), this.select(question.agentKey), question.floor);
+      this.show('permission', `question:${question.id}`, title, t('notify.openPanel'), { kind: 'question', id: question.id }, question.floor);
     } else {
-      this.show('question', `question:${question.id}`, t('notify.question.title', { agent }), t('notify.openPanel'), this.select(question.agentKey), question.floor);
+      this.show('question', `question:${question.id}`, t('notify.question.title', { agent }), t('notify.openPanel'), { kind: 'question', id: question.id }, question.floor);
     }
   }
 
@@ -274,17 +282,17 @@ export class Notifier {
     if (message.text === null) return;
     const agent = this.name(message.fromKey);
     if (isBlockedMessage(message)) {
-      this.show('blocked', `message:${message.id}`, t('notify.blocked.title', { agent }), t('notify.openPanel'), this.select(message.fromKey), this.store.agents.get(message.fromKey)?.floor);
+      this.show('blocked', `message:${message.id}`, t('notify.blocked.title', { agent }), t('notify.openPanel'), this.agentTarget(message.fromKey), this.store.agents.get(message.fromKey)?.floor);
     } else {
       const floor = leadDeliveryFloor(this.store, message);
-      if (floor !== null) this.show('done', `message:${message.id}`, t('notify.done.title', { agent }), t('notify.openPanel'), this.select(message.fromKey), floor);
+      if (floor !== null) this.show('done', `message:${message.id}`, t('notify.done.title', { agent }), t('notify.openPanel'), this.agentTarget(message.fromKey), floor);
     }
   }
 
   private finished(view: FinishedView): void {
     if (!wantsDesktop(readFinishedMode())) return;
     const notice = finishedNotice(view);
-    this.show('done', `finished:${view.id}`, t(notice.key, notice.params), t('notify.openPanel'), () => this.openFinished?.(view), this.mutedFloorOf(view.floors));
+    this.show('done', `finished:${view.id}`, t(notice.key, notice.params), t('notify.openPanel'), finishedTarget(view), this.mutedFloorOf(view.floors));
   }
 
   private checks(run: CheckRunView): void {
@@ -294,7 +302,7 @@ export class Notifier {
     if (!notice) return;
     const order = this.store.orders.find((item) => item.id === run.orderId);
     if (!order) return;
-    this.show('checks', notice.tag, t(notice.key, { title: order.title }), notice.body, () => this.openOrder?.(order), null, notice.key === 'notify.checks.failed');
+    this.show('checks', notice.tag, t(notice.key, { title: order.title }), notice.body, { kind: 'order', id: order.id, floor: order.floor, slug: order.slug }, null, notice.key === 'notify.checks.failed');
   }
 
   // 80 % and 95 % of each window warn once; the tag carries the reset of the window, so the next one warns again.
@@ -315,7 +323,7 @@ export class Notifier {
           continue;
         }
         const title = t(name === 'five' ? 'notify.usage.five' : 'notify.usage.seven', { pct: Math.round(sample.usedPct) });
-        this.show('usage', tag, title, forecastText(sample)?.text ?? '', () => {});
+        this.show('usage', tag, title, forecastText(sample)?.text ?? '', { kind: 'tab', tab: 'table' });
       }
     }
   }
@@ -325,7 +333,7 @@ export class Notifier {
     const since = agent.stalledSince ?? null;
     this.stalled.set(agent.key, since);
     if (before !== null || since === null) return;
-    this.show('stalled', `stalled:${agent.key}:${since}`, t('notify.stalled.title', { agent: agentName(agent) }), t('notify.openPanel'), this.select(agent.key), agent.floor);
+    this.show('stalled', `stalled:${agent.key}:${since}`, t('notify.stalled.title', { agent: agentName(agent) }), t('notify.openPanel'), this.agentTarget(agent.key), agent.floor);
   }
 
   private seedDocuments(documents: readonly DocumentView[]): void {
@@ -348,10 +356,7 @@ export class Notifier {
       } else {
         continue;
       }
-      this.show('document', `document:${doc.path}:${doc.status}:${doc.round}`, title, '', () => {
-        const current = this.store.documents.find((item) => item.path === doc.path);
-        if (current) openDocument(this.store, current);
-      });
+      this.show('document', `document:${doc.path}:${doc.status}:${doc.round}`, title, '', { kind: 'doc', path: doc.path });
     }
   }
 
@@ -363,7 +368,7 @@ export class Notifier {
       `alert:${alert.id}`,
       t('notify.alert.title', { floor: floor ? floorLabel(floor) : alert.floor }),
       plural('notify.alert.files', alert.files.length),
-      this.select(alert.agentKey),
+      this.agentTarget(alert.agentKey),
       alert.floor,
     );
   }
@@ -375,12 +380,12 @@ export class Notifier {
   }
 
   // Every candidate lands in the inbox once per outcome, before or after the gate decides.
-  private record(event: NotifyEvent, tag: string, title: string, body: string, onClick: () => void, floor: string | null, outcome: NoticeOutcome): void {
+  private record(event: NotifyEvent, tag: string, title: string, body: string, target: NoticeTarget, floor: string | null, outcome: NoticeOutcome): void {
     const id = `${tag}|${outcome}`;
     if (this.logged.has(id)) return;
     this.logged.add(id);
     if (this.logged.size > SEEN_LIMIT) this.logged.delete(this.logged.values().next().value as string);
-    this.notices.push({ at: this.now().getTime(), kind: event, title, ...(body ? { body } : {}), ...(floor ? { floor } : {}), target: onClick, outcome });
+    this.notices.push({ at: this.now().getTime(), kind: event, title, ...(body ? { body } : {}), ...(floor ? { floor } : {}), target, outcome });
   }
 
   // The recap toast needs no desktop permission: what quiet hours would have held still counts without it.
@@ -392,25 +397,25 @@ export class Notifier {
     this.recap.add(kind);
   }
 
-  private show(event: NotifyEvent, tag: string, title: string, body: string, onClick: () => void, floor: string | null = null, countable = true): void {
+  private show(event: NotifyEvent, tag: string, title: string, body: string, target: NoticeTarget, floor: string | null = null, countable = true): void {
     if (!this.prefs.enabled || !this.prefs.events[event]) {
-      this.record(event, tag, title, body, onClick, floor, 'off');
+      this.record(event, tag, title, body, target, floor, 'off');
       return;
     }
     if (permissionState() !== 'granted') {
       this.countQuiet(event, tag, floor, countable);
-      this.record(event, tag, title, body, onClick, floor, 'off');
+      this.record(event, tag, title, body, target, floor, 'off');
       return;
     }
     if (this.seen.has(tag)) return;
     if (floorMuted(readMutedFloors(), floor, event === 'permission')) {
       this.seen.add(tag);
-      this.record(event, tag, title, body, onClick, floor, 'muted');
+      this.record(event, tag, title, body, target, floor, 'muted');
       return;
     }
     const quiet = quietSilences(readQuietHours(), event === 'permission', this.now());
     if (quiet && DEFERRED_EVENTS.has(event)) {
-      this.record(event, tag, title, body, onClick, floor, 'deferred');
+      this.record(event, tag, title, body, target, floor, 'deferred');
       return;
     }
     this.seen.add(tag);
@@ -418,12 +423,12 @@ export class Notifier {
     if (quiet) {
       const kind = RECAP_OF[event];
       if (kind && countable) this.recap.add(kind);
-      this.record(event, tag, title, body, onClick, floor, 'quiet');
+      this.record(event, tag, title, body, target, floor, 'quiet');
       return;
     }
     // The panel in front already shows it.
     if (document.visibilityState === 'visible' && document.hasFocus()) {
-      this.record(event, tag, title, body, onClick, floor, 'front');
+      this.record(event, tag, title, body, target, floor, 'front');
       return;
     }
     let notification: Notification;
@@ -431,15 +436,15 @@ export class Notifier {
       notification = new Notification(title, { body, tag });
     } catch {
       // A browser may expose Notification but refuse the constructor; one failed notice must not break the stream.
-      this.record(event, tag, title, body, onClick, floor, 'off');
+      this.record(event, tag, title, body, target, floor, 'off');
       return;
     }
-    this.record(event, tag, title, body, onClick, floor, 'shown');
+    this.record(event, tag, title, body, target, floor, 'shown');
     this.shown.set(tag, notification);
     if (this.shown.size > SEEN_LIMIT) this.shown.delete(this.shown.keys().next().value as string);
     notification.onclick = () => {
       window.focus();
-      onClick();
+      if (target) this.openTarget?.(target);
       notification.close();
     };
     notification.onclose = () => {

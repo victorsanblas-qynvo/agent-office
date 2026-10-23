@@ -8,7 +8,8 @@ import { mountHelp } from './help';
 import { applyLang, readStoredLang, t, type MessageKey, type Params } from './i18n';
 import { boardKeysReady, mountKeys } from './keys';
 import { LiveConnection } from './live';
-import { goToAgent, goToNeed, paletteContext, runKey, runTarget, type Nav } from './navigate';
+import type { NoticeTarget } from './notice-log';
+import { goToAgent, goToNeed, openNoticeTarget, paletteContext, runKey, runTarget, type Nav } from './navigate';
 import { NeedCursor } from './needs';
 import { Notifier } from './notify';
 import { SoundDesk } from './sound';
@@ -128,16 +129,6 @@ async function boot(): Promise<void> {
     showTab('board');
     board.show(view.floors.length === 1 ? (view.floors[0] ?? null) : null, view.kind === 'order' ? view.slug : undefined);
   };
-  if (notifier) {
-    notifier.openFinished = showFinished;
-    topbar.notices.bind(notifier.notices);
-  }
-  if (notifier) {
-    notifier.openOrder = (order) => {
-      showTab('board');
-      board.show(order.floor, order.slug);
-    };
-  }
   if (notifier || sound) {
     store.watch(['tick'], () => {
       notifier?.tick();
@@ -160,6 +151,12 @@ async function boot(): Promise<void> {
     chat: () => chat,
     table: () => table,
   };
+  if (notifier) {
+    const open = (target: NoticeTarget): void => openNoticeTarget(nav, target);
+    notifier.openTarget = open;
+    topbar.notices.bind(notifier.notices, open);
+    window.addEventListener('pagehide', () => notifier.flushNotices());
+  }
   const palette = mountPalette(overlayHost, { context: () => paletteContext(nav), run: (target) => runTarget(nav, target) });
   const help = mountHelp(overlayHost);
   const cursor = new NeedCursor();

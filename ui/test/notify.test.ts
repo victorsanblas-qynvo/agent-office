@@ -320,8 +320,10 @@ describe('desktop notifier', () => {
     expect(FakeNotification.created.map((n) => [n.title, n.options.tag, n.options.body])).toEqual([
       [t('notify.stalled.title', { agent: 'lead-mobile' }), `stalled:${LEAD}:9`, t('notify.openPanel')],
     ]);
+    const opened: unknown[] = [];
+    notifier.openTarget = (target) => opened.push(target);
     FakeNotification.created[0]?.onclick?.();
-    expect(selected).toEqual([LEAD]);
+    expect(opened).toEqual([{ kind: 'agent', key: LEAD }]);
     notifier.observe(lead(null));
     notifier.observe(lead(20));
     expect(FakeNotification.created).toHaveLength(2);
@@ -441,8 +443,10 @@ describe('desktop notifier', () => {
 
   test('a click selects the agent and a closed question closes and forgets its notification', () => {
     notifier.observe({ type: 'question', data: question('q5') });
+    const opened: unknown[] = [];
+    notifier.openTarget = (target) => opened.push(target);
     FakeNotification.created[0]?.onclick?.();
-    expect(selected).toEqual([LEAD]);
+    expect(opened).toEqual([{ kind: 'question', id: 'q5' }]);
 
     notifier.observe({ type: 'question', data: question('q6') });
     notifier.observe({ type: 'question-closed', id: 'q6', outcome: 'answered' });
@@ -502,7 +506,7 @@ describe('checkTransitionNotice', () => {
 
 describe('check result notices', () => {
   const order = { id: 7, slug: 'login', floor: 'mobile', title: 'Login con Apple' } as OrderView;
-  let opened: OrderView[];
+  let opened: unknown[];
   let notifier: Notifier;
 
   beforeEach(() => {
@@ -514,7 +518,7 @@ describe('check result notices', () => {
     opened = [];
     const store = { ...fakeStore([]), orders: [order] } as unknown as Store;
     notifier = new Notifier(store);
-    notifier.openOrder = (item) => opened.push(item);
+    notifier.openTarget = (target) => opened.push(target);
   });
 
   test('is off by default', () => {
@@ -535,7 +539,7 @@ describe('check result notices', () => {
     expect(shown?.title).toBe('Checks en rojo · Login con Apple');
     expect(shown?.options.body).toBe('test');
     shown?.onclick?.();
-    expect(opened).toEqual([order]);
+    expect(opened).toEqual([{ kind: 'order', id: order.id, floor: order.floor, slug: order.slug }]);
   });
 
   test('is dropped in quiet hours', () => {

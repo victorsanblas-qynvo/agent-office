@@ -4,6 +4,7 @@ import type { ChatHandle } from './chat/chat';
 import { t } from './i18n';
 import { agentName } from './labels';
 import { activeNeedsOf, needToast, type Need, type NeedCursor, type NeedKind } from './needs';
+import type { NoticeTarget } from './notice-log';
 import type { Notifier } from './notify';
 import type { SoundDesk } from './sound';
 import type { OfficeHandle } from './office/office';
@@ -84,6 +85,37 @@ export function goToNeed(nav: Nav, need: Need): void {
   if (need.orderSlug !== null) {
     nav.showTab('board');
     nav.board().show(need.floor, need.orderSlug);
+  }
+}
+
+// Opens what a notice pointed at; whatever no longer exists is skipped, and a vanished agent says so.
+export function openNoticeTarget(nav: Nav, target: NoticeTarget): void {
+  const { store } = nav;
+  if (target === null) return;
+  switch (target.kind) {
+    case 'agent':
+      if (store.agents.has(target.key)) goToAgent(nav, target.key);
+      else store.toast(t('notices.gone'), 'info');
+      return;
+    case 'question': {
+      const question = store.questions.find((item) => item.id === target.id);
+      if (question && store.agents.has(question.agentKey)) goToAgent(nav, question.agentKey, 'question');
+      return;
+    }
+    case 'order':
+      if (!store.orders.some((order) => order.floor === target.floor && order.slug === target.slug)) return;
+      nav.showTab('board');
+      nav.board().show(target.floor, target.slug);
+      return;
+    case 'doc': {
+      const doc = store.documents.find((item) => item.path === target.path);
+      if (!doc) return;
+      nav.showTab('plans');
+      openDocument(store, doc);
+      return;
+    }
+    case 'tab':
+      nav.showTab(target.tab);
   }
 }
 

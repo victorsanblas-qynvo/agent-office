@@ -1,7 +1,7 @@
 import { button, el } from './dom';
 import { t, type MessageKey } from './i18n';
 import { menuStep } from './needs';
-import { outcomeLabel, type Notice, type NoticeLog } from './notice-log';
+import { filterNotices, outcomeLabel, type Notice, type NoticeFilter, type NoticeLog, type NoticeTarget } from './notice-log';
 import type { NotifyEvent } from './notify';
 import type { Store } from './store';
 import { clockTime } from './time';
@@ -9,7 +9,7 @@ import { clockTime } from './time';
 export type NoticeBell = {
   root: HTMLElement;
   // Starts showing this inbox; the bell stays hidden until then (a replay has none).
-  bind(log: NoticeLog): void;
+  bind(log: NoticeLog, open: (target: NoticeTarget) => void): void;
   // Closes the menu if it is open and says whether it was.
   close(): boolean;
 };
@@ -39,6 +39,8 @@ export function mountNoticeBell(store: Store): NoticeBell {
   root.hidden = true;
 
   let log: NoticeLog | null = null;
+  let openTarget: (target: NoticeTarget) => void = () => {};
+  let filter: NoticeFilter = 'all';
   let stops: HTMLElement[] = [];
   // Entries newer than this were unread when the menu opened.
   let freshFrom = Number.POSITIVE_INFINITY;
@@ -66,7 +68,7 @@ export function mountNoticeBell(store: Store): NoticeBell {
     node.append(el('time', 'needs-age muted', clockTime(notice.at)));
     node.addEventListener('click', () => {
       close();
-      notice.target();
+      openTarget(notice.target);
     });
     return node;
   };
@@ -85,8 +87,17 @@ export function mountNoticeBell(store: Store): NoticeBell {
   const render = (): void => {
     paintFace();
     if (!log || !isOpen()) return;
-    const entries = [...log.entries].reverse();
+    const entries = filterNotices(log.entries, filter).reverse();
     const rows = entries.map(row);
+    const filters = (['all', 'hidden'] as const).map((choice) => {
+      const toggle = button(t(choice === 'all' ? 'notices.filter.all' : 'notices.filter.hidden'), 'notices-action notices-filter');
+      toggle.setAttribute('aria-pressed', String(filter === choice));
+      toggle.addEventListener('click', () => {
+        filter = choice;
+        render();
+      });
+      return toggle;
+    });
     const markRead = button(t('notices.markRead'), 'notices-action');
     markRead.disabled = log.unread === 0;
     markRead.addEventListener('click', () => {
@@ -95,16 +106,16 @@ export function mountNoticeBell(store: Store): NoticeBell {
       markRead.focus();
     });
     const clear = button(t('notices.clear'), 'notices-action');
-    clear.disabled = entries.length === 0;
+    clear.disabled = log.entries.length === 0;
     clear.addEventListener('click', () => {
       log?.clear();
       trigger.focus();
     });
     const focused = document.activeElement;
     const was = focused instanceof HTMLElement ? stops.indexOf(focused) : -1;
-    stops = [...rows, markRead, clear];
+    stops = [...filters, ...rows, markRead, clear];
     const body = entries.length === 0 ? [el('p', 'muted notices-empty', t('notices.empty'))] : rows;
-    menu.replaceChildren(...body, el('div', 'notices-footer', markRead, clear));
+    menu.replaceChildren(el('div', 'notices-filters', ...filters), ...body, el('div', 'notices-footer', markRead, clear));
     if (was >= 0) (stops[Math.min(was, stops.length - 1)] ?? trigger).focus();
   };
 
@@ -144,8 +155,9 @@ export function mountNoticeBell(store: Store): NoticeBell {
   return {
     root,
     close,
-    bind(next) {
+    bind(next, open) {
       log = next;
+      openTarget = open;
       root.hidden = false;
       next.subscribe(render);
       render();
