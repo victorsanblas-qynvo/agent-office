@@ -1,7 +1,7 @@
 import { appendFileSync, cpSync, existsSync, mkdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join, sep } from 'node:path';
 import { isInside, realPath } from './floors';
-import type { GitRunner } from './git';
+import type { GitResult, GitRunner } from './git';
 import type { OfficeBus } from './office-bus';
 import type { OrderRow, OrderStore } from './order-store';
 import { absolutePath, gitOps, orderBranch, run, validRef } from './repo-ops';
@@ -16,6 +16,9 @@ const MARKER = 'office-hub';
 const EXCLUDE_LINE = '/.claude/worktrees/';
 const ACTIVE_STATUSES = new Set(['pendiente', 'en-curso', 'revision']);
 const BUILDING = new Set<WorktreeState>(['creando', 'preparando', 'listo']);
+const REMOTE = 'origin/';
+const PATCH_BYTES = 16 * 1024 * 1024;
+const LANDED_CACHE = 500;
 
 export type CreateFailure = 'floor' | 'limit' | 'base' | 'exists' | 'git';
 
@@ -26,6 +29,9 @@ export type CreateResult =
 export type RemoveResult = 'ok' | 'not-found' | 'busy' | 'dirty' | 'unmerged' | 'failed';
 
 export type WorktreeSummary = { worktrees: WorktreeView[]; totalKb: number; warnKb: number };
+
+// own: commits of the branch that were not in the base it started from.
+type Facts = { ahead: number; behind: number; own: number; dirty: boolean; merged: boolean };
 
 export type WorktreeDeskOpts = {
   store: OrderStore;
@@ -44,6 +50,7 @@ export type WorktreeDeskOpts = {
 export class WorktreeDesk {
   private readonly sizes = new Map<string, { kb: number | null; at: number }>();
   private readonly creating = new Set<string>();
+  private readonly landedAt = new Map<string, boolean>();
   private index: { path: string; real: string; id: number }[] = [];
 
   constructor(private readonly opts: WorktreeDeskOpts) {
@@ -93,8 +100,7 @@ export class WorktreeDesk {
 
   private async build(order: OrderRow, repo: string, base: string, path: string, branch: string): Promise<CreateResult> {
     const { git, store } = this.opts;
-    const fetched = await run(git, repo, () => gitOps.fetch(base));
-    let stale = fetched.code !== 0;
+    let stale = !(await this.fetchBase(repo, base));
     let baseRef = `origin/${base}`;
     let sha = await this.resolve(repo, baseRef);
     if (stale || !sha) {
@@ -130,6 +136,10 @@ export class WorktreeDesk {
     const ready = setup ? this.prepare(row, setup) : Promise.resolve(row);
     this.opts.bus.background(ready);
     return { ok: true, order: row, ready };
+  }
+
+  private async fetchBase(repo: string, base: string): Promise<boolean> {
+    return (await run(this.opts.git, repo, () => gitOps.fetch(base))).code === 0;
   }
 
   private async resolve(repo: string, name: string): Promise<string | null> {
@@ -252,31 +262,85 @@ export class WorktreeDesk {
       dirty: facts.dirty,
       merged: facts.merged,
       orderStatus: row.status,
-      pending: row.status === 'hecho' && !facts.merged && row.kept_at === null && row.updated_at < cutoff,
+      pending: row.status === 'hecho' && undecided(facts) && row.kept_at === null && row.updated_at < cutoff,
       kept: row.kept_at !== null,
     };
   }
 
-  private async facts(row: OrderRow): Promise<{ ahead: number; behind: number; dirty: boolean; merged: boolean }> {
-    const empty = { ahead: 0, behind: 0, dirty: false, merged: false };
+  private async facts(row: OrderRow): Promise<Facts> {
+    const empty = { ahead: 0, behind: 0, own: 0, dirty: false, merged: false };
     const path = row.worktree_path;
-    if (!path || !row.branch || !existsSync(path)) return empty;
+    const branch = row.branch;
+    if (!path || !branch || !existsSync(path)) return empty;
     const { git } = this.opts;
     const repo = this.repoOf(row);
     const tip = (await run(git, path, () => gitOps.head())).stdout.trim();
     if (!tip) return empty;
     const baseName = row.base_ref ?? '';
     const baseTip = (baseName && repo ? await this.resolve(repo, baseName) : null) ?? row.base_sha ?? '';
+    const counts = async (from: string) => (await run(git, path, () => gitOps.aheadBehind(from, branch))).stdout.trim().split(/\s+/).map(Number);
     let ahead = 0;
     let behind = 0;
     if (baseTip) {
-      const counts = (await run(git, path, () => gitOps.aheadBehind(baseTip, row.branch ?? ''))).stdout.trim().split(/\s+/).map(Number);
-      behind = counts[0] ?? 0;
-      ahead = counts[1] ?? 0;
+      const [left, right] = await counts(baseTip);
+      behind = left ?? 0;
+      ahead = right ?? 0;
     }
+    const own = !row.base_sha ? 0 : row.base_sha === baseTip ? ahead : ((await counts(row.base_sha))[1] ?? 0);
     const status = await run(git, path, () => gitOps.status());
-    const merged = baseName ? (await run(git, path, () => gitOps.isAncestor(tip, baseName))).code === 0 : false;
-    return { ahead, behind, dirty: status.stdout.length > 0, merged };
+    const merged = own > 0 && baseName !== '' && row.base_sha !== null && (await this.landed(path, row.base_sha, tip, baseName, baseTip));
+    return { ahead, behind, own, dirty: status.stdout.length > 0, merged };
+  }
+
+  // The tip is in the base: merged as it is, or replayed as commits with the same patches (rebase) or as one
+  // commit with the patch of the whole branch (squash).
+  private async landed(path: string, baseSha: string, tip: string, baseName: string, baseTip: string): Promise<boolean> {
+    const { git } = this.opts;
+    if ((await run(git, path, () => gitOps.isAncestor(tip, baseName))).code === 0) return true;
+    if (!baseTip || baseTip === baseSha) return false;
+    const key = `${baseSha}:${tip}:${baseTip}`;
+    const known = this.landedAt.get(key);
+    if (known !== undefined) return known;
+    const result = (await this.replayed(path, baseSha, tip, baseTip)) || (await this.squashed(path, baseSha, tip, baseTip));
+    if (this.landedAt.size >= LANDED_CACHE) this.landedAt.clear();
+    this.landedAt.set(key, result);
+    return result;
+  }
+
+  private async replayed(path: string, baseSha: string, tip: string, baseTip: string): Promise<boolean> {
+    const cherry = await run(this.opts.git, path, () => gitOps.cherry(baseTip, tip, baseSha));
+    const lines = cherry.stdout.split('\n').filter((line) => line !== '');
+    return cherry.code === 0 && lines.length > 0 && lines.every((line) => line.startsWith('-'));
+  }
+
+  private async squashed(path: string, baseSha: string, tip: string, baseTip: string): Promise<boolean> {
+    const { git } = this.opts;
+    const limits = { maxStdoutBytes: PATCH_BYTES };
+    const ids = async (patch: GitResult): Promise<string[]> => {
+      if (patch.code !== 0 || patch.cut || patch.stdout === '') return [];
+      const result = await run(git, path, () => gitOps.patchIds(), undefined, patch.stdout);
+      return result.code === 0 ? result.stdout.split('\n').map((line) => line.split(' ')[0] ?? '').filter((id) => id !== '') : [];
+    };
+    const [whole] = await ids(await run(git, path, () => gitOps.diffPatch(baseSha, tip), undefined, undefined, limits));
+    if (!whole) return false;
+    return (await ids(await run(git, path, () => gitOps.logPatches(baseSha, baseTip), undefined, undefined, limits))).includes(whole);
+  }
+
+  // One fetch of the base of every folder about to be judged, so a merge done on the remote counts; the floors
+  // fetch at the same time, the bases of one floor one after another. A fetch that fails leaves the last known base.
+  private async refreshBases(rows: OrderRow[]): Promise<void> {
+    const byRepo = new Map<string, Set<string>>();
+    for (const row of rows) {
+      const repo = this.repoOf(row);
+      const base = row.base_ref?.startsWith(REMOTE) ? row.base_ref.slice(REMOTE.length) : null;
+      if (!repo || !base || !row.worktree_path || !existsSync(row.worktree_path)) continue;
+      byRepo.set(repo, (byRepo.get(repo) ?? new Set<string>()).add(base));
+    }
+    await Promise.all(
+      [...byRepo].map(async ([repo, bases]) => {
+        for (const base of bases) await this.fetchBase(repo, base);
+      }),
+    );
   }
 
   private repoOf(row: OrderRow): string | null {
@@ -327,15 +391,15 @@ export class WorktreeDesk {
     const repo = this.repoOf(row);
     if (!repo) return 'failed';
     const present = existsSync(path);
-    const facts = present ? await this.facts(row) : { ahead: 0, behind: 0, dirty: false, merged: true };
+    const facts: Facts = present ? await this.facts(row) : { ahead: 0, behind: 0, own: 0, dirty: false, merged: true };
     if (facts.dirty && !opts.force) return 'dirty';
-    if (opts.deleteBranch && !facts.merged && !opts.force) return 'unmerged';
+    if (opts.deleteBranch && undecided(facts) && !opts.force) return 'unmerged';
     if (present) {
       const removed = await run(this.opts.git, repo, () => gitOps.worktreeRemove(path, opts.force));
       if (removed.code !== 0) return 'failed';
     } else await run(this.opts.git, repo, () => gitOps.worktreePrune());
     if (opts.deleteBranch && row.branch) {
-      const deleted = await run(this.opts.git, repo, () => gitOps.branchDelete(row.branch ?? '', !facts.merged));
+      const deleted = await run(this.opts.git, repo, () => gitOps.branchDelete(row.branch ?? '', present || opts.force));
       if (deleted.code !== 0) return 'failed';
     }
     const next = this.opts.store.update(orderId, { worktree_state: 'retirado', updated_at: this.opts.now() }) as OrderRow;
@@ -404,13 +468,16 @@ export class WorktreeDesk {
     let pending = 0;
     let pendingKb = 0;
     let totalKb = 0;
-    for (const row of this.opts.store.withWorktree()) {
+    const rows = this.opts.store.withWorktree();
+    const due = (row: OrderRow) => row.updated_at < cutoff && (row.status === 'hecho' || row.status === 'descartado');
+    await this.refreshBases(rows.filter(due));
+    for (const row of rows) {
       const path = row.worktree_path ?? '';
       const size = await this.size(path);
       totalKb += size.kb ?? 0;
-      if (row.updated_at >= cutoff || (row.status !== 'hecho' && row.status !== 'descartado')) continue;
+      if (!due(row)) continue;
       const facts = await this.facts(row);
-      if (row.status === 'hecho' && !facts.merged) {
+      if (row.status === 'hecho' && undecided(facts)) {
         if (row.kept_at === null) {
           pending += 1;
           pendingKb += size.kb ?? 0;
@@ -418,7 +485,7 @@ export class WorktreeDesk {
         continue;
       }
       if (facts.dirty) continue;
-      const outcome = await this.remove(row.id, { deleteBranch: facts.merged, force: false });
+      const outcome = await this.remove(row.id, { deleteBranch: !undecided(facts), force: false });
       if (outcome === 'ok') removed += 1;
     }
     if (pending > 0) this.note({ key: 'hub.act.worktreesPending', params: { n: pending, sizeKb: pendingKb } });
@@ -431,6 +498,11 @@ export class WorktreeDesk {
   private note(summary: HubText): void {
     this.opts.bus.pushActivity({ ts: this.opts.now(), agentKey: 'panel', event: 'Worktrees', tool: null, state: null, summary });
   }
+}
+
+// Commits of its own that are not in the base: somebody has to decide whether they are kept.
+function undecided(facts: Facts): boolean {
+  return facts.own > 0 && !facts.merged;
 }
 
 function isUnder(cwd: string, folder: string): boolean {
