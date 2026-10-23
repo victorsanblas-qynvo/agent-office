@@ -1319,6 +1319,18 @@ export const es = {
   'palette.hint.relaunchAll.other': '{n} sesiones',
   'floors.relaunchAllConfirm.one': '¿Relanzar {n} sesión marcada? Se hace de una en una y se cierra su equipo.',
   'floors.relaunchAllConfirm.other': '¿Relanzar {n} sesiones marcadas? Se hace de una en una y se cierra su equipo.',
+  'palette.action.statusAll': 'Pedir estado a todos los jefes',
+  'palette.action.messageAll': 'Mensaje a todos los jefes…',
+  'palette.hint.leads.one': '{n} jefe',
+  'palette.hint.leads.other': '{n} jefes',
+  'floors.statusAllConfirm.one': '¿Pedir estado a {n} jefe de planta? Se hace de uno en uno.',
+  'floors.statusAllConfirm.other': '¿Pedir estado a {n} jefes de planta? Se hace de uno en uno.',
+  'toast.broadcast': 'Enviado: {ok} · ocupados: {busy} · fallidos: {failed}',
+  'broadcast.heading': 'Mensaje a todos los jefes',
+  'broadcast.to.one': 'Llega al jefe de {n} planta, tal como lo escribas.',
+  'broadcast.to.other': 'Llega a los jefes de {n} plantas, tal como lo escribas.',
+  'broadcast.placeholder': 'Escribe el mensaje…',
+  'broadcast.send': 'Enviar a todos',
   'toast.relaunchedAll': 'Relanzadas: {ok} · ocupadas: {busy} · fallidas: {failed}',
 } as const;
 

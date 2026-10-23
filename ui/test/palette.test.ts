@@ -17,6 +17,8 @@ const context = (extra: Partial<PaletteContext> = {}): PaletteContext => ({
   status: { sessionId: 'lead-mobile', name: 'lead-mobile' },
   relaunch: { sessionId: 'lead-mobile', name: 'lead-mobile' },
   relaunchAll: 0,
+  statusAll: 0,
+  messageAll: 0,
   pins: [],
   newOrder: true,
   mute: true,

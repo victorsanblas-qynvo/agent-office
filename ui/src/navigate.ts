@@ -12,9 +12,10 @@ import { openDocument } from './panel/deliverables';
 import { focusOrders } from './panel/orders';
 import { relaunchable } from './panel/orderable';
 import { togglePin } from './pins';
+import { broadcastRunning } from './broadcast';
 import { relaunchCandidates, relaunchRunning } from './relaunch-all';
 import { openSection, type SectionId } from './panel/section';
-import { requestRelaunchAll, requestSession } from './panel/session-controls';
+import { broadcastTargets, requestMessageAll, requestRelaunchAll, requestSession, requestStatusAll } from './panel/session-controls';
 import type { Store } from './store';
 import type { TableHandle } from './table/table';
 import { TABS, type Tab } from './topbar';
@@ -137,6 +138,8 @@ export function paletteContext(nav: Nav): PaletteContext {
     status: selected && session?.office ? { sessionId: selected.sessionId, name: agentName(selected) } : null,
     relaunch: selected && main && relaunchable(main) && main.canRelaunch ? { sessionId: selected.sessionId, name: agentName(selected) } : null,
     relaunchAll: relaunchRunning() ? 0 : relaunchCandidates(store.sessions.values()).length,
+    statusAll: broadcastRunning() ? 0 : broadcastTargets(store, true).length,
+    messageAll: broadcastRunning() ? 0 : broadcastTargets(store, false).length,
     pins: store.pins,
     newOrder: nav.board().canCreate(),
     mute: nav.notifier?.preferences.enabled === true,
@@ -180,6 +183,12 @@ export function runTarget(nav: Nav, target: PaletteTarget): void {
       break;
     case 'relaunchAll':
       void requestRelaunchAll(nav.api, store);
+      break;
+    case 'statusAll':
+      void requestStatusAll(nav.api, store);
+      break;
+    case 'messageAll':
+      requestMessageAll(nav.api, store);
       break;
     case 'pin':
       store.setPins(togglePin(store.pins, target.key, store.agents));
