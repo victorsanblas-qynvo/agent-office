@@ -3,6 +3,8 @@ import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { resultText } from '../src/checks';
+import { runGit, type GitRunner } from '../src/git';
+import { runShell } from '../src/shell';
 import type { OfficeConfig } from '../src/types';
 import { deskRig, type DeskRig } from './desk-rig';
 import { git } from './helpers';
@@ -214,6 +216,125 @@ describe('time, cancel and sharing', () => {
     rig.checks.stop();
     await Bun.sleep(120);
     expect(rig.checks.latest(rig.order.id)).toBeNull();
+  });
+});
+
+describe('starts that arrive at once', () => {
+  // Counts the git calls that write the index of each folder, and can hold the commit of one folder.
+  function watchedGit() {
+    const writes: { cwd: string; op: string }[] = [];
+    let inFlight = 0;
+    let peak = 0;
+    let hold: { cwd: string; reached: () => void; release: Promise<void> } | null = null;
+    const runner: GitRunner = async (cwd, args, ...rest) => {
+      const op = args[0] ?? '';
+      if (op !== 'add' && op !== 'commit') return runGit(cwd, args, ...rest);
+      writes.push({ cwd, op });
+      inFlight += 1;
+      peak = Math.max(peak, inFlight);
+      try {
+        if (op === 'commit' && hold?.cwd === cwd) {
+          hold.reached();
+          await hold.release;
+        }
+        return await runGit(cwd, args, ...rest);
+      } finally {
+        inFlight -= 1;
+      }
+    };
+    const holdCommit = (cwd: string) => {
+      let release = () => {};
+      let reached = () => {};
+      const atCommit = new Promise<void>((resolve) => (reached = resolve));
+      hold = { cwd, reached: () => reached(), release: new Promise<void>((resolve) => (release = resolve)) };
+      return { atCommit, release: () => release() };
+    };
+    return { runner, writes, peak: () => peak, holdCommit };
+  }
+
+  const slowCheck = (r: DeskRig) => {
+    r.config.floors.mobile!.checks = [{ name: 'cuenta', command: `echo run >> ${join(r.root, 'marks.txt')}; sleep 0.5` }];
+    return () => readFileSync(join(r.root, 'marks.txt'), 'utf8').trim().split('\n');
+  };
+
+  for (const triggers of [['listo', 'comprobar'], ['listo', 'panel', 'hecho']] as const) {
+    test(`${triggers.length} starts of one order at once make one checkpoint and one run they all share`, async () => {
+      const watched = watchedGit();
+      rig = deskRig({ checkpoints: { git: watched.runner } });
+      const runs = slowCheck(rig);
+      const before = git(rig.path, 'rev-parse', 'HEAD');
+      writeFileSync(join(rig.path, 'nuevo.txt'), 'x');
+      const r = rig;
+      const started = await Promise.all(triggers.map((trigger) => r.checks.start(r.order.id, trigger)));
+      const ids = started.map((one) => (one.ok ? one.run.id : null));
+      expect(new Set(ids)).toEqual(new Set([ids[0] as number]));
+      const views = await Promise.all(started.map((one) => (one.ok ? one.done : null)));
+      expect(views.map((view) => view?.status)).toEqual(triggers.map(() => 'passed'));
+      expect(runs()).toHaveLength(1);
+      expect(watched.writes.map((write) => write.op)).toEqual(['add', 'commit']);
+      expect(watched.peak()).toBe(1);
+      expect(rig.checkpoints.list(rig.order.id)).toHaveLength(1);
+      expect(git(rig.path, 'rev-list', '--count', `${before}..HEAD`)).toBe('1');
+      expect(views[0]?.sha).toBe(git(rig.path, 'rev-parse', 'HEAD'));
+      expect(rig.activity.map((a) => a.summary)).not.toContainEqual({ key: 'hub.act.checkpointFailed', params: { slug: 'login-a1b2' } });
+      expect(rig.checks.history(rig.order.id)).toHaveLength(1);
+      expect(rig.notified).toHaveLength(1);
+    });
+  }
+
+  test('a start waits for the one of its order still committing, while another order starts freely', async () => {
+    const watched = watchedGit();
+    rig = deskRig({ checkpoints: { git: watched.runner } });
+    slowCheck(rig);
+    const other = rig.second();
+    writeFileSync(join(rig.path, 'a.txt'), 'a');
+    writeFileSync(join(other.worktree_path as string, 'b.txt'), 'b');
+    const held = watched.holdCommit(rig.path);
+    const first = rig.checks.start(rig.order.id, 'listo');
+    await held.atCommit;
+    let secondSettled = false;
+    const second = rig.checks.start(rig.order.id, 'comprobar').then((result) => {
+      secondSettled = true;
+      return result;
+    });
+
+    const elsewhere = await rig.checks.start(other.id, 'panel');
+    if (!elsewhere.ok) throw new Error('start');
+    expect(elsewhere.run.orderId).toBe(other.id);
+    await Bun.sleep(50);
+    expect(secondSettled).toBe(false);
+    expect(rig.checks.latest(rig.order.id)).toBeNull();
+
+    held.release();
+    const [one, two] = await Promise.all([first, second]);
+    if (!one.ok || !two.ok) throw new Error('start');
+    expect(two.run.id).toBe(one.run.id);
+    expect((await one.done).status).toBe('passed');
+    expect((await elsewhere.done).status).toBe('passed');
+    expect(watched.writes.filter((write) => write.cwd === rig?.path).map((write) => write.op)).toEqual(['add', 'commit']);
+  });
+
+  test('an order without a folder refuses before touching git or running anything', async () => {
+    const commands: string[] = [];
+    const gitCalls: string[][] = [];
+    rig = deskRig({
+      checks: (command, opts) => {
+        commands.push(command);
+        return runShell(command, opts);
+      },
+      checkpoints: {
+        git: (cwd, args, ...rest) => {
+          gitCalls.push(args);
+          return runGit(cwd, args, ...rest);
+        },
+      },
+    });
+    const bare = rig.store.update(rig.order.id, { worktree_path: null })!;
+    expect(await rig.checks.start(bare.id, 'hecho')).toEqual({ ok: false, reason: 'no-folder' });
+    expect(await rig.checks.start(bare.id, 'panel')).toEqual({ ok: false, reason: 'no-folder' });
+    expect(commands).toEqual([]);
+    expect(gitCalls).toEqual([]);
+    expect(rig.checks.latest(bare.id)).toBeNull();
   });
 });
 

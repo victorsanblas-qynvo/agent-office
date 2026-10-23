@@ -2,7 +2,7 @@ import type { Database } from 'bun:sqlite';
 import { existsSync } from 'node:fs';
 import type { CheckpointDesk } from './checkpoints';
 import { checksTouched, type RunFacts } from './gate';
-import { gitSync as realGitSync, type GitResult, type GitRunner } from './git';
+import { GitQueue, gitSync as realGitSync, type GitResult, type GitRunner } from './git';
 import type { OfficeBus } from './office-bus';
 import type { OrderRow, OrderStore } from './order-store';
 import { checkFilesOf, checksOf, type Profiles } from './profiles';
@@ -85,6 +85,7 @@ export class ChecksDesk {
   private readonly memo = new Map<string, string[]>();
   private readonly specsCache = new Map<string, { at: number; specs: CheckSpec[] }>();
   private readonly slots: Semaphore;
+  private readonly starts = new GitQueue();
 
   constructor(private readonly opts: ChecksDeskOpts) {
     this.slots = new Semaphore(() => opts.config().checksConfig.maxParallel);
@@ -117,13 +118,19 @@ export class ChecksDesk {
 
   // ---- running --------------------------------------------------------------------------------------------
 
-  async start(orderId: number, trigger: CheckTrigger): Promise<StartResult> {
+  // One start of an order at a time: two at once would commit in the same folder and race for its index.
+  start(orderId: number, trigger: CheckTrigger): Promise<StartResult> {
+    return this.starts.run(orderId.toString(), () => this.startNow(orderId, trigger));
+  }
+
+  private async startNow(orderId: number, trigger: CheckTrigger): Promise<StartResult> {
     const order = this.opts.store.get(orderId);
-    if (!order?.worktree_path || !existsSync(order.worktree_path) || order.worktree_state === 'retirado') return { ok: false, reason: 'no-folder' };
+    const cwd = order?.worktree_path;
+    if (!order || !cwd || !existsSync(cwd) || order.worktree_state === 'retirado') return { ok: false, reason: 'no-folder' };
     const specs = this.specs(order);
     if (specs.length === 0) return { ok: false, reason: 'no-checks' };
     const checkpoint = await this.opts.checkpoints.commit(order, trigger, trigger === 'listo' ? 'listo' : `comprobación (${trigger})`);
-    const head = checkpoint.sha ?? (await this.head(order));
+    const head = checkpoint.sha ?? (await this.head(cwd));
     if (!head) return { ok: false, reason: 'no-folder' };
     this.touchedAt(order, head);
     // A commit that failed leaves changes HEAD does not have: the run is about HEAD-dirty, which never satisfies the gate.
@@ -134,10 +141,10 @@ export class ChecksDesk {
       return { ok: true, run: view, done: running.done };
     }
     if (running) running.controller.abort();
-    return this.launch(order, specs, sha, trigger);
+    return this.launch(order, cwd, specs, sha, trigger);
   }
 
-  private launch(order: OrderRow, specs: CheckSpec[], sha: string, trigger: CheckTrigger): StartResult {
+  private launch(order: OrderRow, cwd: string, specs: CheckSpec[], sha: string, trigger: CheckTrigger): StartResult {
     const { db, now } = this.opts;
     const runId = Number(
       db
@@ -147,7 +154,7 @@ export class ChecksDesk {
     const insert = db.query("INSERT INTO checks (run_id, floor, slug, name, command, status) VALUES (?, ?, ?, ?, ?, 'pending')");
     for (const spec of specs) insert.run(runId, order.floor, order.slug, spec.name, spec.command);
     const controller = new AbortController();
-    const done = this.execute(order, runId, sha, controller);
+    const done = this.execute(order, runId, cwd, controller);
     this.active.set(order.id, { runId, sha, controller, done });
     this.opts.bus.background(done);
     const view = this.runView(this.runRow(runId) as RunRow);
@@ -155,7 +162,7 @@ export class ChecksDesk {
     return { ok: true, run: view, done };
   }
 
-  private async execute(order: OrderRow, runId: number, _sha: string, controller: AbortController): Promise<CheckRunView> {
+  private async execute(order: OrderRow, runId: number, cwd: string, controller: AbortController): Promise<CheckRunView> {
     const { db, now } = this.opts;
     const shell = this.opts.shell ?? runShell;
     const cfg = this.opts.config().checksConfig;
@@ -171,7 +178,7 @@ export class ChecksDesk {
           }
           setCheck.run('running', null, null, null, row.id);
           this.publishRun(order, runId);
-          const result = await shell(row.command, { cwd: order.worktree_path ?? '/', timeoutMs: cfg.timeoutMinutes * 60_000, tailBytes: cfg.tailBytes, signal: controller.signal });
+          const result = await shell(row.command, { cwd, timeoutMs: cfg.timeoutMinutes * 60_000, tailBytes: cfg.tailBytes, signal: controller.signal });
           const status: CheckStatus = result.cancelled ? 'cancelled' : result.timedOut ? 'timeout' : result.code === 0 ? 'passed' : 'failed';
           setCheck.run(status, result.code, result.durationMs, result.tail, row.id);
         } finally {
@@ -281,8 +288,8 @@ export class ChecksDesk {
     this.opts.changed(order);
   }
 
-  private async head(order: OrderRow): Promise<string | null> {
-    const result = await run(this.opts.git, order.worktree_path ?? '/', () => gitOps.head());
+  private async head(cwd: string): Promise<string | null> {
+    const result = await run(this.opts.git, cwd, () => gitOps.head());
     return result.code === 0 ? result.stdout.trim() : null;
   }
 
