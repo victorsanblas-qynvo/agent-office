@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { capPatch } from '../src/delivery-desk';
+import { COMPARE_TTL_MS, MAX_PATCH_BYTES, capPatch } from '../src/delivery-desk';
+import { runGit, type GitResult, type GitRunner } from '../src/git';
 import { createApp } from '../src/server';
 import type { DiffFileStat } from '../src/types';
 import { commitAll, deliveryRig, newOrder, write, type Rig } from './delivery-rig';
@@ -33,6 +34,22 @@ async function orderWithFolder(r: Rig): Promise<{ id: number; path: string; base
 }
 
 const fileQuery = (path: string) => `path=${encodeURIComponent(path)}`;
+
+type Call = { args: string[]; result: GitResult };
+
+// The real git, with every call and its result recorded; fake answers the calls it wants to answer itself.
+function recorder(fake: (args: string[]) => GitResult | null = () => null): { calls: Call[]; git: GitRunner } {
+  const calls: Call[] = [];
+  const git: GitRunner = async (cwd, args, timeoutMs, input, limits) => {
+    const result = fake(args) ?? (await runGit(cwd, args, timeoutMs, input, limits));
+    calls.push({ args, result });
+    return result;
+  };
+  return { calls, git };
+}
+
+const isNumstat = (args: string[]) => args.includes('--numstat');
+const isPatch = (args: string[]) => args[0] === 'diff' && args.some((arg) => arg.startsWith(':(literal)'));
 
 describe('diff of a delivery order', () => {
   test('files, counts, a rename and a binary file against the base of the order', async () => {
@@ -128,6 +145,153 @@ describe('diff of a delivery order', () => {
     rig.h.db.query('UPDATE orders SET branch = NULL, worktree_path = NULL, worktree_state = NULL WHERE id = ?').run(id);
     expect(await call(`/api/board/orders/${id}/diff`)).toMatchObject({ status: 409, body: { error: { key: 'hub.api.orderNoBranch' } } });
     expect(await call(`/api/board/orders/${id}/diff/file?${fileQuery('a.txt')}`)).toMatchObject({ status: 409, body: { error: { key: 'hub.api.orderNoBranch' } } });
+  });
+
+  test('a patch of 2 MB is read only up to its cap and comes back truncated', async () => {
+    const { calls, git: recorded } = recorder();
+    rig = deliveryRig({ office: { git: recorded } });
+    const call = api(rig);
+    const { id, path } = await orderWithFolder(rig);
+    write(path, 'huge.txt', `${'y'.repeat(99)}\n`.repeat(20_000));
+    commitAll(path, 'enorme');
+
+    const huge = await call(`/api/board/orders/${id}/diff/file?${fileQuery('huge.txt')}`);
+    expect(huge.status).toBe(200);
+    expect(huge.body.truncated).toBe(true);
+    expect(Buffer.byteLength(huge.body.patch as string)).toBeLessThanOrEqual(MAX_PATCH_BYTES);
+    const read = calls.find((c) => isPatch(c.args))?.result;
+    expect(read?.cut).toBe(true);
+    expect(Buffer.byteLength(read?.stdout ?? '')).toBeLessThanOrEqual(MAX_PATCH_BYTES + 64 * 1024);
+  });
+
+  test('the clicks on the files of an order reuse its comparison until it ages or the branch moves', async () => {
+    const { calls, git: recorded } = recorder();
+    rig = deliveryRig({ office: { git: recorded } });
+    const call = api(rig);
+    const { id, path } = await orderWithFolder(rig);
+    write(path, 'a.txt', 'a\n');
+    write(path, 'b.txt', 'b\n');
+    commitAll(path, 'a y b');
+    calls.length = 0;
+    const numstats = () => calls.filter((c) => isNumstat(c.args)).length;
+    const branchReads = () => calls.filter((c) => c.args[0] === 'rev-parse' && c.args.some((arg) => arg.startsWith('encargo/'))).length;
+
+    expect((await call(`/api/board/orders/${id}/diff/file?${fileQuery('a.txt')}`)).status).toBe(200);
+    expect((await call(`/api/board/orders/${id}/diff/file?${fileQuery('b.txt')}`)).status).toBe(200);
+    expect(numstats()).toBe(1);
+    expect(branchReads()).toBe(2);
+    expect(calls.filter((c) => c.args[0] === 'merge-base' || c.args.some((arg) => arg.startsWith('origin/'))).length).toBe(2);
+
+    rig.h.clock.advance(COMPARE_TTL_MS - 1);
+    expect((await call(`/api/board/orders/${id}/diff/file?${fileQuery('a.txt')}`)).status).toBe(200);
+    expect(numstats()).toBe(1);
+    rig.h.clock.advance(1);
+    expect((await call(`/api/board/orders/${id}/diff/file?${fileQuery('a.txt')}`)).status).toBe(200);
+    expect(numstats()).toBe(2);
+
+    write(path, 'c.txt', 'c\n');
+    const head = commitAll(path, 'c');
+    const added = await call(`/api/board/orders/${id}/diff/file?${fileQuery('c.txt')}`);
+    expect(added).toMatchObject({ status: 200, body: { path: 'c.txt' } });
+    expect(numstats()).toBe(3);
+    expect((await call(`/api/board/orders/${id}/diff`)).body).toMatchObject({ head, totals: { files: 3 } });
+    expect(numstats()).toBe(3);
+  });
+
+  test('the patch keeps a/ and b/, no colour and no textconv whatever the repository config says', async () => {
+    rig = deliveryRig();
+    const call = api(rig);
+    const { id, path } = await orderWithFolder(rig);
+    git(rig.repo, 'config', 'diff.noprefix', 'true');
+    git(rig.repo, 'config', 'diff.mnemonicPrefix', 'true');
+    git(rig.repo, 'config', 'color.ui', 'always');
+    git(rig.repo, 'config', 'diff.shout.textconv', 'tr a-z A-Z <');
+    writeFileSync(join(rig.repo, '.git', 'info', 'attributes'), '*.txt diff=shout\n');
+    write(path, 'a.txt', 'hola\n');
+    commitAll(path, 'a');
+    const plain = git(path, 'diff', 'HEAD~1', 'HEAD');
+    for (const seen of ['+++ a.txt', 'HOLA', '\u001b[']) expect(plain).toContain(seen);
+
+    const one = await call(`/api/board/orders/${id}/diff/file?${fileQuery('a.txt')}`);
+    expect(one.status).toBe(200);
+    const patch = one.body.patch as string;
+    expect(patch).toContain('diff --git a/a.txt b/a.txt');
+    expect(patch).toContain('+++ b/a.txt');
+    expect(patch).toContain('+hola\n');
+    expect(patch).not.toContain('\u001b[');
+    expect((await call(`/api/board/orders/${id}/diff`)).body).toMatchObject({ totals: { files: 1, adds: 1, dels: 0 } });
+  });
+
+  test('a name that starts with a dash, one with accents and one with a space open, and a binary file says so', async () => {
+    rig = deliveryRig();
+    const call = api(rig);
+    const { id, path } = await orderWithFolder(rig);
+    write(path, '-dash.txt', 'guion\n');
+    write(path, 'lib/café ñandú.dart', 'acentos\n');
+    write(path, 'con espacio.txt', 'espacio\n');
+    writeFileSync(join(path, 'logo.png'), Buffer.from([0, 137, 80, 78, 71, 0, 255]));
+    commitAll(path, 'nombres');
+
+    const diff = await call(`/api/board/orders/${id}/diff`);
+    expect((diff.body.files as DiffFileStat[]).map((file) => file.path).sort()).toEqual(['-dash.txt', 'con espacio.txt', 'lib/café ñandú.dart', 'logo.png']);
+    for (const [name, line] of [['-dash.txt', '+guion\n'], ['lib/café ñandú.dart', '+acentos\n'], ['con espacio.txt', '+espacio\n']] as const) {
+      const one = await call(`/api/board/orders/${id}/diff/file?${fileQuery(name)}`);
+      expect(one).toMatchObject({ status: 200, body: { path: name, truncated: false, binary: false } });
+      expect(one.body.patch).toContain(line);
+    }
+    const binary = await call(`/api/board/orders/${id}/diff/file?${fileQuery('logo.png')}`);
+    expect(binary).toMatchObject({ status: 200, body: { path: 'logo.png', binary: true, truncated: false } });
+    expect(binary.body.patch).toContain('Binary files');
+  });
+
+  test('an order whose folder was removed but whose branch was kept still shows its diff', async () => {
+    rig = deliveryRig();
+    const call = api(rig);
+    const { id, path } = await orderWithFolder(rig);
+    write(path, 'a.txt', 'a\n');
+    const head = commitAll(path, 'a');
+    expect((await call(`/api/board/orders/${id}/diff/file?${fileQuery('a.txt')}`)).status).toBe(200);
+    git(rig.repo, 'worktree', 'remove', '--force', path);
+
+    expect((await call(`/api/board/orders/${id}/diff`)).body).toMatchObject({ head, totals: { files: 1, adds: 1, dels: 0 } });
+    const one = await call(`/api/board/orders/${id}/diff/file?${fileQuery('a.txt')}`);
+    expect(one.status).toBe(200);
+    expect(one.body.patch).toContain('+a\n');
+  });
+
+  test('a base that moved on without the branch shows only the commits of the order', async () => {
+    rig = deliveryRig();
+    const call = api(rig);
+    const { id, path, baseSha } = await orderWithFolder(rig);
+    write(path, 'a.txt', 'a\n');
+    const head = commitAll(path, 'a');
+    git(rig.repo, 'checkout', '-q', '-b', 'avance', baseSha);
+    write(rig.repo, 'otro.txt', 'otro\n');
+    write(rig.repo, 'README.md', '# app\notra\n');
+    const tip = commitAll(rig.repo, 'avance de develop');
+    git(rig.repo, 'update-ref', 'refs/remotes/origin/develop', tip);
+
+    const diff = await call(`/api/board/orders/${id}/diff`);
+    expect(diff.body).toMatchObject({ base: tip, head, totals: { files: 1, adds: 1, dels: 0 } });
+    expect((diff.body.files as DiffFileStat[]).map((file) => file.path)).toEqual(['a.txt']);
+    const one = await call(`/api/board/orders/${id}/diff/file?${fileQuery('a.txt')}`);
+    expect(one.body.patch).not.toContain('otro');
+  });
+
+  test('a git that times out is a 500', async () => {
+    let slow: (args: string[]) => boolean = () => false;
+    const { git: recorded } = recorder((args) => (slow(args) ? { code: 143, stdout: 'diff --git a/a.txt', stderr: '' } : null));
+    rig = deliveryRig({ office: { git: recorded } });
+    const call = api(rig);
+    const { id, path } = await orderWithFolder(rig);
+    write(path, 'a.txt', 'a\n');
+    commitAll(path, 'a');
+
+    slow = isPatch;
+    expect(await call(`/api/board/orders/${id}/diff/file?${fileQuery('a.txt')}`)).toMatchObject({ status: 500, body: { error: { key: 'hub.api.diffFailed' } } });
+    rig.h.clock.advance(COMPARE_TTL_MS);
+    slow = isNumstat;
+    expect(await call(`/api/board/orders/${id}/diff`)).toMatchObject({ status: 500, body: { error: { key: 'hub.api.diffFailed' } } });
   });
 
   test('a branch git cannot compare is a 500', async () => {

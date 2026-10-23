@@ -360,7 +360,7 @@ export class Office {
       changed: (order) => this.bus.emit({ type: 'worktrees', floor: order.floor }),
     });
     this.checkpoints = new CheckpointDesk({ db: opts.db, store: this.store, git: this.git, now: this.now, bus: this.bus, config: () => this.config });
-    this.delivery = new DeliveryDesk({ store: this.store, git: this.git, config: () => this.config, latestChecks: (id) => this.checks.latest(id) });
+    this.delivery = new DeliveryDesk({ store: this.store, git: this.git, config: () => this.config, latestChecks: (id) => this.checks.latest(id), now: this.now });
     this.checks = new ChecksDesk({
       db: opts.db,
       store: this.store,
