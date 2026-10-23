@@ -3388,6 +3388,14 @@ button.diff-file.active {
   margin-left: auto;
 }
 
+.points-safety {
+  margin-top: 12px;
+}
+
+.points-safety code {
+  overflow-wrap: anywhere;
+}
+
 .points-restored {
   display: flex;
   flex-wrap: wrap;

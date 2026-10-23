@@ -108,6 +108,7 @@ import type {
   ReportView,
   TranscriptTail,
   RoleId,
+  SafetyRefView,
   ServerMessage,
   SkippedFile,
   SearchResult,
@@ -385,6 +386,7 @@ export class Office {
       hubId: opts.hubId,
       inside: (path) => this.sessionInside(path),
       changed: (order) => this.bus.emit({ type: 'worktrees', floor: order.floor }),
+      forkPoint: (order, sha) => order.parent_id !== null && this.checkpoints.list(order.parent_id).some((point) => point.sha === sha),
     });
     this.branches = new BranchRestoreDesk({ db: opts.db, git: this.git, now: this.now, bus: this.bus, config: () => this.config });
     this.orphans = new OrphanBranchDesk({ db: opts.db, git: this.git, now: this.now, config: () => this.config });
@@ -888,12 +890,16 @@ export class Office {
     return order ? this.meter.orderSpend({ slug: order.slug, worktreePath: order.worktree_path }) : null;
   }
 
-  resetOrderToCheckpoint(id: number, checkpointId: number): Promise<ResetResult> {
-    return this.restores.reset(id, checkpointId);
+  orderSafetyRefs(id: number): Promise<SafetyRefView[]> {
+    return this.restores.safetyRefs(id);
   }
 
-  undoOrderReset(id: number, safetyRef: unknown): Promise<ResetResult> {
-    return this.restores.undo(id, safetyRef);
+  resetOrderToCheckpoint(id: number, checkpointId: number, force = false): Promise<ResetResult> {
+    return this.restores.reset(id, checkpointId, force);
+  }
+
+  undoOrderReset(id: number, safetyRef: unknown, force = false): Promise<ResetResult> {
+    return this.restores.undo(id, safetyRef, force);
   }
 
   forkOrder(id: number, checkpointId: number, request: ForkRequest): Promise<CreateOrderResult | RestoreFailure> {
@@ -945,7 +951,7 @@ export class Office {
   }
 
   removeWorktree(orderId: number, opts: { deleteBranch: boolean; force: boolean }): Promise<RemoveResult> {
-    return this.worktrees.remove(orderId, opts);
+    return this.checks.exclusive(orderId, () => this.worktrees.remove(orderId, opts));
   }
 
   keepWorktree(orderId: number): boolean {

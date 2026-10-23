@@ -2,11 +2,12 @@ import type { Database } from 'bun:sqlite';
 import { existsSync } from 'node:fs';
 import { MAX_DESCRIPTION, MAX_TITLE, type CreateOrderRequest, type CreateOrderResult } from './board-desk';
 import { statusPaths, type CheckpointDesk } from './checkpoints';
+import { realPath } from './floors';
 import type { GitRunner } from './git';
 import type { OfficeBus } from './office-bus';
 import type { OrderRow, OrderStore } from './order-store';
 import { gitOps, run, safetyRef, validSafetyRef, validSha } from './repo-ops';
-import type { HubText } from './types';
+import type { HubText, SafetyRefView } from './types';
 
 const REMOTE = 'origin/';
 const SAFETY_TRIES = 1000;
@@ -38,7 +39,8 @@ export type RestoreDeskOpts = {
 // n: the place of the checkpoint among the ones of its order, from 1.
 export type PointRow = { id: number; sha: string; label: string; n: number };
 
-type Target = { kind: 'checkpoint'; id: number } | { kind: 'safety'; ref: string };
+// force: the user confirmed a restore of an order already done.
+type Target = ({ kind: 'checkpoint'; id: number } | { kind: 'safety'; ref: string }) & { force: boolean };
 
 type Ready = { order: OrderRow; path: string; sha: string; point: PointRow | null; ref: string | null };
 
@@ -49,13 +51,28 @@ const fail = (status: RestoreFailure['status'], error: HubText): RestoreFailure 
 export class RestoreDesk {
   constructor(private readonly opts: RestoreDeskOpts) {}
 
-  reset(orderId: number, checkpointId: number): Promise<ResetResult> {
-    return this.restore(orderId, { kind: 'checkpoint', id: checkpointId });
+  reset(orderId: number, checkpointId: number, force = false): Promise<ResetResult> {
+    return this.restore(orderId, { kind: 'checkpoint', id: checkpointId, force });
   }
 
-  async undo(orderId: number, ref: unknown): Promise<ResetResult> {
+  async undo(orderId: number, ref: unknown, force = false): Promise<ResetResult> {
     if (typeof ref !== 'string') return fail(400, { key: 'hub.api.safetyRefInvalid' });
-    return this.restore(orderId, { kind: 'safety', ref });
+    return this.restore(orderId, { kind: 'safety', ref, force });
+  }
+
+  // The HEADs restores left behind, newest first: each one can still be gone back to.
+  async safetyRefs(orderId: number): Promise<SafetyRefView[]> {
+    const order = this.opts.store.get(orderId);
+    const path = order?.worktree_path;
+    if (!order || !path || !existsSync(path)) return [];
+    const listed = await run(this.opts.git, path, () => gitOps.listSafetyRefs(order.slug));
+    if (listed.code !== 0) return [];
+    return listed.stdout
+      .split('\n')
+      .map((line) => line.trim().split(' '))
+      .filter((parts): parts is [string, string] => parts.length === 2 && validSafetyRef(parts[0], order.slug) && validSha(parts[1]))
+      .map(([ref, sha]) => ({ ref, sha, at: Number(ref.slice(ref.lastIndexOf('-') + 1)) }))
+      .sort((a, b) => b.at - a.at || b.ref.localeCompare(a.ref));
   }
 
   async fork(orderId: number, checkpointId: number, request: ForkRequest): Promise<CreateOrderResult | RestoreFailure> {
@@ -63,12 +80,13 @@ export class RestoreDesk {
     if (!order) return fail(404, { key: 'hub.api.orderNotFound' });
     const point = this.point(order.id, checkpointId);
     if (!point) return fail(404, { key: 'hub.api.checkpointNotFound' });
+    if (request.via === 'director') return fail(400, { key: 'hub.api.forkViaLead' });
     const short = point.sha.slice(0, 7);
     const title = request.title?.trim() || `${order.title.slice(0, MAX_TITLE - short.length - 2).trim()} @${short}`;
     const origin = `Bifurcación de encargo/${order.slug} en el punto ${point.n} (${short} ${point.label}).`;
     const description = (order.description ? `${origin}\n\n${order.description}` : origin).slice(0, MAX_DESCRIPTION);
     const base = order.base_ref?.startsWith(REMOTE) ? order.base_ref.slice(REMOTE.length) : (order.base_ref ?? undefined);
-    return this.opts.create({ floor: order.floor, title, description, base, via: request.via ?? 'lead', parentId: order.id, startSha: point.sha });
+    return this.opts.create({ floor: order.floor, title, description, base, via: 'lead', parentId: order.id, startSha: point.sha });
   }
 
   // Checked once to answer at once, and again inside the turn, where nothing else can change the folder.
@@ -88,6 +106,8 @@ export class RestoreDesk {
     const point = target.kind === 'checkpoint' ? this.point(order.id, target.id) : null;
     if (target.kind === 'checkpoint' && !point) return fail(404, { key: 'hub.api.checkpointNotFound' });
     if (target.kind === 'safety' && !validSafetyRef(target.ref, order.slug)) return fail(400, { key: 'hub.api.safetyRefInvalid' });
+    if (order.pr_url) return fail(409, { key: 'hub.api.restorePrOpen' });
+    if (order.status === 'hecho' && !target.force) return fail(409, { key: 'hub.api.restoreDone' });
     const path = order.worktree_path;
     const branch = order.branch;
     if (!path || !branch || !existsSync(path) || (order.worktree_state !== 'listo' && order.worktree_state !== 'error')) {
@@ -98,13 +118,15 @@ export class RestoreDesk {
     if (busy.length > 0) return fail(409, { key: 'hub.api.restoreBusy', params: { who: busy.join(', ') } });
     const head = await run(git, path, () => gitOps.symbolicHead());
     if (head.code !== 0 || head.stdout.trim() !== `refs/heads/${branch}`) return fail(409, { key: 'hub.api.restoreOffBranch' });
+    const top = await run(git, path, () => gitOps.toplevel());
+    if (top.code !== 0 || realPath(top.stdout.trim()) !== realPath(path)) return fail(409, { key: 'hub.api.restoreNoFolder' });
     if (target.kind === 'safety') {
       const tip = await run(git, path, () => gitOps.refTip(target.ref));
       const sha = tip.stdout.trim();
       if (tip.code !== 0 || !validSha(sha)) return fail(404, { key: 'hub.api.safetyRefNotFound' });
       return { ok: true, ready: { order, path, sha, point: null, ref: target.ref } };
     }
-    const ancestor = point ? await run(git, path, () => gitOps.isAncestor(point.sha, branch)) : null;
+    const ancestor = point ? await run(git, path, () => gitOps.onBranch(point.sha, branch)) : null;
     if (!point || ancestor?.code !== 0) return fail(409, { key: 'hub.api.checkpointNotOnBranch' });
     return { ok: true, ready: { order, path, sha: point.sha, point, ref: null } };
   }
@@ -121,6 +143,8 @@ export class RestoreDesk {
       const files = left.slice(0, LEFTOVERS_SHOWN).join(', ') + (left.length > LEFTOVERS_SHOWN ? ', …' : '');
       return fail(409, { key: 'hub.api.restoreLeftovers', params: { files } });
     }
+    const busy = this.opts.busy(path);
+    if (busy.length > 0) return fail(409, { key: 'hub.api.restoreBusy', params: { who: busy.join(', ') } });
     const head = saved.sha ?? (await this.head(path));
     const ref = head ? await this.keep(path, order.slug, head) : null;
     if (!ref) return fail(500, { key: 'hub.api.restoreFailed' });
@@ -174,7 +198,7 @@ export class RestoreDesk {
 }
 
 export function resetText(order: OrderRow, point: PointRow, ref: string): string {
-  return `[Agent Office] RESTAURADO encargo/${order.slug}: la carpeta ${order.worktree_path ?? ''} vuelve al punto ${point.n} (${point.sha.slice(0, 7)} ${point.label}); vuelve a leer los ficheros antes de seguir. Lo que había queda en ${ref}; para deshacer: git reset --hard ${ref}`;
+  return `[Agent Office] RESTAURADO encargo/${order.slug}: la carpeta ${order.worktree_path ?? ''} vuelve al punto ${point.n} (${point.sha.slice(0, 7)} ${point.label}); vuelve a leer los ficheros antes de seguir. Lo que había queda en ${ref}; para deshacerlo, pídeselo al usuario (Deshacer en el panel).`;
 }
 
 export function undoText(order: OrderRow, sha: string, ref: string): string {

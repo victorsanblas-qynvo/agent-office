@@ -1,7 +1,9 @@
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, spyOn, test } from 'bun:test';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { runGit, type GitRunner } from '../src/git';
+import { orderSlug } from '../src/orders';
+import { resetText } from '../src/checkpoint-restore';
 import { createApp } from '../src/server';
 import type { CheckpointView, OrderView } from '../src/types';
 import { DEV, checksConfig, deliveryRig, leadMessages, newOrder, orderOf, write, type Rig, type RigOptions } from './delivery-rig';
@@ -68,7 +70,9 @@ async function point(r: Rig, id: number, folder: string, files: Record<string, s
 }
 
 const head = (folder: string) => git(folder, 'rev-parse', 'HEAD');
-const reset = (r: Rig, id: number, cp: number) => api(r)('POST', `/api/board/orders/${id}/checkpoints/${cp}/reset`, {});
+const reset = (r: Rig, id: number, cp: number, body: Record<string, unknown> = {}) => api(r)('POST', `/api/board/orders/${id}/checkpoints/${cp}/reset`, body);
+const fork = (r: Rig, id: number, cp: number, body: Record<string, unknown> = {}) => api(r)('POST', `/api/board/orders/${id}/checkpoints/${cp}/fork`, body);
+const baseOf = (r: Rig, slug: string) => r.h.db.query<{ base_sha: string }, [string]>('SELECT base_sha FROM orders WHERE slug = ?').get(slug)?.base_sha ?? '';
 const undo = (r: Rig, id: number, safetyRef: unknown) => api(r)('POST', `/api/board/orders/${id}/checkpoints/undo-reset`, { safetyRef });
 
 describe('restore to a checkpoint', () => {
@@ -104,7 +108,34 @@ describe('restore to a checkpoint', () => {
     expect(r.h.office.snapshot().activity.map((a) => a.summary)).toContainEqual({ key: 'hub.act.checkpointReset', params: { slug: c.slug, n: 1, ref } });
     const told = leadMessages(r).at(-1) ?? '';
     expect(told).toStartWith(`[Agent Office] RESTAURADO encargo/${c.slug}: la carpeta ${folder} vuelve al punto 1 (${p1.sha.slice(0, 7)} `);
-    expect(told).toContain(`git reset --hard ${ref}`);
+    expect(told).toContain(`Lo que había queda en ${ref}; para deshacerlo, pídeselo al usuario (Deshacer en el panel)`);
+    expect(told).not.toContain('git reset');
+  });
+
+  test('the text for the lead never tells it to reset the folder itself', () => {
+    const order = { slug: 'login-a1b2', worktree_path: '/r/.claude/worktrees/office-login-a1b2' } as Parameters<typeof resetText>[0];
+    expect(resetText(order, { id: 1, sha: 'a'.repeat(40), label: 'listo', n: 1 }, 'refs/office/login-a1b2/before-reset-1')).not.toContain('git reset');
+  });
+
+  test('lists the safety refs of the order, newest first, and any of them can be gone back to', async () => {
+    const { card: c, folder } = await card();
+    const r = rig as Rig;
+    const p1 = await point(r, c.id, folder, { 'a.txt': 'uno' });
+    const p2 = await point(r, c.id, folder, { 'b.txt': 'dos' });
+    expect((await api(r)('GET', `/api/board/orders/${c.id}/checkpoints`)).body.safetyRefs).toEqual([]);
+    const first = await reset(r, c.id, p1.id);
+    const second = await undo(r, c.id, first.body.safetyRef);
+    expect(second.status).toBe(200);
+
+    const listed = await api(r)('GET', `/api/board/orders/${c.id}/checkpoints`);
+
+    expect(listed.status).toBe(200);
+    expect(listed.body.safetyRefs).toEqual([
+      { ref: second.body.safetyRef, sha: p1.sha, at: r.h.clock.now + 1 },
+      { ref: first.body.safetyRef, sha: p2.sha, at: r.h.clock.now },
+    ]);
+    expect((await undo(r, c.id, second.body.safetyRef)).body).toMatchObject({ ok: true, head: p1.sha });
+    expect(head(folder)).toBe(p1.sha);
   });
 
   test('undo takes the folder back to the HEAD it had, and leaves the one it replaces under a new ref', async () => {
@@ -177,6 +208,34 @@ describe('what stops a restore', () => {
     expect((await reset(r, c.id, p1.id)).status).toBe(200);
     expect(await reset(r, c.id, p2.id)).toMatchObject({ status: 409, body: { error: { key: 'hub.api.checkpointNotOnBranch' } } });
     expect(head(folder)).toBe(p1.sha);
+  });
+
+  test('an order with a PR', async () => {
+    const { card: c, folder } = await card();
+    const r = rig as Rig;
+    const p1 = await point(r, c.id, folder, { 'a.txt': 'uno' });
+    await point(r, c.id, folder, { 'b.txt': 'dos' });
+    const before = head(folder);
+    r.h.db.query("UPDATE orders SET pr_url = 'https://example.test/pr/1', pr_state = 'open' WHERE id = ?").run(c.id);
+    expect(await reset(r, c.id, p1.id, { force: true })).toMatchObject({ status: 409, body: { error: { key: 'hub.api.restorePrOpen' } } });
+    expect(await undo(r, c.id, `refs/office/${c.slug}/before-reset-1`)).toMatchObject({ status: 409, body: { error: { key: 'hub.api.restorePrOpen' } } });
+    expect(head(folder)).toBe(before);
+  });
+
+  test('an order already done, until the user confirms it', async () => {
+    const { card: c, folder } = await card();
+    const r = rig as Rig;
+    const p1 = await point(r, c.id, folder, { 'a.txt': 'uno' });
+    const p2 = await point(r, c.id, folder, { 'b.txt': 'dos' });
+    r.h.db.query("UPDATE orders SET status = 'hecho' WHERE id = ?").run(c.id);
+    expect(await reset(r, c.id, p1.id)).toMatchObject({ status: 409, body: { error: { key: 'hub.api.restoreDone' } } });
+    expect(head(folder)).toBe(p2.sha);
+    const forced = await reset(r, c.id, p1.id, { force: true });
+    expect(forced.status).toBe(200);
+    expect(head(folder)).toBe(p1.sha);
+    expect(await undo(r, c.id, forced.body.safetyRef)).toMatchObject({ status: 409, body: { error: { key: 'hub.api.restoreDone' } } });
+    expect((await api(r)('POST', `/api/board/orders/${c.id}/checkpoints/undo-reset`, { safetyRef: forced.body.safetyRef, force: true })).status).toBe(200);
+    expect(head(folder)).toBe(p2.sha);
   });
 
   test('an order without a folder', async () => {
@@ -277,7 +336,8 @@ describe('fork from a checkpoint', () => {
     await r.h.office.idle();
     const ready = orderOf(r, order.slug);
     const forkFolder = ready.worktree?.path ?? '';
-    expect(ready).toMatchObject({ status: 'pendiente', baseSha: p1.sha, base: 'origin/develop', branch: `encargo/${order.slug}` });
+    expect(ready).toMatchObject({ status: 'pendiente', baseSha: orderOf(r, c.slug).baseSha, base: 'origin/develop', branch: `encargo/${order.slug}` });
+    expect(git(r.repo, 'rev-parse', `refs/heads/encargo/${order.slug}`)).toBe(p1.sha);
     expect(ready.worktree).toMatchObject({ state: 'listo', stale: false });
     expect(head(forkFolder)).toBe(p1.sha);
     expect(readFileSync(join(forkFolder, 'a.txt'), 'utf8')).toBe('uno');
@@ -298,8 +358,80 @@ describe('fork from a checkpoint', () => {
     expect(await call('POST', `/api/board/orders/${c.id}/checkpoints/${p1.id}/fork`, { title: 'Otro intento' })).toMatchObject({ status: 200, body: { order: { title: 'Otro intento', parentId: c.id } } });
     expect(await call('POST', `/api/board/orders/${c.id}/checkpoints/999/fork`, {})).toMatchObject({ status: 404, body: { error: { key: 'hub.api.checkpointNotFound' } } });
     expect(await call('POST', `/api/board/orders/${c.id}/checkpoints/${p1.id}/fork`, { via: 'nadie' })).toMatchObject({ status: 400, body: { error: { key: 'hub.api.boardFields' } } });
+    expect(await call('POST', `/api/board/orders/${c.id}/checkpoints/${p1.id}/fork`, { via: 'director' })).toMatchObject({ status: 400, body: { error: { key: 'hub.api.forkViaLead' } } });
     expect(await call('POST', `/api/board/orders/${c.id}/checkpoints/${p1.id}/fork`, { title: 'x'.repeat(121) })).toMatchObject({ status: 400, body: { error: { key: 'hub.api.boardFields' } } });
     await r.h.office.idle();
+  });
+});
+
+describe('the base of a fork', () => {
+  test('stays the base of the parent: the check files it changed before the checkpoint count as touched', async () => {
+    const { card: c, folder } = await card({ configure: (config) => { checksConfig(['uno', 'exit 0'])(config); if (config.floors.mobile) config.floors.mobile.checkFiles = ['ci.sh']; } });
+    const r = rig as Rig;
+    const p1 = await point(r, c.id, folder, { 'ci.sh': 'exit 0\n', 'a.txt': 'uno' });
+    const forked = await fork(r, c.id, p1.id);
+    expect(forked.status).toBe(200);
+    await r.h.office.idle();
+    const child = orderOf(r, forked.body.order.slug);
+    expect(baseOf(r, child.slug)).toBe(baseOf(r, c.slug));
+
+    const started = await r.h.office.runOrderChecks(child.id, 'panel');
+    if (!started?.ok) throw new Error('the checks did not start');
+    await started.done;
+
+    expect(orderOf(r, child.slug).checks?.touched).toEqual(['ci.sh']);
+    expect(await api(r)('POST', `/api/board/orders/${child.id}/move`, { to: 'hecho' })).toMatchObject({ status: 409, body: { error: { key: 'hub.api.moveNeedsForce' } } });
+  });
+
+  test('counts the commits of the parent up to the checkpoint as its own, so its branch is not deleted as merged', async () => {
+    const { card: c, folder } = await card();
+    const r = rig as Rig;
+    const p1 = await point(r, c.id, folder, { 'a.txt': 'uno' });
+    await point(r, c.id, folder, { 'b.txt': 'dos' });
+    const forked = await fork(r, c.id, p1.id);
+    await r.h.office.idle();
+    const child = orderOf(r, forked.body.order.slug);
+    const own = Number(git(r.repo, 'rev-list', '--count', `${baseOf(r, c.slug)}..${p1.sha}`));
+    expect(own).toBeGreaterThan(0);
+
+    const view = (await r.h.office.listWorktrees('mobile')).worktrees.find((w) => w.orderId === child.id);
+
+    expect(view).toMatchObject({ ahead: own, behind: 0, baseSha: baseOf(r, c.slug), merged: false });
+    expect(head(child.worktree?.path ?? '')).toBe(p1.sha);
+    expect(await r.h.office.removeWorktree(child.id, { deleteBranch: true, force: false })).toBe('unmerged');
+    expect(git(r.repo, 'rev-parse', `refs/heads/encargo/${child.slug}`)).toBe(p1.sha);
+  });
+
+  test('is the merge-base with the base when the base of the parent is not behind the checkpoint', async () => {
+    const { card: c, folder } = await card();
+    const r = rig as Rig;
+    const original = baseOf(r, c.slug);
+    const p1 = await point(r, c.id, folder, { 'a.txt': 'uno' });
+    const p2 = await point(r, c.id, folder, { 'b.txt': 'dos' });
+    r.h.db.query('UPDATE orders SET base_sha = ? WHERE id = ?').run(p2.sha, c.id);
+    const forked = await fork(r, c.id, p1.id);
+    expect(forked.status).toBe(200);
+    await r.h.office.idle();
+    expect(baseOf(r, forked.body.order.slug)).toBe(original);
+  });
+
+  test('a branch of that name that already exists stops the fork', async () => {
+    const { card: c, folder } = await card();
+    const r = rig as Rig;
+    const p1 = await point(r, c.id, folder, { 'a.txt': 'uno' });
+    const elsewhere = baseOf(r, c.slug);
+    const taken = `encargo/${orderSlug('Otro intento', 'aaaa')}`;
+    git(r.repo, 'branch', taken, elsewhere);
+    const random = spyOn(Math, 'random').mockReturnValue(0);
+    try {
+      const refused = await fork(r, c.id, p1.id, { title: 'Otro intento' });
+      expect(refused).toMatchObject({ status: 409, body: { error: { key: 'hub.api.forkBranchExists', params: { branch: taken } } } });
+    } finally {
+      random.mockRestore();
+    }
+    await r.h.office.idle();
+    expect(git(r.repo, 'rev-parse', `refs/heads/${taken}`)).toBe(elsewhere);
+    expect(r.h.office.snapshot().orders.some((o) => o.title === 'Otro intento')).toBe(false);
   });
 });
 

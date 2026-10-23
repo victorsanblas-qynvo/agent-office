@@ -25,7 +25,7 @@ import type {
   OrderView,
   TokenTotals,
 } from './types';
-import type { CreateResult } from './worktrees';
+import type { CreateResult, ForkClaim } from './worktrees';
 
 const TOUCH_WRITE_MS = 2000;
 const OUTSIDE_NOTE_MS = 5 * 60_000;
@@ -40,7 +40,11 @@ export type BoardDeskOpts = {
   bus: OfficeBus;
   book: SessionBook;
   config: () => OfficeConfig;
-  worktrees: { create(order: OrderRow): Promise<CreateResult>; resetup(orderId: number): Promise<OrderRow | null> };
+  worktrees: {
+    create(order: OrderRow): Promise<CreateResult>;
+    resetup(orderId: number): Promise<OrderRow | null>;
+    claimFork(order: OrderRow, parent: OrderRow, start: string): Promise<ForkClaim>;
+  };
   byPath: (cwd: string | null | undefined) => OrderRow | null;
   deliver: typeof deliver;
   order: (sessionId: string, text: string) => Promise<OrderResult>;
@@ -53,7 +57,7 @@ export type BoardDeskOpts = {
 
 export type BoardChecks = Pick<ChecksDesk, 'summary' | 'gateReading' | 'start' | 'force' | 'cancel' | 'latest' | 'history' | 'scheduleListo'>;
 
-// startSha: the commit the folder leaves from instead of the tip of the base (a fork from a checkpoint).
+// startSha: the commit the folder leaves from instead of the tip of the base (a fork from a checkpoint of parentId).
 export type CreateOrderRequest = { floor: string; title: string; description?: string; base?: string; via: 'lead' | 'director'; parentId?: number; startSha?: string };
 
 export type ScriptRequest = { order: string; slug?: string; reason?: string; cwd?: string };
@@ -234,7 +238,7 @@ export class BoardDesk {
       title.length > MAX_TITLE ||
       description.length > MAX_DESCRIPTION ||
       (raw.base !== undefined && !validRef(raw.base)) ||
-      (raw.startSha !== undefined && !validSha(raw.startSha))
+      (raw.startSha !== undefined && (!validSha(raw.startSha) || raw.parentId === undefined || raw.via !== 'lead'))
     ) {
       return { ok: false, status: 400, error: { key: 'hub.api.boardFields' } };
     }
@@ -256,7 +260,18 @@ export class BoardDesk {
       baseRef: raw.base ?? null,
       now: this.opts.now(),
     });
-    const row = raw.startSha ? (this.opts.store.update(inserted.id, { base_sha: raw.startSha }) as OrderRow) : inserted;
+    let row = inserted;
+    if (raw.startSha) {
+      const parent = this.opts.store.get(raw.parentId as number);
+      const claimed = parent ? await this.opts.worktrees.claimFork(inserted, parent, raw.startSha) : null;
+      if (!claimed?.ok) {
+        this.opts.store.update(inserted.id, { removed_at: this.opts.now() });
+        return claimed?.error === 'exists'
+          ? { ok: false, status: 409, error: { key: 'hub.api.forkBranchExists', params: { branch: claimed.detail } } }
+          : { ok: false, status: 409, error: { key: 'hub.api.forkStartFailed', params: { reason: claimed ? `${claimed.error}: ${claimed.detail}` : 'parent' } } };
+      }
+      row = this.opts.store.update(inserted.id, { base_sha: claimed.baseSha }) as OrderRow;
+    }
     this.note({ key: 'hub.act.orderCreated', params: { floor: raw.floor, title } });
     this.changed(row);
     const text = description ? `${title}\n${description}` : title;

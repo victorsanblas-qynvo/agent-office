@@ -31,6 +31,7 @@ import type {
   PlanDecision,
   ReportView,
   RoleId,
+  SafetyRefView,
   SearchResult,
   SettingsResult,
   SettingsUpdate,
@@ -236,7 +237,7 @@ export class OfficeApi {
     return this.send('DELETE', `/api/board/orders/${id}/checks`, undefined);
   }
 
-  orderCheckpoints(id: number): Promise<ApiData<{ checkpoints: CheckpointView[]; skipped: SkippedFile[] }>> {
+  orderCheckpoints(id: number): Promise<ApiData<{ checkpoints: CheckpointView[]; skipped: SkippedFile[]; safetyRefs: SafetyRefView[] }>> {
     return this.get(`/api/board/orders/${id}/checkpoints`);
   }
 
@@ -244,12 +245,12 @@ export class OfficeApi {
     return this.get(`/api/board/orders/${id}/spend`);
   }
 
-  resetToCheckpoint(id: number, checkpointId: number): Promise<ApiData<{ ok: true; safetyRef: string; head: string }>> {
-    return this.send('POST', `/api/board/orders/${id}/checkpoints/${checkpointId}/reset`, {});
+  resetToCheckpoint(id: number, checkpointId: number, force = false): Promise<ApiData<{ ok: true; safetyRef: string; head: string }>> {
+    return this.send('POST', `/api/board/orders/${id}/checkpoints/${checkpointId}/reset`, force ? { force } : {});
   }
 
-  undoCheckpointReset(id: number, safetyRef: string): Promise<ApiData<{ ok: true; safetyRef: string; head: string }>> {
-    return this.send('POST', `/api/board/orders/${id}/checkpoints/undo-reset`, { safetyRef });
+  undoCheckpointReset(id: number, safetyRef: string, force = false): Promise<ApiData<{ ok: true; safetyRef: string; head: string }>> {
+    return this.send('POST', `/api/board/orders/${id}/checkpoints/undo-reset`, force ? { safetyRef, force } : { safetyRef });
   }
 
   forkFromCheckpoint(id: number, checkpointId: number): Promise<ApiData<{ order: OrderView }>> {

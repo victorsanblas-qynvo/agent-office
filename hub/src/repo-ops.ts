@@ -110,6 +110,8 @@ export const gitOps = {
   commonDir: (): string[] => ['rev-parse', '--path-format=absolute', '--git-common-dir'],
   gitDir: (): string[] => ['rev-parse', '--path-format=absolute', '--git-dir'],
   worktreeAdd: (branch: string, path: string, baseSha: string): string[] => ['worktree', 'add', '-q', '-b', writable(branch), absolutePath(path), sha(baseSha)],
+  // A folder on a branch that already exists (a fork's, created at its checkpoint).
+  worktreeAddExisting: (branch: string, path: string): string[] => ['worktree', 'add', '-q', absolutePath(path), writable(branch)],
   worktreeRemove: (path: string, force: boolean): string[] => ['worktree', 'remove', ...(force ? ['--force'] : []), absolutePath(path)],
   worktreePrune: (): string[] => ['worktree', 'prune'],
   worktreeList: (): string[] => ['worktree', 'list', '--porcelain'],
@@ -121,8 +123,14 @@ export const gitOps = {
   refTip: (name: string): string[] => ['rev-parse', '--verify', '--quiet', `${safety(name)}^{commit}`],
   // Creates the ref only while no ref of that name exists.
   refCreate: (name: string, tip: string): string[] => ['update-ref', safety(name), sha(tip), '0'.repeat(40)],
+  // The safety refs of an order: `<refname> <sha>` per line.
+  listSafetyRefs: (slug: string): string[] => {
+    if (!validSlug(slug)) throw new RepoOpError(`slug no válido: ${slug}`);
+    return ['for-each-ref', '--format=%(refname) %(objectname)', `refs/office/${slug}/`];
+  },
   symbolicHead: (): string[] => ['symbolic-ref', '--quiet', 'HEAD'],
-  resetHard: (commit: string): string[] => ['reset', '--quiet', '--hard', sha(commit)],
+  toplevel: (): string[] => ['rev-parse', '--show-toplevel'],
+  resetHard: (commit: string): string[] => ['reset', '--quiet', '--hard', '--no-recurse-submodules', sha(commit)],
   // Untracked files and folders go; ignored ones (node_modules, .env) stay.
   cleanUntracked: (): string[] => ['clean', '--quiet', '-f', '-d'],
   commitExists: (commit: string): string[] => ['rev-parse', '--verify', '--quiet', `${sha(commit)}^{commit}`],
@@ -137,6 +145,9 @@ export const gitOps = {
   },
   aheadBehind: (base: string, head: string): string[] => ['rev-list', '--left-right', '--count', `${sha(base)}...${sha(head)}`],
   isAncestor: (ancestor: string, descendant: string): string[] => ['merge-base', '--is-ancestor', sha(ancestor), ref(descendant, 'rama')],
+  onBranch: (commit: string, branch: string): string[] => ['merge-base', '--is-ancestor', sha(commit), `refs/heads/${ref(branch, 'rama')}`],
+  descends: (ancestor: string, descendant: string): string[] => ['merge-base', '--is-ancestor', sha(ancestor), sha(descendant)],
+  mergeBase: (one: string, other: string): string[] => ['merge-base', sha(one), sha(other)],
   cherry: (upstream: string, head: string, limit: string): string[] => ['cherry', sha(upstream), sha(head), sha(limit)],
   diffPatch: (base: string, head: string, paths: readonly string[] = []): string[] => ['diff', ...EXACT_DIFF, sha(base), sha(head), '--', ...literal(paths)],
   commitPatch: (commit: string, paths: readonly string[] = []): string[] => ['diff', ...EXACT_DIFF, `${sha(commit)}^`, sha(commit), '--', ...literal(paths)],

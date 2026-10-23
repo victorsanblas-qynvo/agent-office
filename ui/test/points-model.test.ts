@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-import { canRestore, pointNumbers } from '../src/board/points-model';
-import type { CheckpointView, OrderView } from '../src/types';
+import { canRestore, newestFirst, pointNumbers, restoreBlock, restoreNeedsForce } from '../src/board/points-model';
+import type { CheckpointView, OrderView, SafetyRefView } from '../src/types';
 import { order } from './fixtures';
 
 const point = (id: number): CheckpointView => ({ id, sha: `${id}`.repeat(40).slice(0, 40), reason: 'listo', label: 'listo', createdAt: id });
@@ -22,5 +22,29 @@ describe('canRestore', () => {
     expect(canRestore(order('a'))).toBe(false);
     expect(canRestore(order('a', { worktree: folder('listo'), checks: { status: 'running', passed: 0, total: 1, sha: null, touched: [], forced: false } }))).toBe(false);
     expect(canRestore(order('a', { worktree: folder('listo'), checks: { status: 'failed', passed: 0, total: 1, sha: null, touched: [], forced: false } }))).toBe(true);
+  });
+});
+
+describe('restoreBlock', () => {
+  test('an open PR stops a restore before the folder is looked at', () => {
+    const pr = { url: 'https://example.test/pr/1', state: 'open' };
+    expect(restoreBlock(order('a', { worktree: folder('listo'), pr }))).toBe('pr');
+    expect(canRestore(order('a', { worktree: folder('listo'), pr }))).toBe(false);
+    expect(restoreBlock(order('a', { worktree: folder('preparando') }))).toBe('folder');
+    expect(restoreBlock(order('a', { worktree: folder('listo') }))).toBeNull();
+  });
+});
+
+describe('restoreNeedsForce', () => {
+  test('only an order already done asks to be confirmed again', () => {
+    expect(restoreNeedsForce(order('a', { status: 'hecho' }))).toBe(true);
+    expect(restoreNeedsForce(order('a', { status: 'revision' }))).toBe(false);
+  });
+});
+
+describe('newestFirst', () => {
+  test('sorts the safety refs from the newest', () => {
+    const ref = (at: number): SafetyRefView => ({ ref: `refs/office/a/before-reset-${at}`, sha: 'a'.repeat(40), at });
+    expect(newestFirst([ref(5), ref(30), ref(12)]).map((entry) => entry.at)).toEqual([30, 12, 5]);
   });
 });
