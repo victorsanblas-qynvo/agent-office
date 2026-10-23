@@ -3625,6 +3625,7 @@ button.diff-file.active {
   color: var(--accent-text);
 }
 
+.table-digest[hidden],
 .table-history[hidden],
 .table-now[hidden] {
   display: none;
@@ -3766,4 +3767,44 @@ button.diff-file.active {
 
 .check-flaky {
   color: var(--warn, var(--muted));
+}
+
+.digest-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+
+.digest-copy {
+  margin-left: auto;
+}
+
+.digest-floor {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin: 0 0 8px;
+}
+
+.digest-floor-name {
+  margin: 0 0 4px;
+  font-size: 1em;
+}
+
+.digest-stats,
+.digest-orders {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.digest-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+}
+
+.digest-orders {
+  margin-top: 4px;
 }

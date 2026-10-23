@@ -450,6 +450,11 @@ export function createApp(opts: ServerOptions, holdRequest: (req: Request) => vo
     return c.json(office.tokenSummary(range));
   });
 
+  app.get('/api/digest', requirePanel, (c) => {
+    const result = office.dayDigest(c.req.query('day') ?? null);
+    return typeof result === 'string' ? c.json({ error: { key: 'hub.api.digestDay' } }, 400) : c.json(result);
+  });
+
   app.get('/api/reports/:agentKey', requirePanel, (c) => {
     const report = office.report(c.req.param('agentKey') ?? '');
     return report ? c.json(report) : c.json({ error: { key: 'hub.api.noReport' } }, 404);

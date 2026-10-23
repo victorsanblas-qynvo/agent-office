@@ -237,6 +237,7 @@ export type HubTextParams = {
   'hub.api.chatTooLong': undefined;
   'hub.api.chatKind': undefined;
   'hub.api.usageRange': undefined;
+  'hub.api.digestDay': undefined;
   'hub.api.chatAuthorUnknown': undefined;
   'hub.api.chatFloorUnknown': undefined;
   'hub.api.chatChannelUnknown': undefined;
@@ -959,6 +960,19 @@ export type UsageSummary = {
   byFloor: TokenRow[];
   byPlan: TokenRow[];
 };
+
+export type DigestCounts = {
+  blocked: number;
+  redRuns: number;
+  greenRuns: number;
+  tokens: number;
+  plans: { approved: number; noAgreement: number };
+  lessons: number;
+};
+
+export type DigestFloor = DigestCounts & { floor: string; delivered: { slug: string; title: string }[] };
+
+export type OfficeDigest = { day: string; floors: DigestFloor[]; totals: DigestCounts & { delivered: number } };
 
 export type TokensEvent = {
   agentKey: string;
