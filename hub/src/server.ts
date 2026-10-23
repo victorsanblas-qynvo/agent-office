@@ -404,8 +404,8 @@ export function createApp(opts: ServerOptions, holdRequest: (req: Request) => vo
   });
 
   app.delete('/api/memory/:id', requirePanel, (c) => {
-    const id = Number(c.req.param('id'));
-    if (!Number.isInteger(id) || id <= 0) return c.json({ error: { key: 'hub.api.badId' } }, 400);
+    const id = idOf(c.req.param('id'));
+    if (id === null) return c.json({ error: { key: 'hub.api.badId' } }, 400);
     return office.removeLesson(id) ? c.json({ ok: true }) : c.json({ error: { key: 'hub.api.lessonNotFound' } }, 404);
   });
 
