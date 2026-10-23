@@ -31,7 +31,7 @@ import { relativeTime } from '../time';
 import type { AgentState, AgentView, DocumentKind, DocumentStatus, DocumentView, FloorKind, FloorView, GuardAlert, GuardAlertLevel } from '../types';
 import { mountDigest } from './digest';
 import { mountTimeline } from './timeline';
-import { mountHistory, readTableView, replayHref, VIEW_KEY, type TableView } from './history';
+import { mountHistory, readTableView, replayHref, VIEW_KEY, type SavedSearch, type TableView } from './history';
 import { mountUsageBlock } from './usage-block';
 
 const COLUMNS: readonly { col: MessageKey; hint: MessageKey }[] = [
@@ -304,6 +304,8 @@ function alertsSection(store: Store, openAlerts: ReadonlySet<number>, now: numbe
 export type TableHandle = {
   // Shows the history view and puts the keyboard in its query box; false when this panel has no hub to ask.
   showHistory(): boolean;
+  // Shows the history view with a saved search applied; false when this panel has no hub to ask.
+  showSearch(saved: SavedSearch): boolean;
 };
 
 export function mountTable(host: HTMLElement, store: Store, api: OfficeApi | null): TableHandle {
@@ -317,6 +319,7 @@ export function mountTable(host: HTMLElement, store: Store, api: OfficeApi | nul
   const nowView = el('div', 'table-now', ...(usage ? [usage] : []), help, content);
   host.replaceChildren(nowView);
   let showHistory = (): boolean => false;
+  let showSearch = (_saved: SavedSearch): boolean => false;
   if (api) {
     const historyHost = el('div', 'table-history');
     const history = mountHistory(historyHost, store, api, {
@@ -361,6 +364,11 @@ export function mountTable(host: HTMLElement, store: Store, api: OfficeApi | nul
     store.watch(['lang'], paintSwitch);
     showHistory = (): boolean => {
       setView('history', true);
+      return true;
+    };
+    showSearch = (search: SavedSearch): boolean => {
+      setView('history', false);
+      history.apply(search);
       return true;
     };
   }
@@ -440,5 +448,5 @@ export function mountTable(host: HTMLElement, store: Store, api: OfficeApi | nul
   store.watch(['lang'], () => help.replaceChildren(...helpContent()));
   store.watch(['agents', 'floors', 'questions', 'selection', 'tick', 'alerts', 'documents', 'lang', 'orders'], schedule);
 
-  return { showHistory: () => showHistory() };
+  return { showHistory: () => showHistory(), showSearch: (saved) => showSearch(saved) };
 }

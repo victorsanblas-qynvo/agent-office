@@ -21,6 +21,7 @@ import { mountPanel } from './panel/panel';
 import { mountPlans } from './plans/plans';
 import { loadRecording, mountReplayControls, replayFetchUrl, ReplayPlayer } from './replay';
 import { Store } from './store';
+import { theme } from './theme';
 import { UsageToday } from './usage-today';
 import { mountBoard } from './board/board';
 import { mountChat, type ChatHandle } from './chat/chat';
@@ -34,6 +35,7 @@ function messageOf(error: unknown): string {
 }
 
 async function boot(): Promise<void> {
+  theme.apply();
   applyLang(readStoredLang());
   const root = document.getElementById('app');
   if (!root) return;

@@ -7,6 +7,7 @@ import type { Store } from '../store';
 import { clockTime } from '../time';
 import type { SearchHit, SearchKind } from '../types';
 import { saveFile } from '../download';
+import { readJson, writeJson } from '../prefs';
 import { historyFilename, historyRows, historyToCsv, historyToJson } from './history-export';
 
 export const VIEW_KEY = 'agent-office.table.view';
@@ -31,6 +32,66 @@ const KIND_LABEL: Record<SearchKind, MessageKey> = {
 export type HistoryFilters = { q: string; floor: string; agent: string; kind: '' | SearchKind; from: string; to: string };
 
 export const EMPTY_FILTERS: HistoryFilters = { q: '', floor: '', agent: '', kind: '', from: '', to: '' };
+
+export const SAVED_KEY = 'agent-office.savedSearches';
+export const SAVED_MAX = 20;
+export const SAVED_NAME_MAX = 60;
+
+export type SavedSearch = { name: string; filters: HistoryFilters };
+
+function savedFilters(raw: unknown): HistoryFilters | null {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return null;
+  const record = raw as Record<string, unknown>;
+  const text = (key: keyof HistoryFilters): string => (typeof record[key] === 'string' ? (record[key] as string) : '');
+  const kind = text('kind');
+  return {
+    q: text('q'),
+    floor: text('floor'),
+    agent: text('agent'),
+    kind: HISTORY_KINDS.find((item) => item === kind) ?? '',
+    from: dayBound(text('from'), false) === null ? '' : text('from'),
+    to: dayBound(text('to'), true) === null ? '' : text('to'),
+  };
+}
+
+// Pure: the saved searches in a stored value, dropping what is not one, repeating a name or going past the limit.
+export function parseSaved(raw: unknown): SavedSearch[] {
+  if (!Array.isArray(raw)) return [];
+  const out: SavedSearch[] = [];
+  for (const item of raw) {
+    if (out.length >= SAVED_MAX) break;
+    if (typeof item !== 'object' || item === null) continue;
+    const { name, filters } = item as { name?: unknown; filters?: unknown };
+    if (typeof name !== 'string') continue;
+    const trimmed = name.trim();
+    const parsed = savedFilters(filters);
+    if (trimmed === '' || trimmed.length > SAVED_NAME_MAX || parsed === null || out.some((saved) => saved.name === trimmed)) continue;
+    out.push({ name: trimmed, filters: parsed });
+  }
+  return out;
+}
+
+// Pure: the list with a search saved under its name, replacing the one with that name; a new name when the list is full leaves it as it was.
+export function upsertSaved(list: readonly SavedSearch[], name: string, filters: HistoryFilters): SavedSearch[] {
+  const trimmed = name.trim();
+  if (trimmed === '' || trimmed.length > SAVED_NAME_MAX) return [...list];
+  const entry: SavedSearch = { name: trimmed, filters: { ...filters } };
+  if (list.some((saved) => saved.name === trimmed)) return list.map((saved) => (saved.name === trimmed ? entry : saved));
+  return list.length >= SAVED_MAX ? [...list] : [...list, entry];
+}
+
+// Pure: the filters a saved search puts on the form.
+export function applySaved(filters: HistoryFilters, saved: SavedSearch): HistoryFilters {
+  return { ...filters, ...saved.filters };
+}
+
+export function readSaved(): SavedSearch[] {
+  return parseSaved(readJson(SAVED_KEY));
+}
+
+export function writeSaved(list: readonly SavedSearch[]): void {
+  writeJson(SAVED_KEY, list);
+}
 
 // Pure: the first or the last millisecond of a YYYY-MM-DD day in local time, null when it is not a date.
 export function dayBound(value: string, end: boolean): number | null {
@@ -103,7 +164,7 @@ function dateTime(ts: number): string {
 }
 
 // activate: the view just came up; with focus, the query box takes the keyboard.
-export type HistoryHandle = { activate(focus: boolean): void };
+export type HistoryHandle = { activate(focus: boolean): void; apply(saved: SavedSearch): void };
 
 export type HistoryHooks = { openReplay(sessionId: string): void };
 
@@ -139,11 +200,13 @@ export function mountHistory(host: HTMLElement, store: Store, api: OfficeApi, ho
   const filterBar = el('div', 'history-filters');
   const exportCsv = button('CSV', 'history-export');
   const exportJson = button('JSON', 'history-export');
+  const saveSearch = button('', 'history-save');
+  const savedRow = el('div', 'history-saved');
   const status = el('p', 'muted history-status');
   const list = el('ul', 'history-list');
   const more = button('', 'history-more');
   const sentinel = el('div', 'history-sentinel', more);
-  host.replaceChildren(query, filterBar, status, list, sentinel);
+  host.replaceChildren(query, filterBar, savedRow, status, list, sentinel);
 
   const option = (value: string, label: string): HTMLOptionElement => {
     const node = el('option', '', label);
@@ -158,6 +221,7 @@ export function mountHistory(host: HTMLElement, store: Store, api: OfficeApi, ho
   };
 
   const paintFilters = (): void => {
+    query.value = filters.q;
     query.placeholder = t('history.query.placeholder');
     query.setAttribute('aria-label', t('history.query.label'));
     floorSelect.replaceChildren(option('', t('history.filter.floor.all')), ...store.floorList().map((floor) => option(floor.slug, floorLabel(floor))));
@@ -172,7 +236,9 @@ export function mountHistory(host: HTMLElement, store: Store, api: OfficeApi, ho
     labels.kind.replaceChildren(el('span', 'muted', t('history.filter.kind')), kindSelect);
     labels.from.replaceChildren(el('span', 'muted', t('history.filter.from')), fromInput);
     labels.to.replaceChildren(el('span', 'muted', t('history.filter.to')), toInput);
-    filterBar.replaceChildren(labels.floor, labels.agent, labels.kind, labels.from, labels.to, exportCsv, exportJson);
+    saveSearch.textContent = t('history.saved.save');
+    saveSearch.title = t('history.saved.save.hint');
+    filterBar.replaceChildren(labels.floor, labels.agent, labels.kind, labels.from, labels.to, exportCsv, exportJson, saveSearch);
   };
 
   const hitRow = (hit: SearchHit): HTMLElement => {
@@ -257,6 +323,53 @@ export function mountHistory(host: HTMLElement, store: Store, api: OfficeApi, ho
     timer = window.setTimeout(() => void load(false), delay);
   };
 
+  let saved = readSaved();
+
+  const apply = (search: SavedSearch): void => {
+    filters = applySaved(filters, search);
+    paintFilters();
+    refilter(0);
+  };
+
+  const paintSaved = (): void => {
+    savedRow.hidden = saved.length === 0;
+    savedRow.replaceChildren(
+      ...saved.map((search) => {
+        const open = button(search.name, 'history-saved-open', t('history.saved.apply', { name: search.name }));
+        open.addEventListener('click', () => apply(search));
+        const remove = button('×', 'history-saved-remove', t('history.saved.delete', { name: search.name }));
+        remove.setAttribute('aria-label', t('history.saved.delete', { name: search.name }));
+        remove.addEventListener('click', () => {
+          if (!window.confirm(t('history.saved.deleteAsk', { name: search.name }))) return;
+          saved = saved.filter((item) => item.name !== search.name);
+          writeSaved(saved);
+          paintSaved();
+        });
+        return el('span', 'chip history-saved-chip', open, remove);
+      }),
+    );
+  };
+
+  saveSearch.addEventListener('click', () => {
+    saved = readSaved();
+    const typed = window.prompt(t('history.saved.name', { max: SAVED_NAME_MAX }), filters.q.trim().slice(0, SAVED_NAME_MAX));
+    const name = typed?.trim() ?? '';
+    if (name === '') return;
+    if (name.length > SAVED_NAME_MAX) {
+      store.toast(t('history.saved.tooLong', { max: SAVED_NAME_MAX }), 'error');
+      return;
+    }
+    const next = upsertSaved(saved, name, filters);
+    if (!next.some((item) => item.name === name)) {
+      store.toast(t('history.saved.full', { max: SAVED_MAX }), 'error');
+      return;
+    }
+    saved = next;
+    writeSaved(saved);
+    paintSaved();
+    store.toast(t('history.saved.done', { name }), 'ok');
+  });
+
   query.addEventListener('input', () => {
     filters = { ...filters, q: query.value };
     refilter(SEARCH_DELAY_MS);
@@ -303,9 +416,11 @@ export function mountHistory(host: HTMLElement, store: Store, api: OfficeApi, ho
   }
 
   paintFilters();
+  paintSaved();
   paintList();
   store.watch(['lang', 'floors'], () => {
     paintFilters();
+    paintSaved();
     paintList();
   });
 
@@ -316,6 +431,11 @@ export function mountHistory(host: HTMLElement, store: Store, api: OfficeApi, ho
       if (!focus) return;
       query.focus();
       query.select();
+    },
+    apply(search: SavedSearch): void {
+      saved = readSaved();
+      paintSaved();
+      apply(search);
     },
   };
 }

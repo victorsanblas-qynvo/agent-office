@@ -71,4 +71,11 @@ describe('CSS stylesheets', () => {
       expect(balance.depth).toBe(0);
     });
   }
+
+  test('styles.css honors the theme preference', () => {
+    const css = readFileSync(join(SRC, 'styles.css'), 'utf8');
+    expect(css).toContain(':root[data-theme="light"] {');
+    expect(css).toContain(':root[data-theme="dark"] {');
+    expect(css).toContain(':root:not([data-theme="dark"]) {');
+  });
 });

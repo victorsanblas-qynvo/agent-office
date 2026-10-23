@@ -1,12 +1,14 @@
 import { fuzzyFilter } from '../fuzzy';
 import { canPin } from '../pins';
 import { currentLang, plural, t } from '../i18n';
+import type { SavedSearch } from '../table/history';
+import { THEME_OPTIONS, type ThemePref } from '../theme';
 import { agentName, documentStatusLabel, floorKindLabel, floorLabel, roleLabel } from '../labels';
 import type { AgentView, DocumentView, FloorView, OrderView } from '../types';
 
-export type PaletteGroup = 'action' | 'tab' | 'floor' | 'agent' | 'plan' | 'order';
+export type PaletteGroup = 'action' | 'tab' | 'floor' | 'agent' | 'plan' | 'order' | 'search';
 
-export const PALETTE_GROUPS: readonly PaletteGroup[] = ['action', 'tab', 'floor', 'agent', 'plan', 'order'];
+export const PALETTE_GROUPS: readonly PaletteGroup[] = ['action', 'tab', 'floor', 'agent', 'plan', 'order', 'search'];
 
 export type PaletteTarget =
   | { type: 'agent'; key: string }
@@ -25,7 +27,9 @@ export type PaletteTarget =
   | { type: 'lang' }
   | { type: 'history' }
   | { type: 'mute' }
-  | { type: 'muteSound' };
+  | { type: 'muteSound' }
+  | { type: 'theme'; theme: ThemePref }
+  | { type: 'search'; name: string };
 
 export type PaletteEntry = { id: string; group: PaletteGroup; label: string; hint: string; keywords?: string; target: PaletteTarget; write: boolean };
 
@@ -49,6 +53,7 @@ export type PaletteContext = {
   newOrder: boolean;
   mute: boolean;
   muteSound: boolean;
+  searches: readonly SavedSearch[];
 };
 
 export const EMPTY_LIMIT = 30;
@@ -70,6 +75,7 @@ function actions(context: PaletteContext): PaletteEntry[] {
   add('history', t('palette.action.history'), '/', { type: 'history' }, false);
   if (context.mute) add('mute', t('palette.action.mute'), t('palette.hint.notifications'), { type: 'mute' }, false);
   if (context.muteSound) add('muteSound', t('palette.action.muteSound'), t('palette.hint.sound'), { type: 'muteSound' }, false);
+  for (const option of THEME_OPTIONS) add(`theme:${option}`, t(`palette.action.theme.${option}`), t('palette.hint.theme'), { type: 'theme', theme: option }, false);
   return out;
 }
 
@@ -121,6 +127,11 @@ export function buildEntries(context: PaletteContext): PaletteEntry[] {
     entries.push({ id: `plan:${doc.path}`, group: 'plan', label: doc.title, hint: documentStatusLabel(doc.status), target: { type: 'plan', path: doc.path }, write: false });
   }
   entries.push(...orderEntries(context));
+  if (context.live) {
+    for (const search of context.searches) {
+      entries.push({ id: `search:${search.name}`, group: 'search', label: t('palette.search', { name: search.name }), hint: t('palette.hint.search'), keywords: search.filters.q, target: { type: 'search', name: search.name }, write: false });
+    }
+  }
   const live = new Map(context.agents.map((agent) => [agent.key, agent]));
   for (const agent of context.agents) {
     const pinned = context.pins.includes(agent.key);

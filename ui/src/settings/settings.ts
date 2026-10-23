@@ -45,6 +45,7 @@ import { mountNotifySection } from './notifications';
 import { mountAmbientSection } from './ambient';
 import { LayoutEditor } from './layout-editor';
 import { mountSoundSection } from './sound';
+import { mountThemeSection } from './theme';
 import { mountProjects } from './projects';
 
 type Outcome = { text: string; kind: 'ok' | 'error' };
@@ -290,7 +291,7 @@ class SettingsPage {
 
   // What lives in the browser and not in the hub: it can be changed even when the hub settings do not load.
   private browserSections(): HTMLElement[] {
-    return [this.notifier ? mountNotifySection(this.notifier) : null, this.sound ? mountSoundSection(this.sound) : null, mountAmbientSection(), this.layoutEditor.root].filter(
+    return [this.notifier ? mountNotifySection(this.notifier) : null, this.sound ? mountSoundSection(this.sound) : null, mountThemeSection(), mountAmbientSection(), this.layoutEditor.root].filter(
       (section): section is HTMLElement => section !== null,
     );
   }
