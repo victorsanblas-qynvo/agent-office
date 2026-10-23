@@ -3,7 +3,7 @@ import { closeSync, existsSync, openSync, readdirSync, readFileSync, readSync, s
 import { basename, dirname, join, sep } from 'node:path';
 import { agentContext, contextOf, isCompaction, windowFor as defaultWindow } from './context';
 import { realPath } from './floors';
-import type { AgentContext, FloorKind, RoleId, TokenRow, TokenTotals, TokensEvent, UsageDay, UsageRange, UsageSummary } from './types';
+import type { AgentContext, FloorKind, OrderSpend, RoleId, TokenRow, TokenTotals, TokensEvent, UsageDay, UsageRange, UsageSummary } from './types';
 
 export type TokenCursor = {
   transcript: string;
@@ -326,6 +326,37 @@ export class TokenMeter {
       .query<TotalsRow & { plan_slug: string }, []>(`SELECT plan_slug, ${SUMS} FROM token_usage WHERE plan_slug != '' GROUP BY plan_slug`)
       .all();
     return new Map(rows.map((row) => [row.plan_slug, toTotals(row)]));
+  }
+
+  // What an order cost: the rows attributed to its encargo/<slug> plan plus those of the sessions that ran inside its folder.
+  orderSpend(order: { slug: string; worktreePath: string | null }): OrderSpend {
+    const folders = order.worktreePath ? [...new Set([order.worktreePath, realPath(order.worktreePath)])] : [];
+    const inFolder = folders.map(() => '(s.cwd = ? OR substr(s.cwd, 1, length(?) + 1) = ? || ?)').join(' OR ');
+    const args = folders.flatMap((folder) => [folder, folder, folder, sep]);
+    const rows = this.opts.db
+      .query<TotalsRow & { model: string; role: string; session_id: string }, string[]>(
+        `SELECT t.model AS model, COALESCE(t.role_id, '') AS role, t.session_id AS session_id, ${SUMS}
+         FROM token_usage t LEFT JOIN sessions s ON s.session_id = t.session_id
+         WHERE t.plan_slug = ?${inFolder ? ` OR (${inFolder})` : ''}
+         GROUP BY t.model, COALESCE(t.role_id, ''), t.session_id`,
+      )
+      .all(`encargo/${order.slug}`, ...args);
+    const models = new Map<string, number>();
+    const roles = new Map<string, number>();
+    const sessions = new Set<string>();
+    let tokens = 0;
+    for (const row of rows) {
+      const amount = grandTotal(toTotals(row));
+      tokens += amount;
+      models.set(row.model, (models.get(row.model) ?? 0) + amount);
+      roles.set(row.role, (roles.get(row.role) ?? 0) + amount);
+      sessions.add(row.session_id);
+    }
+    const ranked = <K extends string>(map: Map<string, number>, key: K): ({ tokens: number } & Record<K, string>)[] =>
+      [...map.entries()]
+        .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+        .map(([name, amount]) => ({ [key]: name, tokens: amount }) as { tokens: number } & Record<K, string>);
+    return { tokens, byModel: ranked(models, 'model'), byRole: ranked(roles, 'role'), sessions: sessions.size, basis: 'plan+folder' };
   }
 
   // Compactions the transcript of an agent has shown so far, as persisted.

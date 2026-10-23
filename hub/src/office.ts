@@ -86,6 +86,7 @@ import type {
   CheckTrigger,
   AgentState,
   CheckpointView,
+  OrderSpend,
   DeletedBranchView,
   OrphanBranchView,
   DocumentContent,
@@ -880,6 +881,11 @@ export class Office {
   orderCheckpoints(id: number): { checkpoints: CheckpointView[]; skipped: SkippedFile[] } | null {
     const order = this.store.get(id);
     return order ? { checkpoints: this.checkpoints.list(id), skipped: this.checkpoints.skipped(order) } : null;
+  }
+
+  orderSpend(id: number): OrderSpend | null {
+    const order = this.store.get(id);
+    return order ? this.meter.orderSpend({ slug: order.slug, worktreePath: order.worktree_path }) : null;
   }
 
   resetOrderToCheckpoint(id: number, checkpointId: number): Promise<ResetResult> {

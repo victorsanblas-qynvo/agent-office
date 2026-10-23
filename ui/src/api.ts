@@ -6,6 +6,7 @@ import type {
   ChatUserResult,
   CheckRunView,
   CheckpointView,
+  OrderSpend,
   DeletedBranchView,
   DiagnosticsView,
   HubText,
@@ -237,6 +238,10 @@ export class OfficeApi {
 
   orderCheckpoints(id: number): Promise<ApiData<{ checkpoints: CheckpointView[]; skipped: SkippedFile[] }>> {
     return this.get(`/api/board/orders/${id}/checkpoints`);
+  }
+
+  orderSpend(id: number): Promise<ApiData<OrderSpend>> {
+    return this.get(`/api/board/orders/${id}/spend`);
   }
 
   resetToCheckpoint(id: number, checkpointId: number): Promise<ApiData<{ ok: true; safetyRef: string; head: string }>> {

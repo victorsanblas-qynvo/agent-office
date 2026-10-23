@@ -39,6 +39,7 @@ describe('board routes', () => {
       ['POST', '/api/board/orders/1/checks'],
       ['DELETE', '/api/board/orders/1/checks'],
       ['GET', '/api/board/orders/1/checkpoints'],
+      ['GET', '/api/board/orders/1/spend'],
       ['GET', '/api/board/orders/1/diff'],
       ['GET', '/api/board/orders/1/diff/file?path=a.txt'],
       ['GET', '/api/board/orders/1/comments'],
@@ -144,6 +145,8 @@ describe('checks and checkpoints routes', () => {
     expect(points.body.checkpoints).toEqual([expect.objectContaining({ reason: 'panel', label: 'comprobación (panel)' })]);
     expect(points.body.skipped).toEqual([]);
     expect(await call('GET', '/api/board/orders/999/checkpoints')).toMatchObject({ status: 404 });
+    expect((await call('GET', `/api/board/orders/${card.id}/spend`)).body).toEqual({ tokens: 0, byModel: [], byRole: [], sessions: 0, basis: 'plan+folder' });
+    expect(await call('GET', '/api/board/orders/999/spend')).toMatchObject({ status: 404 });
 
     expect((await call('DELETE', `/api/board/orders/${card.id}/checks`)).body).toEqual({ ok: true, cancelled: false });
     expect((await call('POST', `/api/board/orders/${card.id}/confirm-checks`)).status).toBe(200);

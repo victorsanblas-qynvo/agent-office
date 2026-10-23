@@ -1,7 +1,8 @@
-import { describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, test } from 'bun:test';
+import { spendLine, spendTitle } from '../src/board/spend';
 import { applyLang } from '../src/i18n';
 import { SPEND_REFRESH_MS, dayBars, planRows, spendDue } from '../src/table/usage-block';
-import type { TokenRow } from '../src/types';
+import type { OrderSpend, TokenRow } from '../src/types';
 
 
 describe('spendDue', () => {
@@ -60,5 +61,45 @@ describe('planRows', () => {
   test('adds no others row for five plans or fewer', () => {
     expect(planRows([row('a', 1), row('b', 2)]).map((r) => r.key)).toEqual(['b', 'a']);
     expect(planRows([])).toEqual([]);
+  });
+});
+
+afterEach(() => applyLang('es'));
+
+const ORDER_SPEND: OrderSpend = {
+  tokens: 1_234_567,
+  byModel: [
+    { model: 'claude-sonnet-5-5', tokens: 1_000_000 },
+    { model: 'claude-opus-5-5', tokens: 234_567 },
+  ],
+  byRole: [
+    { role: 'dev', tokens: 1_000_000 },
+    { role: '', tokens: 234_567 },
+  ],
+  sessions: 3,
+  basis: 'plan+folder',
+};
+
+describe('spendLine', () => {
+  test('writes the tokens and the sessions in the language', () => {
+    applyLang('es');
+    expect(spendLine(ORDER_SPEND)).toBe('≈ 1,2 M tokens · 3 sesiones');
+    expect(spendLine({ ...ORDER_SPEND, tokens: 52_000, sessions: 1 })).toBe('≈ 52,0 K tokens · 1 sesión');
+    applyLang('en');
+    expect(spendLine(ORDER_SPEND)).toBe('≈ 1.2 M tokens · 3 sessions');
+  });
+
+  test('shows nothing for an order that cost nothing', () => {
+    expect(spendLine({ ...ORDER_SPEND, tokens: 0, sessions: 0 })).toBeNull();
+  });
+});
+
+describe('spendTitle', () => {
+  test('lists models and roles from the biggest and says how it was attributed', () => {
+    applyLang('es');
+    const lines = spendTitle(ORDER_SPEND, 'login').split('\n');
+    expect(lines[0]).toBe('Por modelo: claude-sonnet-5-5 1,0 M · claude-opus-5-5 235 K');
+    expect(lines[1]).toBe('Por rol: dev 1,0 M · ? 235 K');
+    expect(lines[2]).toContain('encargo/login');
   });
 });
