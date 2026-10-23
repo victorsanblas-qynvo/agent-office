@@ -3,7 +3,7 @@ import { closeSync, existsSync, openSync, readdirSync, readFileSync, readSync, s
 import { basename, dirname, join, sep } from 'node:path';
 import { agentContext, contextOf, isCompaction, windowFor as defaultWindow } from './context';
 import { realPath } from './floors';
-import type { AgentContext, FloorKind, RoleId, TokenRow, TokenTotals, TokensEvent, UsageRange, UsageSummary } from './types';
+import type { AgentContext, FloorKind, RoleId, TokenRow, TokenTotals, TokensEvent, UsageDay, UsageRange, UsageSummary } from './types';
 
 export type TokenCursor = {
   transcript: string;
@@ -474,11 +474,20 @@ export class TokenMeter {
         `SELECT ${SUMS}, COUNT(DISTINCT agent_key) AS agents FROM token_usage WHERE day >= ? AND day <= ?`,
       )
       .get(from, to);
+    const perDay = new Map(group('day').map((row) => [row.key, grandTotal(row.tokens)]));
+    const byDay: UsageDay[] = [];
+    for (let back = range === 'week' ? 6 : 0; back >= 0; back--) {
+      const at = new Date(now);
+      at.setDate(at.getDate() - back);
+      const day = localDay(at.getTime());
+      byDay.push({ day, tokens: perDay.get(day) ?? 0 });
+    }
     return {
       range,
       from,
       to,
       total: { tokens: toTotals(total), agents: total?.agents ?? 0 },
+      byDay,
       byRole: group("COALESCE(role_id, '')"),
       byModel: group('model'),
       byFloor: group('floor'),

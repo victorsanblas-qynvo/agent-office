@@ -21,6 +21,7 @@ const today: UsageSummary = {
     { key: 'mobile', tokens: tokens(90_000), agents: 2 },
     { key: 'backend', tokens: tokens(30_000), agents: 1 },
   ],
+  byDay: [],
   byPlan: [],
 };
 

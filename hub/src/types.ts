@@ -943,11 +943,14 @@ export type TokenRow = { key: string; tokens: TokenTotals; agents: number };
 
 export type UsageRange = 'today' | 'week';
 
+export type UsageDay = { day: string; tokens: number };
+
 export type UsageSummary = {
   range: UsageRange;
   from: string;
   to: string;
   total: { tokens: TokenTotals; agents: number };
+  byDay: UsageDay[];
   byRole: TokenRow[];
   byModel: TokenRow[];
   byFloor: TokenRow[];
