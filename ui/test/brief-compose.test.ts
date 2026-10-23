@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { composeBrief, EMPTY_BRIEF, parseBriefDraft } from '../src/panel/brief-compose';
+import { composeBrief, EMPTY_BRIEF, mayReplaceDraft, parseBriefDraft } from '../src/panel/brief-compose';
 
 const full = { title: 'Login social', what: 'Añadir Google', criteria: 'pasa el test', outOfScope: 'Apple' };
 
@@ -45,5 +45,17 @@ describe('parseBriefDraft', () => {
   test('keeps strings and falls back to empty', () => {
     expect(parseBriefDraft({ title: 'a', what: 3 })).toEqual({ title: 'a', what: '', criteria: '', outOfScope: '' });
     expect(parseBriefDraft(null)).toEqual(EMPTY_BRIEF);
+  });
+});
+
+describe('mayReplaceDraft', () => {
+  test('an empty order is filled without asking; a typed one asks first', () => {
+    let asked = 0;
+    const ask = (answer: boolean) => () => (asked++, answer);
+    expect(mayReplaceDraft('  ', ask(false))).toBe(true);
+    expect(asked).toBe(0);
+    expect(mayReplaceDraft('haz esto', ask(false))).toBe(false);
+    expect(mayReplaceDraft('haz esto', ask(true))).toBe(true);
+    expect(asked).toBe(2);
   });
 });

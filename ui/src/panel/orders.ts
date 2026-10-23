@@ -5,7 +5,7 @@ import { agentName, floorLabel } from '../labels';
 import { readJson } from '../prefs';
 import type { Store } from '../store';
 import type { SessionView } from '../types';
-import { BRIEF_DRAFT_KEY, BRIEF_LIMIT, composeBrief, EMPTY_BRIEF, parseBriefDraft, type BriefFields } from './brief-compose';
+import { BRIEF_DRAFT_KEY, BRIEF_LIMIT, composeBrief, EMPTY_BRIEF, mayReplaceDraft, parseBriefDraft, type BriefFields } from './brief-compose';
 import { orderable, orderableSessions } from './orderable';
 import { openSection, panelSection } from './section';
 
@@ -130,6 +130,7 @@ export function mountOrders(host: HTMLElement, store: Store, actions: Actions): 
 
   const section = panelSection({ id: 'orders', title: () => t('orders.title'), host });
   const composer = mountComposer((text) => {
+    if (!mayReplaceDraft(textarea.value, () => window.confirm(t('orders.brief.replace')))) return;
     textarea.value = text;
     textarea.focus();
     refresh();

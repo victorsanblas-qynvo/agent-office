@@ -40,6 +40,11 @@ export function composeBrief(fields: BriefFields, limit = BRIEF_LIMIT): Composed
   return { text, length: text.length, over: text.length > limit, valid: true };
 }
 
+// Inserting a brief over text somebody typed asks first.
+export function mayReplaceDraft(current: string, confirm: () => boolean): boolean {
+  return current.trim() === '' || confirm();
+}
+
 export function parseBriefDraft(raw: unknown): BriefFields {
   if (typeof raw !== 'object' || raw === null) return { ...EMPTY_BRIEF };
   const record = raw as Record<string, unknown>;

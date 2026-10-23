@@ -80,6 +80,7 @@ function agent(key: string, roleKind: AgentView['roleKind'], parentKey: string |
     waiting: null,
     stalledSince: null,
     toolSince: null,
+    openTool: null,
     context: null,
   };
 }

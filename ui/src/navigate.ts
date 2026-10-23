@@ -182,8 +182,7 @@ export function runTarget(nav: Nav, target: PaletteTarget): void {
       store.setLang(store.lang === 'es' ? 'en' : 'es');
       break;
     case 'history':
-      if (nav.tab() === 'board') nav.board().focusFilter();
-      else openHistory(nav);
+      openHistory(nav);
       break;
     case 'mute': {
       const prefs = nav.notifier?.preferences;
@@ -216,7 +215,8 @@ export function runKey(nav: Nav, action: KeyAction, cursor: NeedCursor, extra: {
       stepNeed(nav, cursor, action.step);
       break;
     case 'history':
-      openHistory(nav);
+      if (nav.tab() === 'board') nav.board().focusFilter();
+      else openHistory(nav);
       break;
     case 'orders':
       focusOrders();

@@ -56,7 +56,7 @@ export type SessionRuntime = {
   needsRelaunch: boolean;
   persistedAt: number;
   ghost: boolean;
-  openTools: Map<string, { agentKey: string; since: number }>;
+  openTools: Map<string, { agentKey: string; tool: string; since: number }>;
 };
 
 export type OrderResult = 'ok' | 'not-found' | 'not-office' | 'unreachable' | 'failed';

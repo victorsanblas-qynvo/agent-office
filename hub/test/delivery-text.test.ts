@@ -52,13 +52,15 @@ describe('prDraft', () => {
   test('a brief cut inside a fenced block gets the fence closed; a balanced one is left alone', () => {
     const open = `${'a\n'.repeat(10)}\`\`\`ts\n${'x'.repeat(PR_MAX_SUMMARY)}`;
     const cut = prDraft(input({ brief: open })).body;
-    expect(cut).toMatch(/x\n```…\n/);
+    expect(cut).toMatch(/x…\n```\n/);
     const even = `\`\`\`\ncode\n\`\`\`\n${'y'.repeat(PR_MAX_SUMMARY)}`;
     const kept = prDraft(input({ brief: even })).body;
     expect(kept).toContain('y…\n');
     expect(kept).not.toContain('```…');
     const tilde = prDraft(input({ brief: `~~~\n${'z'.repeat(PR_MAX_SUMMARY)}` })).body;
-    expect(tilde).toContain('z\n```…');
+    expect(tilde).toContain('z…\n~~~\n');
+    const long = prDraft(input({ brief: `\`\`\`\`md\n\`\`\`\nin\n\`\`\`\n${'w'.repeat(PR_MAX_SUMMARY)}` })).body;
+    expect(long).toContain('w…\n````\n');
   });
 
   test('stale checks add one notice line under the heading; the total of commits wins over the list', () => {

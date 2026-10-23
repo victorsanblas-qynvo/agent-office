@@ -215,6 +215,7 @@ export class SoundDesk {
         for (const question of message.data.questions) {
           if (!this.silenced(question)) this.remember(`question:${question.id}`);
         }
+        for (const question of dueReminders(message.data.questions, this.clock(), readRemindMinutes(), this.reminded)) this.reminded.add(question.id);
         break;
       case 'agent': {
         const before = this.stalled.get(message.data.key) ?? null;

@@ -1,4 +1,5 @@
 import { fileStamp } from '../download';
+import { t } from '../i18n';
 import { hubText } from '../i18n/hub';
 import type { SearchHit } from '../types';
 
@@ -59,7 +60,7 @@ export function historyToJson(rows: readonly HistoryRow[]): string {
   return `${JSON.stringify(ordered, null, 2)}\n`;
 }
 
-// Pure: agent-office-historial-YYYYMMDD-HHMM.csv|json in local time.
+// Pure: agent-office-<history>-YYYYMMDD-HHMM.csv|json in local time.
 export function historyFilename(ext: 'csv' | 'json', now: Date): string {
-  return `agent-office-historial-${fileStamp(now)}.${ext}`;
+  return `agent-office-${t('history.file.name')}-${fileStamp(now)}.${ext}`;
 }

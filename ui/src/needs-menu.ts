@@ -1,6 +1,6 @@
 import { button, el } from './dom';
 import { t } from './i18n';
-import { NEEDS_TOPICS, activeNeeds, canSnooze, filterByFloor, floorChips, getFloorFilter, liveFloorFilter, loadSnoozes, menuStart, menuStep, needLabel, needsOf, pruneSnoozes, saveSnoozes, shouldPruneSnoozes, snoozeNeed, snoozedNeeds, triggerSignature, setFloorFilter, wakeNeed, type FloorChip, type Need } from './needs';
+import { activeNeeds, canSnooze, filterByFloor, floorChips, getFloorFilter, liveFloorFilter, loadSnoozes, menuStart, menuStep, needLabel, needsDue, needsOf, pruneSnoozes, saveSnoozes, shouldPruneSnoozes, snoozeNeed, snoozedNeeds, triggerSignature, setFloorFilter, wakeNeed, type FloorChip, type Need } from './needs';
 import { floorLabel } from './labels';
 import { readMutedFloors, type Snoozes } from './prefs';
 import type { Store } from './store';
@@ -124,7 +124,7 @@ export function mountNeedsMenu(store: Store, onPick: (need: Need) => void): Need
     const now = store.now();
     snoozes = loadSnoozes(store);
     if (shouldPruneSnoozes(store)) {
-      const pruned = pruneSnoozes(snoozes, all, now);
+      const pruned = pruneSnoozes(snoozes, all, now, new Set(store.agents.keys()));
       if (Object.keys(pruned).length !== Object.keys(snoozes).length) {
         snoozes = pruned;
         saveSnoozes(store, snoozes);
@@ -212,7 +212,14 @@ export function mountNeedsMenu(store: Store, onPick: (need: Need) => void): Need
     }
   });
 
-  store.watch(NEEDS_TOPICS, render);
+  let renderedAt = store.now();
+  render();
+  store.subscribe((changed) => {
+    const now = store.now();
+    if (!needsDue(changed, renderedAt, now)) return;
+    renderedAt = now;
+    render();
+  });
   store.watch(['tick'], () => {
     if (isOpen()) paintAges();
   });

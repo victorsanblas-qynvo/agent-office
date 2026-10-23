@@ -121,8 +121,8 @@ export function updateLesson(db: Database, id: number, raw: string): UpdateResul
       .query<{ id: number }, [string, string, string, number]>('SELECT id FROM lessons WHERE floor = ? AND role = ? AND norm = ? AND id <> ?')
       .get(row.floor, row.role, norm, id);
     if (clash) return { status: 'duplicate' };
-    db.query('UPDATE lessons SET text = ?, norm = ? WHERE id = ?').run(text, norm, id);
-    return { status: 'updated', lesson: toView({ ...row, text }) };
+    db.query("UPDATE lessons SET text = ?, norm = ?, origin = 'user', agent_key = NULL WHERE id = ?").run(text, norm, id);
+    return { status: 'updated', lesson: toView({ ...row, text, origin: 'user', agent_key: null }) };
   })();
 }
 

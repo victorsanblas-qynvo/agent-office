@@ -105,5 +105,7 @@ describe('reportFilename', () => {
     expect(reportFilename({ name: 'Dév Üno / Jefe', agentKey: 'k' }, now)).toBe('informe-dev-uno-jefe-20261003-0907.md');
     expect(reportFilename({ name: null, agentKey: 'mobile:Dev_1' }, now)).toBe('informe-mobile-dev-1-20261003-0907.md');
     expect(reportFilename({ name: '***', agentKey: 'k' }, now)).toBe('informe-agente-20261003-0907.md');
+    applyLang('en');
+    expect(reportFilename({ name: '***', agentKey: 'k' }, now)).toBe('report-agent-20261003-0907.md');
   });
 });

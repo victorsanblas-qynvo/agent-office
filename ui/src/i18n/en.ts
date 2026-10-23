@@ -423,6 +423,9 @@ export const en: Messages = {
   'memory.noSummary': 'No summary',
   'memory.scope': 'Role: {role} · Floor: {floor}',
 
+  'report.file.name': 'report',
+  'report.file.agent': 'agent',
+  'history.file.name': 'history',
   'report.title': 'Report',
   'report.live': 'live',
   'report.closed': 'closed',
@@ -468,6 +471,7 @@ export const en: Messages = {
   'orders.brief.outOfScope': 'Out of scope (optional)',
   'orders.brief.preview': 'Preview',
   'orders.brief.insert': 'Insert',
+  'orders.brief.replace': 'The order already has text. Replace it with the brief?',
   'orders.brief.count': '{n} / {max}',
 
   'deliverables.title.plan': 'Deliverables · Plans',

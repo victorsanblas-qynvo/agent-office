@@ -1064,4 +1064,16 @@ describe('open tool start', () => {
     h.office.ingest(post('t1'));
     expect(agent(LEAD)?.toolSince).toBe(second);
   });
+
+  test('a tool that waits by design never counts: an open Agent plus a closed Bash leaves nothing open', () => {
+    h = harness();
+    h.office.ingest(ev(LEAD, observedRepo(), 'SessionStart', { source: 'startup' }), leadMeta);
+    h.office.ingest(pre('t0', 'Agent'));
+    h.clock.advance(MIN);
+    h.office.ingest(pre('t1'));
+    expect(agent(LEAD)?.openTool).toBe('Bash');
+    h.office.ingest(post('t1'));
+    expect(agent(LEAD)?.toolSince).toBeNull();
+    expect(agent(LEAD)?.openTool).toBeNull();
+  });
 });

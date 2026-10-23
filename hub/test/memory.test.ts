@@ -74,6 +74,18 @@ describe('lessons', () => {
     expect(deleteLesson(db, 9999)).toBeNull();
   });
 
+  test('an edited agent lesson becomes the user\'s and survives pruning', () => {
+    const db = openDb(':memory:');
+    const small = { ...limits, maxLessons: 2, maxLessonsPerSession: 10 };
+    const first = captureLesson(db, { floor: 'mobile', role: 'dev', origin: 'agent', agentKey: 'a1', text: 'agente 1', now: at(1) }, small);
+    if (first.status !== 'saved') throw new Error('setup');
+    const edited = updateLesson(db, first.lesson.id, 'agente 1 corregida');
+    expect(edited.status === 'updated' && edited.lesson.origin).toBe('user');
+    if (edited.status === 'updated') expect(edited.lesson.agentKey).toBeNull();
+    for (let i = 2; i <= 4; i++) captureLesson(db, { floor: 'mobile', role: 'dev', origin: 'agent', agentKey: `a${i}`, text: `agente ${i}`, now: at(i) }, small);
+    expect(listLessons(db, 'mobile', 'dev').map((l) => l.text)).toEqual(['agente 4', 'agente 1 corregida']);
+  });
+
   test('empty lessons are refused and long ones are cut', () => {
     const db = openDb(':memory:');
     expect(captureLesson(db, { floor: 'f', role: 'dev', origin: 'user', agentKey: null, text: '  . ', now: at(0) }, limits).status).toBe('invalid');

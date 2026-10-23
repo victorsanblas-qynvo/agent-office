@@ -90,12 +90,13 @@ function scoreText(score: FloorScore): string {
 
 function directionBoard(input: BoardInput): BoardLine[] {
   const { today, everyone, usage, now } = input;
-  const working = everyone.filter((agent) => isWorking(agent, input.stateOf)).length;
+  const present = everyone.filter((agent) => !isAway(agent));
+  const working = present.filter((agent) => isWorking(agent, input.stateOf)).length;
   const lines: BoardLine[] = [
     { text: t('whiteboard.today', { tokens: today ? formatTokens(tokensTotal(today.total.tokens)) : NO_VALUE }), tone: today ? 'plain' : 'muted' },
     windowLine('5 h', usage?.fiveHour ?? null, now),
     windowLine(t('usage.week'), usage?.sevenDay ?? null, now),
-    { text: t('whiteboard.working', { working, total: everyone.length }), tone: 'plain' },
+    { text: t('whiteboard.working', { working, total: present.length }), tone: 'plain' },
   ];
   const scores = floorScores(input.floors, everyone, input.orders, input.stateOf);
   const room = BOARD_MAX_LINES - lines.length;

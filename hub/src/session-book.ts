@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { basename, join, relative, resolve } from 'node:path';
+import { PATIENT_TOOLS } from '../../shared/patient-tools';
 import { isInside, realPath, type FloorResolver, type ResolvedFloor } from './floors';
 import type { OfficeBus } from './office-bus';
 import type { SessionRow, Sql } from './office-sql';
@@ -178,15 +179,17 @@ export class SessionBook {
     this.opts.sql.upsertAgent.run(a.key, a.sessionId, a.parentKey, a.name, a.role, a.floor, a.team, a.startedAt, a.updatedAt, a.endedAt);
   }
 
-  private toolSince(agent: AgentRuntime): number | null {
-    let since: number | null = null;
-    for (const tool of this.sessions.get(agent.sessionId)?.openTools.values() ?? []) {
-      if (tool.agentKey === agent.key && (since === null || tool.since < since)) since = tool.since;
+  private oldestOpenTool(agent: AgentRuntime): { tool: string; since: number } | null {
+    let oldest: { tool: string; since: number } | null = null;
+    for (const open of this.sessions.get(agent.sessionId)?.openTools.values() ?? []) {
+      if (open.agentKey !== agent.key || PATIENT_TOOLS.has(open.tool)) continue;
+      if (oldest === null || open.since < oldest.since) oldest = open;
     }
-    return since;
+    return oldest;
   }
 
   view(agent: AgentRuntime, now: number): AgentView {
+    const openTool = this.oldestOpenTool(agent);
     let state = agent.state;
     let detail = agent.detail;
     if (agent.endedAt === null && agent.blockedReason) {
@@ -225,7 +228,8 @@ export class SessionBook {
       tokens: this.opts.tokens(agent.key),
       waiting: agent.waiting,
       stalledSince: agent.stalledSince,
-      toolSince: this.toolSince(agent),
+      toolSince: openTool?.since ?? null,
+      openTool: openTool?.tool ?? null,
       context: agent.context,
     };
   }
