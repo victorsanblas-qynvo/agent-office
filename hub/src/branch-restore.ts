@@ -65,7 +65,6 @@ export class BranchRestoreDesk {
     const created = await run(this.opts.git, repo, () => gitOps.branchCreateAt(branch, sha), GIT_TIMEOUT_MS);
     if (created.code !== 0) return (await this.refState(repo, branch)) === 'present' ? 'exists' : 'git';
     this.forget(branch);
-    this.forget(branch);
     this.opts.bus.pushActivity({ ts: this.opts.now(), agentKey: 'panel', event: 'Worktrees', tool: null, state: null, summary: { key: 'hub.act.branchRestored', params: { branch, sha } } });
     this.opts.bus.emit({ type: 'worktrees', floor });
     return 'ok';

@@ -65,6 +65,25 @@ describe('orphan branches', () => {
     expect((await api(rig)('/api/floors/mobile/orphan-branches')).body.branches).toMatchObject([{ order: { slug: card.slug } }]);
   });
 
+  test('a delivered order with its folder retired lists its branch, a delivered one with its folder is left out', async () => {
+    rig = deliveryRig();
+    const card = await newOrder(rig, 'Pantalla de perfil');
+    rig.h.db.query("UPDATE orders SET status = 'hecho', worktree_state = 'retirado' WHERE id = ?").run(card.id);
+    const listed = await api(rig)('/api/floors/mobile/orphan-branches');
+    expect(listed.body.branches).toMatchObject([{ branch: `encargo/${card.slug}`, order: { slug: card.slug, status: 'hecho' } }]);
+    rig.h.db.query("UPDATE orders SET worktree_state = 'activo' WHERE id = ?").run(card.id);
+    rig.h.clock.advance(31_000);
+    expect((await api(rig)('/api/floors/mobile/orphan-branches')).body.branches).toEqual([]);
+  });
+
+  test('a tag with the name of an order branch does not change the listed name', async () => {
+    rig = deliveryRig();
+    branchAhead(rig, 'encargo/etiquetada', 1);
+    git(rig.repo, 'tag', 'encargo/etiquetada', 'origin/develop');
+    const listed = await api(rig)('/api/floors/mobile/orphan-branches');
+    expect(listed.body.branches.map((b: { branch: string }) => b.branch)).toEqual(['encargo/etiquetada']);
+  });
+
   test('a name that is not a valid branch name is ignored', async () => {
     rig = deliveryRig();
     branchAhead(rig, 'encargo/ñu', 1);

@@ -624,6 +624,18 @@ describe('quiet recap', () => {
     expect(FakeNotification.created.map((n) => n.title)).toEqual(['Mientras estabas en silencio: 1 BLOQUEADO']);
   });
 
+  test('without the desktop permission the recap still counts and shows as a toast', () => {
+    FakeNotification.permission = 'denied';
+    desk.observe({ type: 'message', data: blocked(1) });
+    desk.observe({ type: 'message', data: blocked(1) });
+    page.visible = true;
+    page.focused = true;
+    clock = at(24, 8);
+    desk.tick();
+    expect(FakeNotification.created).toHaveLength(0);
+    expect(toasts).toEqual(['Mientras estabas en silencio: 1 BLOQUEADO']);
+  });
+
   test('nothing dropped means no recap', () => {
     clock = at(24, 8);
     desk.tick();

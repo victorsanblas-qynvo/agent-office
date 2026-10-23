@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { percentiles, redactLog, SampleRing, tailLines } from '../src/diagnostics';
+import { LOG_TAIL_BYTES, percentiles, redactLog, SampleRing, tailLines } from '../src/diagnostics';
 import { createApp } from '../src/server';
 import { harness, type Harness } from './helpers';
 
@@ -83,12 +83,50 @@ describe('redaction', () => {
     expect(redactLog('blob QWxhZGRpbjpvcGVuIHNlc2FtZTEyMzQ1Njc4OTA', KEY)).toBe('blob [redactado]');
   });
 
+  test('hides base64 secrets with slashes, prefixed key names, Basic credentials, --password and PEM blocks', () => {
+    const aws = 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY';
+    const appKey = 'Ab3/dEf9+gH1jK2lM3nO4pQ5rS6tU7vW8xY9zA0bC1d=';
+    const text = [
+      `AWS_SECRET_ACCESS_KEY=${aws}`,
+      `APP_KEY=base64:${appKey}`,
+      'SECRET_KEY=s3cr3tvalue',
+      'PRIVATE_KEY=abc',
+      'Authorization: Basic dXNlcjpwYXNz',
+      'run --password hunter2 --verbose',
+      '-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA1234/abcd+efgh\n-----END RSA PRIVATE KEY-----',
+      `bare ${aws}`,
+      'Basic usage of the tool',
+    ].join('\n');
+    const out = redactLog(text, KEY);
+    for (const leaked of [aws, appKey, 's3cr3tvalue', 'dXNlcjpwYXNz', 'hunter2', 'MIIEowIBAAKCAQEA', '=abc']) expect(out).not.toContain(leaked);
+    expect(out).toContain('AWS_SECRET_ACCESS_KEY=[redactado]');
+    expect(out).toContain('SECRET_KEY=[redactado]');
+    expect(out).toContain('--verbose');
+    expect(out).toContain('Basic usage of the tool');
+    expect(out).not.toContain('-----BEGIN');
+  });
+
   test('tailLines keeps the last lines', () => {
     expect(tailLines('a\nb\nc\n', 2)).toEqual(['b', 'c']);
   });
 });
 
 describe('GET /api/diagnostics', () => {
+  test('reads only the end of a big log', async () => {
+    h = harness();
+    const logFile = join(h.root, 'hub.log');
+    mkdirSync(h.root, { recursive: true });
+    const filler = `${'x '.repeat(40)}\n`;
+    const lines = Array.from({ length: Math.ceil((LOG_TAIL_BYTES * 20) / filler.length) }, (_, i) => `${i} ${filler}`);
+    writeFileSync(logFile, `antiguo\n${lines.join('')}ultimo password=hunter2\n`);
+    const app = createApp({ office: h.office, port: PORT, key: () => KEY, publicDir: h.root, logFile }, () => {});
+    const response = await app.request(`http://127.0.0.1:${PORT}/api/diagnostics`, { headers: { host: `127.0.0.1:${PORT}`, 'x-office-key': KEY } });
+    const body = (await response.json()) as Record<string, any>;
+    expect(body.logTail).toHaveLength(50);
+    expect(body.logTail.at(-1)).toBe('ultimo password=[redactado]');
+    expect(body.logTail).not.toContain('antiguo');
+  });
+
   test('answers the shape with a redacted log tail and rejects a missing credential', async () => {
     h = harness();
     const logFile = join(h.root, 'hub.log');

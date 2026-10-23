@@ -383,8 +383,22 @@ export class Notifier {
     this.notices.push({ at: this.now().getTime(), kind: event, title, ...(body ? { body } : {}), ...(floor ? { floor } : {}), target: onClick, outcome });
   }
 
+  // The recap toast needs no desktop permission: what quiet hours would have held still counts without it.
+  private countQuiet(event: NotifyEvent, tag: string, floor: string | null, countable: boolean): void {
+    const kind = RECAP_OF[event];
+    if (!kind || !countable || this.seen.has(tag) || DEFERRED_EVENTS.has(event)) return;
+    if (floorMuted(readMutedFloors(), floor, event === 'permission') || !quietSilences(readQuietHours(), event === 'permission', this.now())) return;
+    this.seen.add(tag);
+    this.recap.add(kind);
+  }
+
   private show(event: NotifyEvent, tag: string, title: string, body: string, onClick: () => void, floor: string | null = null, countable = true): void {
-    if (!this.prefs.enabled || !this.prefs.events[event] || permissionState() !== 'granted') {
+    if (!this.prefs.enabled || !this.prefs.events[event]) {
+      this.record(event, tag, title, body, onClick, floor, 'off');
+      return;
+    }
+    if (permissionState() !== 'granted') {
+      this.countQuiet(event, tag, floor, countable);
       this.record(event, tag, title, body, onClick, floor, 'off');
       return;
     }

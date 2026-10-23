@@ -128,6 +128,8 @@ export const gitOps = {
     if (!validSlug(slug)) throw new RepoOpError(`slug no válido: ${slug}`);
     return ['for-each-ref', '--format=%(refname) %(objectname)', `refs/office/${slug}/`];
   },
+  // Full ref names (a tag of the same name would make a short name ambiguous); the caller strips refs/heads/.
+  listOrderBranches: (format: string): string[] => ['for-each-ref', `--format=${format}`, `refs/heads/${ORDER_BRANCH_PREFIX}`],
   symbolicHead: (): string[] => ['symbolic-ref', '--quiet', 'HEAD'],
   toplevel: (): string[] => ['rev-parse', '--show-toplevel'],
   resetHard: (commit: string): string[] => ['reset', '--quiet', '--hard', '--no-recurse-submodules', sha(commit)],

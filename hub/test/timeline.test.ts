@@ -51,6 +51,48 @@ describe('timeline', () => {
     expect(timeline(db, 1, NOW).map((a) => `${a.floor}/${a.agent}`)).toEqual(['a/bob', 'a/zed', 'b/amy']);
   });
 
+  test('seeds an agent from its last state before the window', () => {
+    const { db } = office();
+    row(db, NOW - 5 * HOUR, 'dev', 'f', 'working');
+    row(db, NOW - 3 * HOUR, 'dev', 'f', 'blocked');
+    row(db, NOW - HOUR, 'dev', 'f', 'idle');
+    expect(timeline(db, 2, NOW)[0]!.segments).toEqual([
+      { from: NOW - 2 * HOUR, to: NOW - HOUR, state: 'blocked' },
+      { from: NOW - HOUR, to: NOW, state: 'idle' },
+    ]);
+  });
+
+  test('a first row in the window with the state it was already in adds no segment', () => {
+    const { db } = office();
+    row(db, NOW - 5 * HOUR, 'dev', 'f', 'working');
+    row(db, NOW - HOUR, 'dev', 'f', 'working');
+    expect(timeline(db, 2, NOW)[0]!.segments).toEqual([{ from: NOW - 2 * HOUR, to: NOW, state: 'working' }]);
+  });
+
+  test('reads only the rows that change the state', () => {
+    const { db } = office();
+    for (let i = 0; i < 50; i += 1) row(db, NOW - HOUR + i, 'dev', 'f', i < 25 ? 'working' : 'idle');
+    expect(timeline(db, 2, NOW, 2)[0]!.segments.map((s) => s.state)).toEqual(['working', 'idle']);
+  });
+
+  test('a small row cap keeps the newest state and the last segment runs to now', () => {
+    const { db } = office();
+    const states = ['working', 'idle', 'blocked', 'working', 'idle', 'blocked'];
+    states.forEach((state, i) => row(db, NOW - (10 - i) * 60_000, 'dev', 'f', state));
+    const segments = timeline(db, 1, NOW, 3)[0]!.segments;
+    expect(segments.map((s) => s.state)).toEqual(['working', 'idle', 'blocked']);
+    expect(segments.at(-1)).toEqual({ from: NOW - 5 * 60_000, to: NOW, state: 'blocked' });
+  });
+
+  test('caps agents by latest activity, not by name', () => {
+    const { db } = office();
+    row(db, NOW - 3000, 'aaa-quiet', 'f', 'idle');
+    for (let i = 0; i < MAX_TIMELINE_AGENTS; i += 1) row(db, NOW - 1000, `b${String(i).padStart(3, '0')}`, 'f', 'idle');
+    const agents = timeline(db, 1, NOW).map((a) => a.agent);
+    expect(agents).toHaveLength(MAX_TIMELINE_AGENTS);
+    expect(agents).not.toContain('aaa-quiet');
+  });
+
   test('caps agents', () => {
     const { db } = office();
     for (let i = 0; i < MAX_TIMELINE_AGENTS + 5; i += 1) row(db, NOW - 1000, `a${String(i).padStart(3, '0')}`, 'f', 'idle');

@@ -9,8 +9,9 @@ const MAX_LISTED = 100;
 const GIT_TIMEOUT_MS = 15_000;
 const CHECKS_AT_ONCE = 8;
 const CACHE_TTL_MS = 30_000;
+const HEADS = 'refs/heads/';
 const FIELD = '\x1f';
-const LIST_FORMAT = ['%(refname:short)', '%(objectname)', '%(committerdate:unix)'].join(FIELD);
+const LIST_FORMAT = ['%(refname)', '%(objectname)', '%(committerdate:unix)'].join(FIELD);
 
 type OwnerRow = { slug: string; status: OrderStatus; worktree_state: string | null; removed_at: number | null };
 
@@ -42,11 +43,12 @@ export class OrphanBranchDesk {
   }
 
   private async scan(repo: string, base: string): Promise<OrphanBranchView[]> {
-    const listed = await run(this.opts.git, repo, () => ['for-each-ref', `--format=${LIST_FORMAT}`, `refs/heads/${ORDER_BRANCH_PREFIX}`], GIT_TIMEOUT_MS);
+    const listed = await run(this.opts.git, repo, () => gitOps.listOrderBranches(LIST_FORMAT), GIT_TIMEOUT_MS);
     if (listed.code !== 0) return [];
     const found: Omit<OrphanBranchView, 'ahead' | 'behind'>[] = [];
     for (const line of listed.stdout.split('\n')) {
-      const [branch, sha, date] = line.split(FIELD);
+      const [refname, sha, date] = line.split(FIELD);
+      const branch = refname?.startsWith(HEADS) ? refname.slice(HEADS.length) : undefined;
       if (!branch || !sha || !validBranch(branch) || !branch.startsWith(ORDER_BRANCH_PREFIX) || !/^[0-9a-f]{40}$/.test(sha)) continue;
       const order = this.owner.get(branch, branch.slice(ORDER_BRANCH_PREFIX.length));
       if (order && live(order)) continue;
@@ -81,5 +83,5 @@ export class OrphanBranchDesk {
 }
 
 function live(order: OwnerRow): boolean {
-  return order.removed_at === null && !(order.status === 'descartado' && order.worktree_state === 'retirado');
+  return order.removed_at === null && order.worktree_state !== 'retirado';
 }

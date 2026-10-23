@@ -16,24 +16,28 @@ export function clampTail(raw: string | undefined): number {
   return Number.isFinite(n) ? Math.min(TAIL_MAX, Math.max(1, n)) : TAIL_DEFAULT;
 }
 
-// The last bytes of the file, without the line the cut may have split; when the cut leaves no whole line, the read goes further back.
+// The last bytes of the file, without the line the cut may have split; when the cut leaves no whole line, the read goes
+// further back, reading only the bytes not read yet.
 function tailText(file: string): string {
   const fd = openSync(file, 'r');
   try {
     const size = fstatSync(fd).size;
+    let have = Buffer.alloc(0);
+    let start = size;
     for (let bytes = TAIL_BYTES; ; bytes += TAIL_BYTES) {
-      const start = Math.max(0, size - bytes);
-      const buffer = Buffer.alloc(size - start);
+      const next = Math.max(0, size - bytes);
+      const chunk = Buffer.alloc(start - next);
       let read = 0;
-      while (read < buffer.length) {
-        const got = readSync(fd, buffer, read, buffer.length - read, start + read);
+      while (read < chunk.length) {
+        const got = readSync(fd, chunk, read, chunk.length - read, next + read);
         if (got === 0) break;
         read += got;
       }
-      const raw = buffer.subarray(0, read).toString('utf8');
-      if (start === 0) return raw;
-      const newline = raw.indexOf('\n');
-      const whole = newline < 0 ? '' : raw.slice(newline + 1);
+      have = Buffer.concat([chunk.subarray(0, read), have]);
+      start = next;
+      if (start === 0) return have.toString('utf8');
+      const newline = have.indexOf(10);
+      const whole = newline < 0 ? '' : have.subarray(newline + 1).toString('utf8');
       if (whole.trim() !== '' || bytes >= TAIL_LIMIT_BYTES) return whole;
     }
   } finally {

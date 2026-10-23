@@ -106,7 +106,7 @@ export function mountDigest(store: Store, api: OfficeApi): { root: HTMLElement; 
       item.setAttribute('aria-pressed', String(mode === own));
       item.classList.toggle('active', mode === own);
     }
-    label.textContent = weekly ? t('digest.range', weekOf(today)) : day;
+    label.textContent = weekly ? t('digest.range', week ? { from: week.from, to: week.to } : weekOf(today)) : day;
     prev.setAttribute('aria-label', t('digest.prev'));
     next.setAttribute('aria-label', t('digest.next'));
     prev.hidden = weekly;

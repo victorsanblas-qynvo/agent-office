@@ -115,6 +115,12 @@ describe('transcript tail', () => {
     expect(body.entries.at(-1).text).toBe('z'.repeat(500));
   });
 
+  test('a multibyte last line longer than several windows is read whole across the chunk cuts', async () => {
+    const call = rig([user('antes'), user('é'.repeat(400 * 1024))]);
+    const { body } = await call('/api/sessions/s-1/tail');
+    expect(body.entries.at(-1).text).toBe('é'.repeat(500));
+  });
+
   test('a line past the 2 MB limit gives an empty tail', () => {
     rig([user('antes'), user('z'.repeat(2.5 * 1024 * 1024))]);
     const file = join(h!.root, 'claude-home', 'projects', projectSlug(join(h!.root, 'repo')), 's-1.jsonl');
