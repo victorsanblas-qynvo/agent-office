@@ -1,4 +1,5 @@
 import type { OfficeApi } from '../api';
+import { saveFile } from '../download';
 import { button, el, setStateColor } from '../dom';
 import { currentLang, plural, t, type MessageKey } from '../i18n';
 import { hubText } from '../i18n/hub';
@@ -140,14 +141,7 @@ export async function downloadDocument(api: OfficeApi | null, store: Store, doc:
     store.toast(hubText(result.data.notice), 'error');
     return;
   }
-  const url = URL.createObjectURL(new Blob([result.data.markdown], { type: 'text/markdown' }));
-  const link = el('a');
-  link.href = url;
-  link.download = `${doc.slug}.md`;
-  document.body.append(link);
-  link.click();
-  link.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  saveFile(`${doc.slug}.md`, result.data.markdown, 'text/markdown');
 }
 
 class DocumentViewer {

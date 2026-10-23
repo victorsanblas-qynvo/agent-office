@@ -6,7 +6,8 @@ import { agentName, floorLabel } from '../labels';
 import type { Store } from '../store';
 import { clockTime } from '../time';
 import type { SearchHit, SearchKind } from '../types';
-import { historyFilename, historyRows, historyToCsv, historyToJson, saveFile } from './history-export';
+import { saveFile } from '../download';
+import { historyFilename, historyRows, historyToCsv, historyToJson } from './history-export';
 
 export const VIEW_KEY = 'agent-office.table.view';
 export const PAGE_SIZE = 40;

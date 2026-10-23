@@ -428,6 +428,13 @@ export const en: Messages = {
   'report.counts': 'Questions: {questions} · Blocks: {blocked}',
   'report.lessons': 'Lessons sent ({n})',
   'report.closing': 'Closing message',
+  'report.download': 'Download .md',
+  'report.downloadTitle': 'Download the report as Markdown',
+  'report.md.summary': 'Summary',
+  'report.md.session': 'Session',
+  'report.md.activity': 'Last activity',
+  'report.md.tokens': 'Total tokens',
+  'report.md.context': 'Context',
 
   'timeline.messages': 'Messages',
   'timeline.activity': 'Activity',
