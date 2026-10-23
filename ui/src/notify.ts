@@ -6,16 +6,27 @@ import type { Store } from './store';
 import { dueReminders, inQuietHours, quietSilences, readQuietHours, readRemindMinutes } from './prefs';
 import { forecastText } from './usage-card';
 import { finishedNotice, readFinishedMode, wantsDesktop } from './panel/finished';
-import type { AgentView, DocumentView, FinishedView, GuardAlert, MessageView, QuestionView, ServerMessage, UsageView, UsageWindow } from './types';
+import type { AgentView, CheckRunView, DocumentView, FinishedView, GuardAlert, MessageView, OrderView, QuestionView, ServerMessage, UsageView, UsageWindow } from './types';
 
-export type NotifyEvent = 'permission' | 'question' | 'blocked' | 'done' | 'document' | 'alert' | 'stalled' | 'usage';
+export type NotifyEvent = 'permission' | 'question' | 'blocked' | 'done' | 'document' | 'alert' | 'stalled' | 'usage' | 'checks';
 
-export const NOTIFY_EVENTS: readonly NotifyEvent[] = ['permission', 'question', 'blocked', 'done', 'document', 'alert', 'stalled', 'usage'];
+export const NOTIFY_EVENTS: readonly NotifyEvent[] = ['permission', 'question', 'blocked', 'done', 'document', 'alert', 'stalled', 'usage', 'checks'];
 
 // Percentages of a usage window that warn, once each per window.
 export const USAGE_THRESHOLDS: readonly number[] = [80, 95];
 
-// Events held back through quiet hours instead of dropped: they stay open (a question) or true (a usage level) after the window.
+export type CheckNotice = { orderId: number; tag: string; key: 'notify.checks.failed' | 'notify.checks.passed'; body: string };
+
+// A run that was running and is now failed or passed notifies once, with only the name of the first failing check as body.
+export function checkTransitionNotice(prev: Pick<CheckRunView, 'id' | 'status'> | null | undefined, next: CheckRunView, enabled = true): CheckNotice | null {
+  if (!enabled || !prev || prev.id !== next.id || prev.status !== 'running') return null;
+  if (next.status === 'passed') return { orderId: next.orderId, tag: `checks:${next.id}`, key: 'notify.checks.passed', body: '' };
+  if (next.status !== 'failed') return null;
+  const failing = next.checks.find((check) => check.status === 'failed' || check.status === 'timeout');
+  return { orderId: next.orderId, tag: `checks:${next.id}`, key: 'notify.checks.failed', body: failing?.name ?? '' };
+}
+
+// Events held back through quiet hours instead of dropped: they stay open (a question) or true (a usage level) after the window; a check result is dropped in quiet hours.
 const DEFERRED_EVENTS: ReadonlySet<NotifyEvent> = new Set(['permission', 'question', 'usage']);
 
 export type NotifyPrefs = { enabled: boolean; events: Record<NotifyEvent, boolean> };
@@ -32,7 +43,7 @@ function permissionState(): NotificationPermission | 'unsupported' {
 }
 
 function defaultPrefs(): NotifyPrefs {
-  return { enabled: false, events: { permission: true, question: true, blocked: true, done: true, document: true, alert: true, stalled: true, usage: true } };
+  return { enabled: false, events: { permission: true, question: true, blocked: true, done: true, document: true, alert: true, stalled: true, usage: true, checks: false } };
 }
 
 function readPrefs(): NotifyPrefs {
@@ -59,10 +70,13 @@ export class Notifier {
   private documents: Map<string, DocumentView['status']> | null = null;
   private readonly stalled = new Map<string, number | null>();
   private readonly reminded = new Set<string>();
+  private readonly lastRuns = new Map<number, CheckRunView>();
   private lastUsage: UsageView | null = null;
   private wasQuiet: boolean;
   // Where the notification of a finished order takes the user when it is clicked.
   openFinished: ((view: FinishedView) => void) | null = null;
+  // Where the notification of a check result takes the user: the Tablero with that order's drawer.
+  openOrder: ((order: OrderView) => void) | null = null;
 
   constructor(
     private readonly store: Store,
@@ -158,6 +172,9 @@ export class Notifier {
       case 'finished':
         this.finished(message.data);
         break;
+      case 'checks':
+        this.checks(message.data);
+        break;
     }
   }
 
@@ -199,6 +216,16 @@ export class Notifier {
     if (!wantsDesktop(readFinishedMode())) return;
     const notice = finishedNotice(view);
     this.show('done', `finished:${view.id}`, t(notice.key, notice.params), t('notify.openPanel'), () => this.openFinished?.(view));
+  }
+
+  private checks(run: CheckRunView): void {
+    const prev = this.lastRuns.get(run.orderId);
+    this.lastRuns.set(run.orderId, run);
+    const notice = checkTransitionNotice(prev, run, this.prefs.events.checks);
+    if (!notice) return;
+    const order = this.store.orders.find((item) => item.id === run.orderId);
+    if (!order) return;
+    this.show('checks', notice.tag, t(notice.key, { title: order.title }), notice.body, () => this.openOrder?.(order));
   }
 
   // 80 % and 95 % of each window warn once; the tag carries the reset of the window, so the next one warns again.

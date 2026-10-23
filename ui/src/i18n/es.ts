@@ -585,6 +585,8 @@ export const es = {
   'notify.document.approvedSkill': 'Skill aprobada: {title}',
   'notify.document.noAgreement': 'Sin acuerdo en {title}',
   'notify.document.deliveredPlan': 'Plan pendiente de decisión: {title}',
+  'notify.checks.failed': 'Checks en rojo · {title}',
+  'notify.checks.passed': 'Checks en verde · {title}',
   'notify.openPanel': 'Abre el panel para ver el detalle.',
   'notify.test': 'Agent Office avisa aquí',
 
@@ -606,6 +608,7 @@ export const es = {
   'settings.notifications.event.document': 'Planes y skills aprobados o sin acuerdo, y planes pendientes de decisión',
   'settings.notifications.event.alert': 'Alertas de la guardia',
   'settings.notifications.event.stalled': 'Jefes parados con un encargo abierto',
+  'settings.notifications.event.checks': 'Resultado de checks',
   'settings.notifications.event.usage': 'Límite de uso al 80 % y al 95 %',
 
   'chat.title': 'Chat',
@@ -683,6 +686,8 @@ export const es = {
   'board.checks.run.passed': 'En verde',
   'board.checks.run.failed': 'En rojo',
   'board.checks.run.cancelled': 'Cancelada',
+  'board.check.flaky': 'intermitente',
+  'board.check.flaky.hint': 'falló y luego pasó en el mismo commit',
   'board.check.status.pending': 'En cola',
   'board.check.status.running': 'Ejecutando',
   'board.check.status.passed': 'Pasa',

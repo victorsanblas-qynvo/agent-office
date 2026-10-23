@@ -3743,3 +3743,7 @@ button.diff-file.active {
 .usage-forecast[data-level='danger'] {
   color: var(--danger);
 }
+
+.check-flaky {
+  color: var(--warn, var(--muted));
+}

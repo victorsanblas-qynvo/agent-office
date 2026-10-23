@@ -586,6 +586,8 @@ export const en: Messages = {
   'notify.document.approvedSkill': 'Skill approved: {title}',
   'notify.document.noAgreement': 'No agreement on {title}',
   'notify.document.deliveredPlan': 'Plan awaiting your decision: {title}',
+  'notify.checks.failed': 'Checks red · {title}',
+  'notify.checks.passed': 'Checks green · {title}',
   'notify.openPanel': 'Open the panel to see the details.',
   'notify.test': 'Agent Office notifies here',
 
@@ -607,6 +609,7 @@ export const en: Messages = {
   'settings.notifications.event.document': 'Plans and skills approved or without agreement, and plans awaiting your decision',
   'settings.notifications.event.alert': 'Guard alerts',
   'settings.notifications.event.stalled': 'Leads stalled with an open brief',
+  'settings.notifications.event.checks': 'Check results',
   'settings.notifications.event.usage': 'Usage limit at 80 % and 95 %',
 
   'chat.title': 'Chat',
@@ -683,6 +686,8 @@ export const en: Messages = {
   'board.checks.run.passed': 'Green',
   'board.checks.run.failed': 'Red',
   'board.checks.run.cancelled': 'Cancelled',
+  'board.check.flaky': 'flaky',
+  'board.check.flaky.hint': 'failed and then passed on the same commit',
   'board.check.status.pending': 'Queued',
   'board.check.status.running': 'Running',
   'board.check.status.passed': 'Passes',
