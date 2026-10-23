@@ -2,16 +2,17 @@ import { PATIENT_TOOLS } from '../../shared/patient-tools';
 import { t } from './i18n';
 import { hubText } from './i18n/hub';
 import { collisions, heldClaims, type Collision } from './chat/claims';
-import { agentName, isAway } from './labels';
+import { agentName, floorLabel, formatTokens, isAway } from './labels';
+import { budgetSpend, floorSpendOf, readFloorBudgets, type FloorBudgets } from './budgets';
 import { readContextWarn, readHungMinutes, readSnoozes, writeSnoozes, type Snoozes } from './prefs';
 import type { Store, Topic } from './store';
 import { clockMinutes } from './time';
 import type { AgentState, AgentView, DocumentView, OrderView, QuestionView, UsageView, UsageWindow } from './types';
 
-export type NeedKind = 'permission' | 'question' | 'blocked' | 'hung' | 'stalled' | 'context' | 'claim' | 'plan' | 'checks' | 'limit';
+export type NeedKind = 'permission' | 'question' | 'blocked' | 'hung' | 'stalled' | 'context' | 'claim' | 'plan' | 'checks' | 'limit' | 'budget';
 
 // Most urgent first: this is also the order of the queue.
-export const NEED_KINDS: readonly NeedKind[] = ['permission', 'question', 'blocked', 'hung', 'stalled', 'context', 'claim', 'plan', 'checks', 'limit'];
+export const NEED_KINDS: readonly NeedKind[] = ['permission', 'question', 'blocked', 'hung', 'stalled', 'context', 'claim', 'plan', 'checks', 'limit', 'budget'];
 
 export type Need = {
   id: string;
@@ -42,6 +43,10 @@ export type NeedSources = {
   hungAfterMinutes: number;
   // Percentage of the context window from which an agent is warned about; 0 is off.
   contextWarnPct: number;
+  // Daily token budget by floor slug and what each floor spent today.
+  budgets: FloorBudgets;
+  floorSpend: Readonly<Record<string, number>>;
+  floorName(slug: string): string;
   stateOf(agent: AgentView): AgentState;
 };
 
@@ -95,6 +100,25 @@ function limitNeed(id: 'five' | 'seven', sample: UsageWindow | null, now: number
   const need: Need = { id: `limit:${id}`, kind: 'limit', since: at, name, instance, agentKey: null, floor: null, docPath: null, orderSlug: null };
   if (out || (exhaustsAt !== null && exhaustsAt - now < LIMIT_SOON_MS)) need.imminent = true;
   return need;
+}
+
+const BUDGET_WARN_PCT = 80;
+
+function dayKey(at: number): string {
+  const date = new Date(at);
+  const pad = (value: number): string => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+// A floor from 80 % of its daily budget; the day and the 80/100 bucket name the occurrence, so a snooze holds until either changes.
+export function budgetNeed(slug: string, budget: number, spent: number, now: number, floorName: string): Need | null {
+  if (budget <= 0 || spent < budget * (BUDGET_WARN_PCT / 100)) return null;
+  const over = spent >= budget;
+  const params = { floor: floorName, spent: formatTokens(spent), budget: formatTokens(budget) };
+  const name = over ? t('needs.budget.over', params) : t('needs.budget.near', params);
+  const day = new Date(now);
+  const since = new Date(day.getFullYear(), day.getMonth(), day.getDate()).getTime();
+  return { id: `budget:${slug}`, kind: 'budget', since, name, instance: `${dayKey(now)}:${over ? 100 : BUDGET_WARN_PCT}`, agentKey: null, floor: slug, docPath: null, orderSlug: null };
 }
 
 function agentNeed(kind: NeedKind, agent: AgentView | undefined, key: string, since: number, floor: string | null, instance: string): Need {
@@ -219,6 +243,10 @@ export function collectNeeds(sources: NeedSources): Need[] {
       if (need) needs.push(need);
     }
   }
+  for (const [slug, budget] of Object.entries(sources.budgets)) {
+    const need = budgetNeed(slug, budget, sources.floorSpend[slug] ?? 0, sources.now, sources.floorName(slug));
+    if (need) needs.push(need);
+  }
 
   return needs.sort((a, b) => rankOf(a) - rankOf(b) || a.since - b.since || a.id.localeCompare(b.id));
 }
@@ -234,6 +262,12 @@ export function needsOf(store: Store): Need[] {
     now: store.now(),
     hungAfterMinutes: readHungMinutes(),
     contextWarnPct: readContextWarn(),
+    budgets: readFloorBudgets(),
+    floorSpend: floorSpendOf(budgetSpend()?.summary ?? null),
+    floorName: (slug) => {
+      const known = store.floorBySlug(slug);
+      return known ? floorLabel(known) : slug;
+    },
     stateOf: (agent) => store.shownState(agent),
   });
 }
@@ -249,10 +283,10 @@ function hashOf(text: string): string {
 }
 
 // A short fingerprint of the occurrence and of what the entry says: `kind:instance:label`. A snooze "until it
-// changes" ends when any of it changes; a timed one only when the occurrence does. The context label carries a
-// percentage that moves with every sample, so only the occurrence counts there.
+// changes" ends when any of it changes; a timed one only when the occurrence does. The context and budget labels carry
+// a figure that moves with every sample, so only the occurrence counts there.
 export function needSignature(need: Pick<Need, 'kind' | 'name' | 'instance'>): string {
-  return `${need.kind}:${hashOf(need.instance)}:${hashOf(need.kind === 'context' ? '' : need.name)}`;
+  return `${need.kind}:${hashOf(need.instance)}:${hashOf(need.kind === 'context' || need.kind === 'budget' ? '' : need.name)}`;
 }
 
 function occurrenceOf(signature: string): string {

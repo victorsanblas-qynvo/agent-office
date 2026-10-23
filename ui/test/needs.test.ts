@@ -13,7 +13,7 @@ const NOW = 1_000_000_000;
 const HOUR = 3_600_000;
 
 function sources(extra: Partial<NeedSources> & { agents?: ReturnType<typeof agent>[] } = {}): NeedSources {
-  return { agents: [], questions: [], documents: [], orders: [], usage: null, claims: [], now: NOW, hungAfterMinutes: 10, contextWarnPct: 85, stateOf: (a) => a.state, ...extra };
+  return { agents: [], questions: [], documents: [], orders: [], usage: null, claims: [], budgets: {}, floorSpend: {}, floorName: (slug) => slug, now: NOW, hungAfterMinutes: 10, contextWarnPct: 85, stateOf: (a) => a.state, ...extra };
 }
 
 const kinds = (needs: Need[]): string[] => needs.map((need) => `${need.kind}:${need.agentKey ?? need.docPath ?? need.orderSlug}`);
@@ -608,5 +608,47 @@ describe('floor filter', () => {
 
   test('the trigger signature changes with the filter', () => {
     expect(triggerSignature('es', 2, 4, 'mobile')).not.toBe(triggerSignature('es', 2, 4));
+  });
+});
+
+describe('floor budget needs', () => {
+  const budgeted = (spent: number, extra: Parameters<typeof sources>[0] = {}): Need[] =>
+    collectNeeds(sources({ budgets: { mobile: 2_000_000 }, floorSpend: { mobile: spent }, floorName: () => 'Mobile', ...extra }));
+
+  test('stays quiet at 79 %, warns at 80 % and says it was exceeded at 100 %', () => {
+    expect(budgeted(1_579_999)).toEqual([]);
+    const [near] = budgeted(1_600_000);
+    expect(near.kind).toBe('budget');
+    expect(near.floor).toBe('mobile');
+    expect(near.id).toBe('budget:mobile');
+    expect(needLabel(near)).toContain('Mobile lleva');
+    expect(needLabel(near)).toContain('tokens hoy');
+    const [over] = budgeted(2_000_000);
+    expect(needLabel(over)).toContain('superó');
+  });
+
+  test('a floor with no spend or no budget makes no entry', () => {
+    expect(budgeted(0)).toEqual([]);
+    expect(budgeted(5_000_000, { budgets: {} })).toEqual([]);
+  });
+
+  test('the occurrence is the local day and the 80/100 bucket', () => {
+    const at = (spent: number, now = NOW): string => budgeted(spent, { now })[0].instance;
+    expect(at(1_600_000)).toBe(at(1_900_000));
+    expect(at(1_600_000)).not.toBe(at(2_000_000));
+    expect(at(1_600_000)).not.toBe(at(1_600_000, NOW + 24 * HOUR));
+  });
+
+  test('a snooze holds while the figure moves inside its bucket and ends at 100 %', () => {
+    const [first] = budgeted(1_600_000);
+    const snoozes = snoozeNeed({}, first, null);
+    expect(activeNeeds(budgeted(1_800_000), snoozes, NOW)).toEqual([]);
+    expect(activeNeeds(budgeted(2_100_000), snoozes, NOW)).toHaveLength(1);
+  });
+
+  test('ranks after the usage limit', () => {
+    const usage: UsageView = { fiveHour: { usedPct: 95, resetsAt: NOW + 2 * HOUR }, sevenDay: null, at: NOW };
+    const needs = budgeted(1_700_000, { usage, agents: [agent('stalled', { stalledSince: 10 })] });
+    expect(needs.map((need) => need.kind)).toEqual(['stalled', 'limit', 'budget']);
   });
 });

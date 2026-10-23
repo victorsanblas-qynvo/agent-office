@@ -478,6 +478,29 @@ textarea {
   margin-top: 12px;
 }
 
+.budget-bar {
+  display: block;
+  height: 3px;
+  margin-top: 3px;
+  border-radius: 2px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.budget-fill {
+  display: block;
+  height: 100%;
+  background: var(--ok);
+}
+
+.budget-fill.near {
+  background: var(--asking);
+}
+
+.budget-fill.over {
+  background: var(--danger);
+}
+
 .usage-spend-group {
   min-width: 0;
   overflow-x: auto;

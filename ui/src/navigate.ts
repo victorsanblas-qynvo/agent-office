@@ -48,6 +48,7 @@ const SECTION_OF: Record<NeedKind, SectionId | null> = {
   plan: null,
   checks: null,
   limit: null,
+  budget: null,
 };
 
 // Selects the agent, opens the section of the panel that matters and brings the camera to it. The tabs that
@@ -61,7 +62,7 @@ export function goToAgent(nav: Nav, key: string, section: SectionId | null = nul
 }
 
 export function goToNeed(nav: Nav, need: Need): void {
-  if (need.kind === 'limit') {
+  if (need.kind === 'limit' || need.kind === 'budget') {
     nav.showTab('table');
     return;
   }
