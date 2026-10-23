@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
-import { diffStale, diffSummary, latestSha, orderSignature, patchRows, statRows } from '../src/board/diff-model';
+import { diffStale, diffSummary, latestSha, orderSignature, patchRows, shouldReloadForChecks, statRows } from '../src/board/diff-model';
 import { parseDiff } from '../src/board/diff-parse';
 import { applyLang } from '../src/i18n/index';
 import type { CheckRunView, OrderDiff } from '../src/types';
@@ -102,5 +102,25 @@ describe('diffStale', () => {
     expect(latestSha(o, [run], [point])).toBe('p1');
     expect(latestSha(o, [{ ...run, startedAt: 30 }], [point])).toBe('r1');
     expect(latestSha(o, [], [])).toBeNull();
+  });
+});
+
+describe('drawer reload filter', () => {
+  const run: CheckRunView = { id: 3, orderId: 1, sha: 'abc', trigger: 'panel', status: 'running', startedAt: 10, endedAt: null, checks: [] };
+
+  test('ignores a missing run and an unchanged id and status', () => {
+    expect(shouldReloadForChecks(undefined, null)).toBe(false);
+    expect(shouldReloadForChecks(run, { id: 3, status: 'running' })).toBe(false);
+  });
+
+  test('accepts a first sight, a new run or a status change', () => {
+    expect(shouldReloadForChecks(run, null)).toBe(true);
+    expect(shouldReloadForChecks({ ...run, id: 4 }, { id: 3, status: 'running' })).toBe(true);
+    expect(shouldReloadForChecks({ ...run, status: 'passed' }, { id: 3, status: 'running' })).toBe(true);
+  });
+
+  test('orderSignature stays the same for a reload with identical runs', () => {
+    const o = order('a');
+    expect(orderSignature(o, [[run]])).toBe(orderSignature(o, [[{ ...run }]]));
   });
 });

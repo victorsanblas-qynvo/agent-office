@@ -6,7 +6,8 @@ import type { Store } from '../store';
 import { clockTime, relativeTime } from '../time';
 import type { CheckRunView, CheckView, CheckpointView, OrderDiff, OrderDiffFile, OrderView, SkippedFile } from '../types';
 import { checksBadgeNode, folderBadgeNode } from './badges';
-import { diffStale, diffSummary, latestSha, orderSignature, patchRows, statRows } from './diff-model';
+import { diffStale, diffSummary, latestSha, orderSignature, patchRows, shouldReloadForChecks, statRows } from './diff-model';
+import type { RunMark } from './diff-model';
 import { parseDiff } from './diff-parse';
 import { openPrDraft } from './pr-draft';
 
@@ -42,6 +43,14 @@ function checkRow(check: CheckView): HTMLElement {
   return el('li', 'check-row', head, el('code', 'check-command muted', check.command), output);
 }
 
+const AGE_REPAINT_MS = 30_000;
+
+function ageNode(ts: number, now: number, className = 'muted'): HTMLElement {
+  const node = el('time', className, relativeTime(ts, now));
+  node.dataset.ts = String(ts);
+  return node;
+}
+
 function runBlock(run: CheckRunView, now: number, first: boolean): HTMLElement {
   const sha = el('code', '', run.sha.slice(0, 7));
   const block = el(
@@ -53,7 +62,7 @@ function runBlock(run: CheckRunView, now: number, first: boolean): HTMLElement {
       el('b', '', t(`board.checks.run.${run.status}`)),
       el('span', 'muted', t(`board.trigger.${run.trigger}`)),
       sha,
-      el('span', 'muted', relativeTime(run.startedAt, now)),
+      ageNode(run.startedAt, now),
     ),
     el('ul', 'checks-list', ...run.checks.map(checkRow)),
   );
@@ -68,7 +77,7 @@ function pointRow(point: CheckpointView, now: number): HTMLElement {
     el('code', '', point.sha.slice(0, 7)),
     el('span', '', point.label),
     el('span', 'chip', point.reason),
-    el('span', 'muted', `${clockTime(point.createdAt)} · ${relativeTime(point.createdAt, now)}`),
+    el('span', 'muted', `${clockTime(point.createdAt)} · `, ageNode(point.createdAt, now, '')),
   );
 }
 
@@ -101,6 +110,8 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
   let diffFileLoading = false;
   let patchCache: { file: OrderDiffFile; lang: string; node: HTMLElement } | null = null;
   let lastSignature = '';
+  let lastRun: RunMark | null = null;
+  let lastPaint = store.now();
 
   const order = (): OrderView | undefined => store.orders.find((o) => o.id === orderId);
 
@@ -117,7 +128,8 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
       points = checkpoints.data.checkpoints;
       skipped = checkpoints.data.skipped;
     }
-    render();
+    const current = order();
+    if (!current || signature(current) !== lastSignature) render();
   };
 
   const loadDiff = async (): Promise<void> => {
@@ -375,16 +387,28 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
     panel.replaceChildren(...parts.filter((part): part is Node => part !== null));
   }
 
+  const noteRun = (): void => {
+    const run = store.checkRuns.get(orderId);
+    lastRun = run ? { id: run.id, status: run.status } : lastRun;
+  };
   const unwatch = store.watch(['orders', 'checks', 'lang'], () => {
     const current = order();
     if (!current) return;
     if (signature(current) !== lastSignature) render();
-    if (store.checkRuns.has(orderId) && api && !runs.some((r) => r.id === store.checkRuns.get(orderId)?.id)) void reload();
   });
-  const unwatchPoints = store.watch(['checks'], () => {
+  const unwatchChecks = store.watch(['checks'], () => {
     const run = store.checkRuns.get(orderId);
-    if (api && run && run.status !== 'running') void reload();
+    if (!api || !shouldReloadForChecks(run, lastRun)) return;
+    noteRun();
+    void reload();
   });
+  const unwatchTick = store.watch(['tick'], () => {
+    const now = store.now();
+    if (now - lastPaint < AGE_REPAINT_MS) return;
+    lastPaint = now;
+    for (const node of panel.querySelectorAll<HTMLElement>('time[data-ts]')) node.textContent = relativeTime(Number(node.dataset.ts), now);
+  });
+  noteRun();
   void reload();
   render();
 
@@ -392,7 +416,8 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
     destroy() {
       gone = true;
       unwatch();
-      unwatchPoints();
+      unwatchChecks();
+      unwatchTick();
       document.removeEventListener('keydown', onKey);
     },
   };
