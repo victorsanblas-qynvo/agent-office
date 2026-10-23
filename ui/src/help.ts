@@ -20,7 +20,7 @@ export function mountHelp(host: HTMLElement): HelpOverlay {
 
   const build = (): HTMLElement => {
     const mac = isMac();
-    const rows = BINDINGS.map((binding) => el('li', 'help-row', el('kbd', 'help-keys', displayCombo(binding.combo, mac)), el('span', 'help-label', binding.label())));
+    const rows = BINDINGS.filter((binding) => binding.hidden !== true).map((binding) => el('li', 'help-row', el('kbd', 'help-keys', displayCombo(binding.combo, mac)), el('span', 'help-label', binding.label())));
     const close = el('button', 'primary', t('keys.close'));
     close.type = 'button';
     close.addEventListener('click', () => api.close());

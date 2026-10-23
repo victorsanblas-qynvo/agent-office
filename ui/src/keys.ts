@@ -1,4 +1,5 @@
 import { t, type MessageKey } from './i18n';
+import type { CardDirection } from './board/columns';
 import { TABS } from './topbar';
 
 export type KeyAction =
@@ -8,9 +9,14 @@ export type KeyAction =
   | { type: 'history' }
   | { type: 'orders' }
   | { type: 'help' }
+  | { type: 'board'; move: BoardMove }
   | { type: 'escape' };
 
-export type Binding = { combo: string; action: KeyAction; label: () => string };
+// What the keyboard does on the Tablero: step the highlight, open its drawer or ask to move its card.
+export type BoardMove = CardDirection | 'open' | 'prev' | 'next';
+
+// A hidden row is an alias of another one and stays out of the help.
+export type Binding = { combo: string; action: KeyAction; label: () => string; hidden?: boolean };
 
 const tabBindings: Binding[] = TABS.map(({ labelKey }, index) => ({
   combo: String(index + 1),
@@ -19,6 +25,8 @@ const tabBindings: Binding[] = TABS.map(({ labelKey }, index) => ({
 }));
 
 const fixed = (combo: string, action: KeyAction, key: MessageKey): Binding => ({ combo, action, label: () => t(key) });
+
+const alias = (combo: string, action: KeyAction, key: MessageKey): Binding => ({ ...fixed(combo, action, key), hidden: true });
 
 // The one table the listener, the help overlay and the palette read.
 export const BINDINGS: readonly Binding[] = [
@@ -29,6 +37,17 @@ export const BINDINGS: readonly Binding[] = [
   fixed('/', { type: 'history' }, 'keys.history'),
   fixed('o', { type: 'orders' }, 'keys.orders'),
   fixed('?', { type: 'help' }, 'keys.help'),
+  fixed('j', { type: 'board', move: 'down' }, 'keys.boardDown'),
+  fixed('k', { type: 'board', move: 'up' }, 'keys.boardUp'),
+  fixed('h', { type: 'board', move: 'left' }, 'keys.boardLeft'),
+  fixed('l', { type: 'board', move: 'right' }, 'keys.boardRight'),
+  alias('ArrowDown', { type: 'board', move: 'down' }, 'keys.boardDown'),
+  alias('ArrowUp', { type: 'board', move: 'up' }, 'keys.boardUp'),
+  alias('ArrowLeft', { type: 'board', move: 'left' }, 'keys.boardLeft'),
+  alias('ArrowRight', { type: 'board', move: 'right' }, 'keys.boardRight'),
+  fixed('Enter', { type: 'board', move: 'open' }, 'keys.boardOpen'),
+  fixed('[', { type: 'board', move: 'prev' }, 'keys.boardPrev'),
+  fixed(']', { type: 'board', move: 'next' }, 'keys.boardNext'),
   fixed('esc', { type: 'escape' }, 'keys.escape'),
 ];
 
@@ -59,14 +78,24 @@ export function resolveKey(event: KeyLike): KeyAction | null {
   return BINDINGS.find((binding) => binding.combo === combo)?.action ?? null;
 }
 
-export type KeyContext = { typing: boolean; modalOpen: boolean };
+export type KeyContext = { typing: boolean; modalOpen: boolean; boardReady: boolean };
 
 // Cmd/Ctrl+K and Esc always work; the help toggles over a dialog; the rest wait while the user types or a dialog is up.
+// The board keys also wait until the Tablero can use them, so the arrows and Enter keep their usual job elsewhere.
 export function shouldRun(action: KeyAction, context: KeyContext): boolean {
   if (action.type === 'palette' || action.type === 'escape') return true;
   if (context.typing) return false;
   if (action.type === 'help') return true;
+  if (action.type === 'board' && !context.boardReady) return false;
   return !context.modalOpen;
+}
+
+const OWN_ENTER_TAGS: ReadonlySet<string> = new Set(['BUTTON', 'A', 'SUMMARY']);
+
+// Enter on a button or a link does that element's own job, not the board's.
+export function keepsEnter(target: EventTarget | null): boolean {
+  const tag = (target as { tagName?: unknown } | null)?.tagName;
+  return typeof tag === 'string' && OWN_ENTER_TAGS.has(tag.toUpperCase());
 }
 
 // Closes the first layer that is open, in priority order, and says whether there was one.
@@ -97,6 +126,8 @@ export type KeyHandlers = {
   run(action: KeyAction): void;
   layers: readonly (() => boolean)[];
   modalOpen(): boolean;
+  // Whether the Tablero is showing and can take this board move.
+  boardReady(move: BoardMove): boolean;
 };
 
 // The only keydown listener of the shortcuts: capture phase on the document, so the layers it closes
@@ -112,7 +143,8 @@ export function mountKeys(handlers: KeyHandlers): () => void {
       event.stopImmediatePropagation();
       return;
     }
-    if (!shouldRun(action, { typing: isTypingTarget(event.target), modalOpen: handlers.modalOpen() })) return;
+    const boardReady = action.type === 'board' && handlers.boardReady(action.move) && !(action.move === 'open' && keepsEnter(event.target));
+    if (!shouldRun(action, { typing: isTypingTarget(event.target), modalOpen: handlers.modalOpen(), boardReady })) return;
     event.preventDefault();
     handlers.run(action);
   };

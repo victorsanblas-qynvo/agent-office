@@ -62,27 +62,27 @@ describe('resolveKey', () => {
     expect(resolveKey(press('n', { metaKey: true }))).toBeNull();
     expect(resolveKey(press('1', { ctrlKey: true }))).toBeNull();
     expect(resolveKey(press('o', { metaKey: true }))).toBeNull();
-    expect(resolveKey(press('k'))).toBeNull();
+    expect(resolveKey(press('z'))).toBeNull();
   });
 });
 
 describe('shouldRun', () => {
-  const free = { typing: false, modalOpen: false };
+  const free = { typing: false, modalOpen: false, boardReady: false };
 
   test('Cmd+K and Esc work anywhere', () => {
-    expect(shouldRun({ type: 'palette' }, { typing: true, modalOpen: true })).toBe(true);
-    expect(shouldRun({ type: 'escape' }, { typing: true, modalOpen: true })).toBe(true);
+    expect(shouldRun({ type: 'palette' }, { typing: true, modalOpen: true, boardReady: false })).toBe(true);
+    expect(shouldRun({ type: 'escape' }, { typing: true, modalOpen: true, boardReady: false })).toBe(true);
   });
 
   test('single keys wait while typing', () => {
     for (const action of [{ type: 'need', step: 1 }, { type: 'tab', index: 0 }, { type: 'history' }, { type: 'orders' }, { type: 'help' }] as const) {
-      expect(shouldRun(action, { typing: true, modalOpen: false })).toBe(false);
+      expect(shouldRun(action, { typing: true, modalOpen: false, boardReady: false })).toBe(false);
       expect(shouldRun(action, free)).toBe(true);
     }
   });
 
   test('a dialog blocks everything but the help toggle', () => {
-    const modal = { typing: false, modalOpen: true };
+    const modal = { typing: false, modalOpen: true, boardReady: false };
     expect(shouldRun({ type: 'help' }, modal)).toBe(true);
     expect(shouldRun({ type: 'need', step: 1 }, modal)).toBe(false);
     expect(shouldRun({ type: 'tab', index: 2 }, modal)).toBe(false);

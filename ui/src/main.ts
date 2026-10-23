@@ -158,7 +158,8 @@ async function boot(): Promise<void> {
   const cursor = new NeedCursor();
   mountKeys({
     run: (action) => runKey(nav, action, cursor, { palette: palette.open, help: help.toggle }),
-    layers: [palette.close, help.close, topbar.needs.close, closeDocument],
+    layers: [palette.close, help.close, topbar.needs.close, closeDocument, () => tab === 'board' && board.clearHighlight()],
+    boardReady: (move) => tab === 'board' && (move !== 'open' || board.hasHighlight()),
     modalOpen: () => palette.isOpen() || help.isOpen() || document.querySelector('.dialog-backdrop, .modal-backdrop') !== null,
   });
 

@@ -3,11 +3,12 @@ import { button, el } from '../dom';
 import { t } from '../i18n';
 import { floorLabel, formatTokens, tokensTotal } from '../labels';
 import { readBoardStaleHours, readJson, writeJson } from '../prefs';
+import type { BoardMove } from '../keys';
 import type { Store } from '../store';
 import { relativeTime } from '../time';
 import type { OrderStatus, OrderView } from '../types';
 import { checksBadgeNode, folderBadgeNode } from './badges';
-import { ageBadge, columnsOf, deliveryFloors, filterOrders, neighbours, orderFloors } from './columns';
+import { ageBadge, columnsOf, deliveryFloors, filterOrders, neighbours, neighbourStatus, nextCard, orderFloors } from './columns';
 import { mountOrderDetail, type OrderDetail } from './order-detail';
 import { openNewOrder } from './new-order';
 
@@ -21,6 +22,11 @@ export type BoardHandle = {
   newOrder(): void;
   // Puts the cursor in the text filter.
   focusFilter(): void;
+  // A keyboard move of the highlighted card: step, open its drawer or ask to move it.
+  key(move: BoardMove): void;
+  hasHighlight(): boolean;
+  // Drops the highlight and says whether there was one to drop.
+  clearHighlight(): boolean;
 };
 
 function readFilter(): string | null {
@@ -47,6 +53,8 @@ export function mountBoard(host: HTMLElement, store: Store, api: OfficeApi | nul
   let pendingRender = false;
   let open: OrderDetail | null = null;
   let openId: number | null = null;
+  let highlightId: string | null = null;
+  let visible: string[][] = [];
 
   const closeDetail = (): void => {
     open?.destroy();
@@ -135,6 +143,7 @@ export function mountBoard(host: HTMLElement, store: Store, api: OfficeApi | nul
         arrows,
       ),
     );
+    node.dataset.orderId = String(order.id);
     node.tabIndex = 0;
     node.setAttribute('role', 'button');
     node.addEventListener('click', () => openDetail(order));
@@ -189,6 +198,30 @@ export function mountBoard(host: HTMLElement, store: Store, api: OfficeApi | nul
     filter.value = floor ?? '';
   };
 
+  const paintHighlight = (scroll: boolean): void => {
+    for (const node of columnsHost.querySelectorAll<HTMLElement>('.board-card')) {
+      const on = node.dataset.orderId === highlightId;
+      node.classList.toggle('highlight', on);
+      if (on && scroll) node.scrollIntoView?.({ block: 'nearest' });
+    }
+  };
+
+  const keyMove = (step: BoardMove): void => {
+    if (step === 'open' || step === 'prev' || step === 'next') {
+      const order = highlightId === null ? undefined : store.orders.find((o) => String(o.id) === highlightId);
+      if (!order || !visible.some((ids) => ids.includes(highlightId as string))) return;
+      if (step === 'open') {
+        openDetail(order);
+        return;
+      }
+      const to = neighbourStatus(order.status, step);
+      if (to) void move(order, to);
+      return;
+    }
+    highlightId = nextCard(visible, highlightId, step);
+    paintHighlight(true);
+  };
+
   const render = (): void => {
     if (dragging) {
       pendingRender = true;
@@ -212,6 +245,8 @@ export function mountBoard(host: HTMLElement, store: Store, api: OfficeApi | nul
       api === null ? t(store.replay ? 'board.replay' : 'board.offline') : [total === 0 ? t(query.trim() !== '' && store.orders.length > 0 ? 'board.search.empty' : 'board.empty') : '', add.disabled ? t('board.new.none') : ''].filter((part) => part !== '').join(' ');
     notice.hidden = notice.textContent === '';
     columnsHost.replaceChildren(...grouped.map((group) => column(group.status, group.orders, now)));
+    visible = grouped.map((group) => group.orders.map((order) => String(order.id)));
+    paintHighlight(false);
     if (openId !== null && !store.orders.some((order) => order.id === openId)) closeDetail();
   };
 
@@ -246,6 +281,14 @@ export function mountBoard(host: HTMLElement, store: Store, api: OfficeApi | nul
     canCreate: () => api !== null && deliveryFloors(store.floorList()).length > 0,
     newOrder,
     focusFilter: () => search.focus(),
+    key: keyMove,
+    hasHighlight: () => highlightId !== null && visible.some((ids) => ids.includes(highlightId as string)),
+    clearHighlight() {
+      if (highlightId === null || document.activeElement === search) return false;
+      highlightId = null;
+      paintHighlight(false);
+      return true;
+    },
     show(next, orderSlug) {
       floor = next;
       writeJson(FILTER_KEY, floor);
