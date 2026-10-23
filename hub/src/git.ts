@@ -1,3 +1,5 @@
+import { signalGroup } from './shell';
+
 export type GitResult = { code: number; stdout: string; stderr: string; cut?: boolean };
 
 // maxStdoutBytes stops reading once the output passes it: the process is killed and the result carries the
@@ -15,6 +17,14 @@ function childEnv(): Record<string, string | undefined> {
   for (const name of FOREIGN_GIT_ENV) delete env[name];
   return env;
 }
+
+export type CommandOptions = GitLimits & {
+  cwd?: string;
+  env: Record<string, string | undefined>;
+  input?: string;
+  timeoutMs: number;
+  killGraceMs?: number;
+};
 
 async function readCapped(stream: ReadableStream<Uint8Array>, max: number, stop: () => void): Promise<{ text: string; cut: boolean }> {
   const reader = stream.getReader();
@@ -35,25 +45,37 @@ async function readCapped(stream: ReadableStream<Uint8Array>, max: number, stop:
   }
 }
 
-export const runGit: GitRunner = async (cwd, args, timeoutMs = 60_000, input, limits) => {
+// Runs a command in its own process group and waits for its pipes to close, not only for it to exit: a helper
+// it started (ssh, a hook) holds them too. The timeout and the cap take down the whole group.
+export async function runCommand(argv: string[], opts: CommandOptions): Promise<GitResult> {
   let proc: ReturnType<typeof Bun.spawn>;
   try {
-    proc = Bun.spawn(['git', '-C', cwd, ...args], {
-      stdin: input === undefined ? 'ignore' : new TextEncoder().encode(input),
+    proc = Bun.spawn(argv, {
+      cwd: opts.cwd,
+      stdin: opts.input === undefined ? 'ignore' : new TextEncoder().encode(opts.input),
       stdout: 'pipe',
       stderr: 'pipe',
-      env: childEnv(),
+      detached: true,
+      env: opts.env,
     });
   } catch (error) {
     return { code: -1, stdout: '', stderr: (error as Error).message };
   }
-  const timer = setTimeout(() => proc.kill(), timeoutMs);
-  const max = limits?.maxStdoutBytes;
+  const group = proc.pid;
+  let stopped = false;
+  let killTimer: ReturnType<typeof setTimeout> | null = null;
+  const stop = (): void => {
+    stopped = true;
+    signalGroup(group, 'SIGTERM');
+    killTimer ??= setTimeout(() => signalGroup(group, 'SIGKILL'), opts.killGraceMs ?? 2000);
+  };
+  const timer = setTimeout(stop, opts.timeoutMs);
+  const max = opts.maxStdoutBytes;
   try {
     const [out, stderr, exited] = await Promise.all([
       max === undefined
         ? new Response(proc.stdout as ReadableStream).text().then((text) => ({ text, cut: false }))
-        : readCapped(proc.stdout as ReadableStream<Uint8Array>, max, () => proc.kill()),
+        : readCapped(proc.stdout as ReadableStream<Uint8Array>, max, stop),
       new Response(proc.stderr as ReadableStream).text(),
       proc.exited,
     ]);
@@ -61,8 +83,13 @@ export const runGit: GitRunner = async (cwd, args, timeoutMs = 60_000, input, li
     return { code: exited, stdout: out.text, stderr };
   } finally {
     clearTimeout(timer);
+    if (killTimer) clearTimeout(killTimer);
+    if (stopped) signalGroup(group, 'SIGKILL');
   }
-};
+}
+
+export const runGit: GitRunner = (cwd, args, timeoutMs = 60_000, input, limits) =>
+  runCommand(['git', '-C', cwd, ...args], { env: childEnv(), input, timeoutMs, maxStdoutBytes: limits?.maxStdoutBytes });
 
 export function gitSync(cwd: string, args: string[]): GitResult {
   try {
@@ -70,7 +97,7 @@ export function gitSync(cwd: string, args: string[]): GitResult {
       stdin: 'ignore',
       stdout: 'pipe',
       stderr: 'pipe',
-      env: { ...process.env, GIT_TERMINAL_PROMPT: '0' },
+      env: childEnv(),
     });
     return { code: r.exitCode ?? -1, stdout: r.stdout.toString(), stderr: r.stderr.toString() };
   } catch (error) {

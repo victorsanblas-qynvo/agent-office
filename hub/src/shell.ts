@@ -70,7 +70,7 @@ export async function runShell(command: string, opts: ShellOptions): Promise<She
   }
 }
 
-function signalGroup(group: number, signal: NodeJS.Signals): void {
+export function signalGroup(group: number, signal: NodeJS.Signals): void {
   try {
     process.kill(-group, signal);
   } catch {

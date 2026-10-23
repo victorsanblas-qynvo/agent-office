@@ -1,5 +1,5 @@
 import { validBranch } from './config';
-import type { GitLimits, GitResult, GitRunner } from './git';
+import { runCommand, type GitLimits, type GitResult, type GitRunner } from './git';
 
 // The delivery cycle runs git and gh with values that come from the database, the panel or an agent. Nothing
 // here builds a shell line: every function returns a fixed argv after checking each value, so a value can
@@ -145,31 +145,13 @@ export const ghOps = {
 
 export type GhRunner = (cwd: string, args: string[], timeoutMs?: number, input?: string) => Promise<GitResult>;
 
-export const runGh: GhRunner = async (cwd, args, timeoutMs = 60_000, input) => {
-  let proc: ReturnType<typeof Bun.spawn>;
-  try {
-    proc = Bun.spawn(['gh', ...args], {
-      cwd,
-      stdin: input === undefined ? 'ignore' : new TextEncoder().encode(input),
-      stdout: 'pipe',
-      stderr: 'pipe',
-      env: { ...process.env, GH_PROMPT_DISABLED: '1', GIT_TERMINAL_PROMPT: '0', NO_COLOR: '1' },
-    });
-  } catch (error) {
-    return { code: -1, stdout: '', stderr: (error as Error).message };
-  }
-  const timer = setTimeout(() => proc.kill(), timeoutMs);
-  try {
-    const [stdout, stderr, code] = await Promise.all([
-      new Response(proc.stdout as ReadableStream).text(),
-      new Response(proc.stderr as ReadableStream).text(),
-      proc.exited,
-    ]);
-    return { code, stdout, stderr };
-  } finally {
-    clearTimeout(timer);
-  }
-};
+export const runGh: GhRunner = (cwd, args, timeoutMs = 60_000, input) =>
+  runCommand(['gh', ...args], {
+    cwd,
+    env: { ...process.env, GH_PROMPT_DISABLED: '1', GIT_TERMINAL_PROMPT: '0', NO_COLOR: '1' },
+    input,
+    timeoutMs,
+  });
 
 // Runs a constructor from this module; a value the constructor refuses comes back as a failed result.
 export async function run(runner: GitRunner, cwd: string, build: () => string[], timeoutMs?: number, input?: string, limits?: GitLimits): Promise<GitResult> {
