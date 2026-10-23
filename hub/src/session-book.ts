@@ -178,6 +178,14 @@ export class SessionBook {
     this.opts.sql.upsertAgent.run(a.key, a.sessionId, a.parentKey, a.name, a.role, a.floor, a.team, a.startedAt, a.updatedAt, a.endedAt);
   }
 
+  private toolSince(agent: AgentRuntime): number | null {
+    let since: number | null = null;
+    for (const tool of this.sessions.get(agent.sessionId)?.openTools.values() ?? []) {
+      if (tool.agentKey === agent.key && (since === null || tool.since < since)) since = tool.since;
+    }
+    return since;
+  }
+
   view(agent: AgentRuntime, now: number): AgentView {
     let state = agent.state;
     let detail = agent.detail;
@@ -217,6 +225,7 @@ export class SessionBook {
       tokens: this.opts.tokens(agent.key),
       waiting: agent.waiting,
       stalledSince: agent.stalledSince,
+      toolSince: this.toolSince(agent),
       context: agent.context,
     };
   }

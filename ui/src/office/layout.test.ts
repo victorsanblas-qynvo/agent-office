@@ -29,6 +29,7 @@ function agent(key: string, roleKind: AgentView['roleKind'], floor: string, pare
     tokens: null,
     waiting: null,
     stalledSince: null,
+    toolSince: null,
     context: null,
   };
 }
