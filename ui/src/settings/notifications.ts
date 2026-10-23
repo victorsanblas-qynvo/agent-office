@@ -2,7 +2,7 @@ import { button, el } from '../dom';
 import { t, type MessageKey } from '../i18n';
 import { NOTIFY_EVENTS, notificationsSupported, type Notifier } from '../notify';
 import { FINISHED_MODES, readFinishedMode, writeFinishedMode, type FinishedMode } from '../panel/finished';
-import { HUNG_OPTIONS, readHungMinutes, writeHungMinutes } from '../prefs';
+import { HUNG_OPTIONS, inQuietHours, isClock, readHungMinutes, readQuietHours, writeHungMinutes, writeQuietHours } from '../prefs';
 import { toggleRow } from './settings';
 
 const HOLD_EVENTS: ReadonlySet<string> = new Set(['permission', 'question']);
@@ -43,6 +43,46 @@ export function mountNotifySection(notifier: Notifier): HTMLElement {
     'setting-row',
     el('span', 'setting-text', el('span', 'setting-label', t('settings.notifications.hung.label')), el('span', 'setting-hint muted', t('settings.notifications.hung.hint'))),
     hungAfter,
+  );
+
+  const quiet = readQuietHours();
+  const quietOn = toggleRow(t('settings.notifications.quiet.enable'), '');
+  const quietNow = quietOn.root.querySelector('.switch-hint');
+  quietOn.input.checked = quiet.enabled;
+  const clockInput = (label: string, value: string): HTMLInputElement => {
+    const input = el('input', 'setting-number');
+    input.type = 'time';
+    input.value = value;
+    input.setAttribute('aria-label', label);
+    return input;
+  };
+  const quietFrom = clockInput(t('settings.notifications.quiet.from'), quiet.from);
+  const quietTo = clockInput(t('settings.notifications.quiet.to'), quiet.to);
+  const quietPermissions = toggleRow(t('settings.notifications.quiet.permissions'), t('settings.notifications.quiet.permissionsHint'));
+  quietPermissions.input.checked = quiet.allowPermissions;
+  const syncQuiet = (): void => {
+    quietFrom.disabled = !quietOn.input.checked;
+    quietTo.disabled = !quietOn.input.checked;
+    quietPermissions.input.disabled = !quietOn.input.checked;
+    if (quietNow) quietNow.textContent = inQuietHours(readQuietHours(), new Date()) ? t('settings.notifications.quiet.now') : '';
+  };
+  const saveQuiet = (): void => {
+    const current = readQuietHours();
+    writeQuietHours({
+      enabled: quietOn.input.checked,
+      from: isClock(quietFrom.value) ? quietFrom.value : current.from,
+      to: isClock(quietTo.value) ? quietTo.value : current.to,
+      allowPermissions: quietPermissions.input.checked,
+    });
+    syncQuiet();
+  };
+  for (const control of [quietOn.input, quietFrom, quietTo, quietPermissions.input]) control.addEventListener('change', saveQuiet);
+  syncQuiet();
+  const quietRow = el(
+    'label',
+    'setting-row',
+    el('span', 'setting-text', el('span', 'setting-label', t('settings.notifications.quiet.range'))),
+    el('span', 'setting-range-pair', quietFrom, quietTo),
   );
 
   const events = NOTIFY_EVENTS.map((event) => {
@@ -90,6 +130,9 @@ export function mountNotifySection(notifier: Notifier): HTMLElement {
     general.root,
     finishedRow,
     hungRow,
+    quietOn.root,
+    quietRow,
+    quietPermissions.root,
     el('div', 'notify-events', ...events.map((row) => row.root)),
     el('div', 'notify-actions', test),
   );

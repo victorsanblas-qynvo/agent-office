@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
 import { applyLang, t } from '../src/i18n/index';
+import { QUIET_KEY } from '../src/prefs';
 import { NOTIFY_EVENTS, Notifier, SEEN_LIMIT, type NotifyPrefs } from '../src/notify';
 import type { Store } from '../src/store';
 import type { AgentView, DocumentView, QuestionView, ServerMessage, Snapshot } from '../src/types';
@@ -116,6 +117,47 @@ describe('desktop notifier', () => {
     notifier.observe(snapshot({ questions: [question('q1')] }));
     expect(FakeNotification.created).toHaveLength(1);
     expect(FakeNotification.created[0]?.options.tag).toBe('question:q1');
+  });
+
+  describe('quiet hours', () => {
+    const at = (hour: number): Date => new Date(2026, 9, 23, hour, 0);
+    const quiet = (allowPermissions: boolean): void => {
+      storage.set(QUIET_KEY, JSON.stringify({ enabled: true, from: '22:00', to: '08:00', allowPermissions }));
+    };
+    const blocked = { id: 7, ts: 1, fromKey: DEV, toName: 'lead', toKey: LEAD, text: 'BLOQUEADO: falta la key — necesito la key de backend', floor: 'mobile' };
+
+    test('block a normal notice and let it through outside the window', () => {
+      quiet(true);
+      const night = new Notifier(fakeStore(selected), () => at(23));
+      night.save(allOn());
+      night.observe({ type: 'message', data: blocked });
+      expect(FakeNotification.created).toHaveLength(0);
+      const day = new Notifier(fakeStore(selected), () => at(12));
+      day.save(allOn());
+      day.observe({ type: 'message', data: { ...blocked, id: 8 } });
+      expect(FakeNotification.created).toHaveLength(1);
+    });
+
+    test('let a permission through when the exception is on, block it when off', () => {
+      quiet(true);
+      const allowed = new Notifier(fakeStore(selected), () => at(23));
+      allowed.save(allOn());
+      allowed.observe({ type: 'question', data: question('p1', { kind: 'permission' }) });
+      expect(FakeNotification.created).toHaveLength(1);
+      quiet(false);
+      const silent = new Notifier(fakeStore(selected), () => at(23));
+      silent.save(allOn());
+      silent.observe({ type: 'question', data: question('p2', { kind: 'permission' }) });
+      expect(FakeNotification.created).toHaveLength(1);
+    });
+
+    test('a plain question is still quiet while a permission is allowed', () => {
+      quiet(true);
+      const night = new Notifier(fakeStore(selected), () => at(23));
+      night.save(allOn());
+      night.observe({ type: 'question', data: question('q9') });
+      expect(FakeNotification.created).toHaveLength(0);
+    });
   });
 
   test('messages in the snapshot are history and do not notify', () => {

@@ -760,6 +760,13 @@ export const en: Messages = {
   'settings.notifications.hung.hint': 'An agent that stays this long on the same tool without a sign of life joins "Needs you".',
   'settings.notifications.hung.minutes': '{n} min',
   'settings.notifications.hung.off': 'Off',
+  'settings.notifications.quiet.enable': 'Quiet hours',
+  'settings.notifications.quiet.range': 'From / until',
+  'settings.notifications.quiet.from': 'From',
+  'settings.notifications.quiet.to': 'Until',
+  'settings.notifications.quiet.permissions': 'Allow permissions during quiet hours',
+  'settings.notifications.quiet.permissionsHint': 'Permissions block an agent: they keep notifying and sounding during quiet hours.',
+  'settings.notifications.quiet.now': 'Quiet right now',
   'settings.section.delivery': 'Code delivery',
   'settings.section.hint.delivery':
     'How orders are checked, how long their folders last and which checkpoints are kept. They apply from the next order.',
