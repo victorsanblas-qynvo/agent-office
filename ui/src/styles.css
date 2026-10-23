@@ -1228,6 +1228,12 @@ input.setting-number {
   text-align: right;
 }
 
+.setting-range-pair {
+  display: flex;
+  flex: none;
+  gap: 8px;
+}
+
 input.setting-range {
   flex: none;
   width: 180px;

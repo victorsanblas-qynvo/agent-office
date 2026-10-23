@@ -760,6 +760,13 @@ export const es = {
   'settings.notifications.hung.hint': 'Un agente que lleva tanto con la misma herramienta sin dar señales entra en «Te necesitan».',
   'settings.notifications.hung.minutes': '{n} min',
   'settings.notifications.hung.off': 'Desactivado',
+  'settings.notifications.quiet.enable': 'Horas de silencio',
+  'settings.notifications.quiet.range': 'De las / hasta las',
+  'settings.notifications.quiet.from': 'Desde las',
+  'settings.notifications.quiet.to': 'Hasta las',
+  'settings.notifications.quiet.permissions': 'Permitir permisos en silencio',
+  'settings.notifications.quiet.permissionsHint': 'Los permisos bloquean a un agente: siguen avisando y sonando en las horas de silencio.',
+  'settings.notifications.quiet.now': 'Ahora en silencio',
   'settings.section.delivery': 'Entrega de código',
   'settings.section.hint.delivery':
     'Cómo se comprueban los encargos, cuánto duran sus carpetas y qué puntos de control se guardan. Valen desde el siguiente encargo.',

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
 import { MERGE_MS, MIN_GAP_MS, SOUND_EVENTS, SOUND_KEY, SoundDesk, WebAudioEngine, clampVolume, notesOf, readSoundPrefs, testSequence, type Note, type ToneEngine } from '../src/sound';
 import type { AgentView, MessageView, OrderView, QuestionView, ServerMessage, Snapshot } from '../src/types';
+import { QUIET_KEY } from '../src/prefs';
 import { agent, order, question } from './fixtures';
 
 const storage = new Map<string, string>();
@@ -173,6 +174,41 @@ describe('what makes a sound', () => {
     dev.observe(message('HECHO: listo'));
     dev.observe(message(null));
     expect(engine.played).toHaveLength(2);
+  });
+});
+
+describe('quiet hours', () => {
+  const night = new Date(2026, 9, 23, 23, 0).getTime();
+  const quiet = (allowPermissions: boolean): void => {
+    storage.set(QUIET_KEY, JSON.stringify({ enabled: true, from: '22:00', to: '08:00', allowPermissions }));
+  };
+
+  test('silence a normal sound and let it play at noon', () => {
+    quiet(true);
+    now = night;
+    desk.observe(message('BLOQUEADO: falta la clave'));
+    expect(engine.played).toHaveLength(0);
+    now = new Date(2026, 9, 23, 12, 0).getTime();
+    desk.observe(message('BLOQUEADO: falta la clave'));
+    expect(engine.played).toHaveLength(1);
+  });
+
+  test('a permission sounds with the exception on and is silent with it off', () => {
+    quiet(true);
+    now = night;
+    desk.observe({ type: 'question', data: question('p1', LEAD, 1, { kind: 'permission' }) });
+    expect(engine.played).toHaveLength(1);
+    quiet(false);
+    now += MERGE_MS + 1;
+    desk.observe({ type: 'question', data: question('p2', LEAD, 2, { kind: 'permission' }) });
+    expect(engine.played).toHaveLength(1);
+  });
+
+  test('a plain question is silent even with the exception on', () => {
+    quiet(true);
+    now = night;
+    desk.observe({ type: 'question', data: question('q1', LEAD, 1) });
+    expect(engine.played).toHaveLength(0);
   });
 });
 

@@ -1,5 +1,5 @@
 import { isBlockedMessage, leadDeliveryFloor, type DeliveryContext } from './deliveries';
-import { readJson, writeJson } from './prefs';
+import { quietSilences, readJson, readQuietHours, writeJson } from './prefs';
 import type { QuestionView, ServerMessage } from './types';
 
 export type SoundEvent = 'question' | 'delivery' | 'stalled' | 'error';
@@ -217,7 +217,7 @@ export class SoundDesk {
 
   private question(question: QuestionView): void {
     if (!this.remember(`question:${question.id}`)) return;
-    this.emit('question');
+    this.emit('question', question.kind === 'permission');
   }
 
   private remember(tag: string): boolean {
@@ -227,9 +227,10 @@ export class SoundDesk {
     return true;
   }
 
-  private emit(event: SoundEvent): void {
+  private emit(event: SoundEvent, permission = false): void {
     if (!this.prefs.enabled || !this.prefs.events[event]) return;
     const now = this.clock();
+    if (quietSilences(readQuietHours(), permission, new Date(now))) return;
     if (now - this.lastAt < MIN_GAP_MS) return;
     if (now - (this.lastOf.get(event) ?? Number.NEGATIVE_INFINITY) < MERGE_MS) return;
     this.lastAt = now;

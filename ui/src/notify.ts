@@ -3,6 +3,7 @@ import { plural, t } from './i18n';
 import { agentName, floorLabel } from './labels';
 import { openDocument } from './panel/deliverables';
 import type { Store } from './store';
+import { quietSilences, readQuietHours } from './prefs';
 import { forecastText } from './usage-card';
 import { finishedNotice, readFinishedMode, wantsDesktop } from './panel/finished';
 import type { AgentView, DocumentView, FinishedView, GuardAlert, MessageView, QuestionView, ServerMessage, UsageView, UsageWindow } from './types';
@@ -57,7 +58,10 @@ export class Notifier {
   // Where the notification of a finished order takes the user when it is clicked.
   openFinished: ((view: FinishedView) => void) | null = null;
 
-  constructor(private readonly store: Store) {}
+  constructor(
+    private readonly store: Store,
+    private readonly now: () => Date = () => new Date(),
+  ) {}
 
   get preferences(): NotifyPrefs {
     return { enabled: this.prefs.enabled, events: { ...this.prefs.events } };
@@ -239,6 +243,7 @@ export class Notifier {
     if (this.seen.has(tag)) return;
     this.seen.add(tag);
     if (this.seen.size > SEEN_LIMIT) this.seen.delete(this.seen.values().next().value as string);
+    if (quietSilences(readQuietHours(), event === 'permission', this.now())) return;
     // The panel in front already shows it.
     if (document.visibilityState === 'visible' && document.hasFocus()) return;
     let notification: Notification;
