@@ -205,12 +205,18 @@ export function splitRows(hunk: DiffHunk): Array<{ left: DiffLine | null; right:
   const out: Array<{ left: DiffLine | null; right: DiffLine | null }> = [];
   let dels: DiffLine[] = [];
   let adds: DiffLine[] = [];
+  let delNotes: DiffLine[] = [];
+  let addNotes: DiffLine[] = [];
   let prev: DiffLineKind = 'context';
   const flush = () => {
     const n = Math.max(dels.length, adds.length);
     for (let i = 0; i < n; i++) out.push({ left: dels[i] ?? null, right: adds[i] ?? null });
+    const notes = Math.max(delNotes.length, addNotes.length);
+    for (let i = 0; i < notes; i++) out.push({ left: delNotes[i] ?? null, right: addNotes[i] ?? null });
     dels = [];
     adds = [];
+    delNotes = [];
+    addNotes = [];
   };
   for (const line of hunk.lines) {
     if (line.kind === 'del') {
@@ -218,6 +224,9 @@ export function splitRows(hunk: DiffHunk): Array<{ left: DiffLine | null; right:
       dels.push(line);
     } else if (line.kind === 'add') {
       adds.push(line);
+    } else if (line.kind === 'note' && (dels.length > 0 || adds.length > 0)) {
+      if (prev === 'add') addNotes.push(line);
+      else delNotes.push(line);
     } else {
       flush();
       if (line.kind === 'context') out.push({ left: line, right: line });

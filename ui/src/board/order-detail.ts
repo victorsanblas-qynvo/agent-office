@@ -6,7 +6,7 @@ import type { Store } from '../store';
 import { clockTime, relativeTime } from '../time';
 import type { CheckRunView, CheckView, CheckpointView, OrderDiff, OrderDiffFile, OrderView, SkippedFile } from '../types';
 import { checksBadgeNode, folderBadgeNode } from './badges';
-import { diffSummary, patchRows, statRows } from './diff-model';
+import { diffStale, diffSummary, latestSha, orderSignature, patchRows, statRows } from './diff-model';
 import { parseDiff } from './diff-parse';
 import { openPrDraft } from './pr-draft';
 
@@ -99,6 +99,8 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
   let diffFile: OrderDiffFile | null = null;
   let diffFileError = '';
   let diffFileLoading = false;
+  let patchCache: { file: OrderDiffFile; lang: string; node: HTMLElement } | null = null;
+  let lastSignature = '';
 
   const order = (): OrderView | undefined => store.orders.find((o) => o.id === orderId);
 
@@ -254,19 +256,27 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
     if (diffFileError !== '') return el('p', 'order-warning', t('board.diff.loadFailed', { error: diffFileError }));
     if (!diffFile) return null;
     if (diffFile.binary) return el('p', 'muted', t('board.diff.patchBinary'));
+    if (patchCache && patchCache.file === diffFile && patchCache.lang === currentLang()) return patchCache.node;
     const rows = parseDiff(diffFile.patch).flatMap(patchRows);
     const lines = rows.map((row) =>
       el('div', row.className, el('span', 'diff-no', row.oldNo), el('span', 'diff-no', row.newNo), el('span', 'diff-marker', row.marker), el('span', 'diff-text', row.text)),
     );
-    return el(
+    const node = el(
       'div',
       'diff-patch-wrap',
       diffFile.truncated ? el('p', 'order-warning', t('board.diff.patchTruncated')) : null,
       lines.length === 0 ? el('p', 'muted', t('board.diff.patchEmpty')) : el('div', 'diff-patch', ...lines),
     );
+    patchCache = { file: diffFile, lang: currentLang(), node };
+    return node;
   };
 
-  const diffTab = (): HTMLElement => {
+  const newestSha = (current: OrderView): string | null => {
+    const live = store.checkRuns.get(orderId);
+    return latestSha(current, live ? [live, ...runs] : runs, points);
+  };
+
+  const diffTab = (current: OrderView): HTMLElement => {
     const reload = button(t('board.diff.reload'));
     reload.disabled = diffLoading || !api;
     reload.addEventListener('click', () => void loadDiff());
@@ -281,14 +291,38 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
       pick.addEventListener('click', () => void loadDiffFile(row.path));
       return el('li', '', pick);
     });
+    const stale = diffStale(diff, current, newestSha(current)) ? button(t('board.diff.stale'), 'order-warning') : null;
+    stale?.addEventListener('click', () => void loadDiff());
     return el(
       'div',
       'order-tab',
       el('div', 'diff-head', el('b', '', diffSummary(diff)), reload),
+      stale,
       diff.truncated ? el('p', 'order-warning', t('board.diff.truncated')) : null,
       rows.length === 0 ? el('p', 'muted', t('board.diff.none')) : el('ul', 'diff-files', ...rows),
       patchView(),
     );
+  };
+
+  const signature = (current: OrderView): string => {
+    const floor = store.floorBySlug(current.floor);
+    return orderSignature(current, [
+      currentLang(),
+      tab,
+      floor ? floorLabel(floor) : current.floor,
+      loaded,
+      error,
+      store.checkRuns.get(orderId),
+      runs,
+      points,
+      skipped,
+      diff?.head ?? null,
+      diffError,
+      diffLoading,
+      diffPath,
+      diffFileLoading,
+      diffFileError,
+    ]);
   };
 
   function render(): void {
@@ -298,12 +332,14 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
       return;
     }
     const now = store.now();
+    const hasFolder = current.branch !== null || current.worktree !== null;
+    if (tab === 'diff' && !hasFolder) tab = 'checks';
+    lastSignature = signature(current);
     const floor = store.floorBySlug(current.floor);
     const close = button('×', 'order-close');
     close.setAttribute('aria-label', t('board.drawer.close'));
     close.addEventListener('click', onClose);
     const tabs = el('div', 'order-tabs');
-    const hasFolder = current.branch !== null || current.worktree !== null;
     for (const name of hasFolder ? (['checks', 'points', 'diff'] as const) : (['checks', 'points'] as const)) {
       const tabButton = button(t(`board.tab.${name}`), `order-tab-button${tab === name ? ' active' : ''}`);
       tabButton.setAttribute('aria-selected', String(tab === name));
@@ -334,14 +370,15 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
       current.description ? el('p', 'order-description', current.description) : null,
       actions(current),
       tabs,
-      tab === 'checks' ? checksTab(current, now) : tab === 'points' ? pointsTab(now) : diffTab(),
+      tab === 'checks' ? checksTab(current, now) : tab === 'points' ? pointsTab(now) : diffTab(current),
     ];
     panel.replaceChildren(...parts.filter((part): part is Node => part !== null));
   }
 
   const unwatch = store.watch(['orders', 'checks', 'lang'], () => {
-    if (!order()) return;
-    render();
+    const current = order();
+    if (!current) return;
+    if (signature(current) !== lastSignature) render();
     if (store.checkRuns.has(orderId) && api && !runs.some((r) => r.id === store.checkRuns.get(orderId)?.id)) void reload();
   });
   const unwatchPoints = store.watch(['checks'], () => {

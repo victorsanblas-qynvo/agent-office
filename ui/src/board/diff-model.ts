@@ -1,5 +1,5 @@
 import { plural, t } from '../i18n';
-import type { DiffFileStat, OrderDiff } from '../types';
+import type { CheckRunView, CheckpointView, DiffFileStat, OrderDiff, OrderView } from '../types';
 import type { FileDiff } from './diff-parse';
 
 export type StatRow = { path: string; label: string; adds: string; dels: string; binary: boolean; className: string };
@@ -38,4 +38,37 @@ export function patchRows(file: FileDiff): PatchRow[] {
     }
   }
   return rows;
+}
+
+export function latestSha(order: OrderView, runs: CheckRunView[], points: CheckpointView[]): string | null {
+  let sha = order.checks?.sha ?? null;
+  let at = -1;
+  for (const run of runs) if (run.startedAt > at) [sha, at] = [run.sha, run.startedAt];
+  for (const point of points) if (point.createdAt >= at) [sha, at] = [point.sha, point.createdAt];
+  return sha;
+}
+
+export function diffStale(diff: OrderDiff, order: OrderView, newest: string | null): boolean {
+  const sha = newest ?? order.checks?.sha ?? null;
+  if (!sha || !diff.head) return false;
+  return !(sha.startsWith(diff.head) || diff.head.startsWith(sha));
+}
+
+export function orderSignature(order: OrderView, extra: unknown): string {
+  return JSON.stringify([
+    order.id,
+    order.title,
+    order.description,
+    order.status,
+    order.floor,
+    order.cycle,
+    order.lead,
+    order.branch,
+    order.base,
+    order.baseSha,
+    order.worktree,
+    order.checks,
+    order.planSlug,
+    extra,
+  ]);
 }

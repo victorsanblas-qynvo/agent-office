@@ -225,4 +225,13 @@ describe('splitRows', () => {
     expect(rows[1]!.left).toBeNull();
     expect(rows[1]!.right!.kind).toBe('note');
   });
+
+  test('a last-line change with no-newline notes still pairs and notes follow their side', () => {
+    const rows = splitRows(hunkOf('-a\n\\ No newline at end of file\n+b\n\\ No newline at end of file\n'));
+    expect(rows).toHaveLength(2);
+    expect(rows[0]!.left!.text).toBe('a');
+    expect(rows[0]!.right!.text).toBe('b');
+    expect(rows[1]!.left!.kind).toBe('note');
+    expect(rows[1]!.right!.kind).toBe('note');
+  });
 });

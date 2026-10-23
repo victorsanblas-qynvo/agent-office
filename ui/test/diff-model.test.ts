@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
-import { diffSummary, patchRows, statRows } from '../src/board/diff-model';
+import { diffStale, diffSummary, latestSha, orderSignature, patchRows, statRows } from '../src/board/diff-model';
 import { parseDiff } from '../src/board/diff-parse';
 import { applyLang } from '../src/i18n/index';
-import type { OrderDiff } from '../src/types';
+import type { CheckRunView, OrderDiff } from '../src/types';
+import { order } from './fixtures';
 
 beforeEach(() => applyLang('es'));
 
@@ -61,5 +62,45 @@ describe('patchRows', () => {
 
   test('a file without hunks has no rows', () => {
     expect(patchRows(parseDiff('diff --git a/x.bin b/x.bin\nBinary files a/x.bin and b/x.bin differ\n')[0]!)).toEqual([]);
+  });
+});
+
+describe('orderSignature', () => {
+  const mine = order('mine', { id: 1, branch: 'feat' });
+
+  test('ignores other orders, clock and bookkeeping fields', () => {
+    const base = orderSignature(mine, ['es']);
+    expect(orderSignature({ ...mine, updatedAt: 9999, lastActivity: 5 }, ['es'])).toBe(base);
+  });
+
+  test('changes with this order status, checks or extra state', () => {
+    const base = orderSignature(mine, ['es']);
+    expect(orderSignature({ ...mine, status: 'hecho' }, ['es'])).not.toBe(base);
+    const checks = { status: 'running' as const, passed: 0, total: 2, sha: 'abc', touched: [], forced: false };
+    expect(orderSignature({ ...mine, checks }, ['es'])).not.toBe(base);
+    expect(orderSignature(mine, ['en'])).not.toBe(base);
+  });
+});
+
+describe('diffStale', () => {
+  const o = order('o', { branch: 'feat' });
+
+  test('same sha, prefix either way and no known sha are fresh', () => {
+    expect(diffStale(diff, o, 'bbbbbbb')).toBe(false);
+    expect(diffStale(diff, o, 'bbbbbbbcccc')).toBe(false);
+    expect(diffStale({ ...diff, head: 'bbbbbbbcccc' }, o, 'bbbbbbb')).toBe(false);
+    expect(diffStale(diff, o, null)).toBe(false);
+  });
+
+  test('a different newest sha is stale', () => {
+    expect(diffStale(diff, o, 'ddddddd')).toBe(true);
+  });
+
+  test('latestSha picks the newest of runs and checkpoints', () => {
+    const run: CheckRunView = { id: 1, orderId: 1, sha: 'r1', trigger: 'panel', status: 'passed', startedAt: 10, endedAt: 11, checks: [] };
+    const point = { id: 1, sha: 'p1', reason: 'x', label: 'x', createdAt: 20 };
+    expect(latestSha(o, [run], [point])).toBe('p1');
+    expect(latestSha(o, [{ ...run, startedAt: 30 }], [point])).toBe('r1');
+    expect(latestSha(o, [], [])).toBeNull();
   });
 });
