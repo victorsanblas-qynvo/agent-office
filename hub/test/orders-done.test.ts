@@ -5,9 +5,10 @@ import { DEV, LEAD, boardOrders, checksConfig, deliveryRig, done, leadMessages, 
 import { ev, git } from './helpers';
 
 let rig: Rig | undefined;
-afterEach(() => {
-  rig?.h.cleanup();
+afterEach(async () => {
+  const closing = rig?.h.close();
   rig = undefined;
+  await closing;
 });
 
 const finished = (r: Rig): FinishedView[] => r.h.office.snapshot().finished;

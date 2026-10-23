@@ -47,6 +47,7 @@ export type Harness = {
   root: string;
   workspace: string;
   cleanup: () => void;
+  close: () => Promise<void>;
 };
 
 export function testConfig(overrides: Partial<OfficeConfig> = {}): OfficeConfig {
@@ -98,6 +99,11 @@ export function harness(
     workspace,
     cleanup: () => {
       office.stop();
+      cleanup();
+    },
+    close: async () => {
+      office.stop();
+      await office.idle();
       cleanup();
     },
   };

@@ -44,7 +44,7 @@ export type RigOptions = {
 };
 
 // A managed floor over a real clone with an origin, a lead and a director that can be written to, and the
-// messages the hub sends them recorded in sent.
+// messages the hub sends them recorded in sent. The floor runs no setup in a new folder unless a test gives it one.
 export function deliveryRig(options: RigOptions = {}): Rig {
   const sent: Sent[] = [];
   const h = harness({
@@ -58,7 +58,7 @@ export function deliveryRig(options: RigOptions = {}): Rig {
   });
   const { seed, origin, repo } = originAndClone(h.root, 'mobile');
   const real = realPath(repo);
-  h.config.floors.mobile = { path: real, stack: options.stack ?? 'generic', managed: true, baseBranch: 'develop', ...(options.delivery === false ? {} : { delivery: true }) };
+  h.config.floors.mobile = { path: real, stack: options.stack ?? 'generic', managed: true, baseBranch: 'develop', setup: null, ...(options.delivery === false ? {} : { delivery: true }) };
   h.config.departments = { redaccion: true, mantenimiento: false };
   options.configure?.(h.config, real);
   const docs = realPath(join(h.root, 'docs'));
