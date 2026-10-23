@@ -39,6 +39,8 @@ describe('board routes', () => {
       ['POST', '/api/board/orders/1/checks'],
       ['DELETE', '/api/board/orders/1/checks'],
       ['GET', '/api/board/orders/1/checkpoints'],
+      ['GET', '/api/board/orders/1/diff'],
+      ['GET', '/api/board/orders/1/diff/file?path=a.txt'],
       ['POST', '/api/alerts/1/seen'],
       ['GET', '/api/worktrees'],
       ['POST', '/api/worktrees/prune'],

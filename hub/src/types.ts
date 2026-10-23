@@ -265,6 +265,9 @@ export type HubTextParams = {
   'hub.api.worktreeDirty': undefined;
   'hub.api.branchUnmerged': undefined;
   'hub.api.worktreeFailed': undefined;
+  'hub.api.orderNoBranch': undefined;
+  'hub.api.diffPath': undefined;
+  'hub.api.diffFailed': undefined;
 
   'hub.layouts.unavailable': undefined;
   'hub.layouts.invalid': undefined;
@@ -767,6 +770,12 @@ export type OrderView = {
 export type CheckpointView = { id: number; sha: string; reason: string; label: string; createdAt: number };
 
 export type SkippedFile = { path: string; size: number; mtime: number };
+
+export type DiffFileStat = { path: string; oldPath: string | null; adds: number | null; dels: number | null; binary: boolean };
+
+export type OrderDiff = { base: string; head: string; files: DiffFileStat[]; totals: { files: number; adds: number; dels: number }; truncated: boolean };
+
+export type OrderDiffFile = { path: string; patch: string; truncated: boolean; binary: boolean };
 
 export type WorktreeView = {
   orderId: number;

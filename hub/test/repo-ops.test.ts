@@ -9,6 +9,7 @@ import {
   gitOps,
   numstatPath,
   orderBranch,
+  parseNumstat,
   repoPath,
   run,
   runGh,
@@ -104,6 +105,55 @@ describe('git argv constructors', () => {
     expect(calls).toEqual([]);
     expect((await run(runner, '/r', () => gitOps.head())).code).toBe(0);
     expect(calls).toEqual([['rev-parse', 'HEAD']]);
+  });
+
+  test('the diff of an order compares from the merge base and reads every path literally', () => {
+    const base = 'a'.repeat(40);
+    const head = 'b'.repeat(40);
+    expect(gitOps.diffNumstat(base, head)).toEqual(['diff', '--no-color', '--no-ext-diff', '-z', '--numstat', '--find-renames', `${base}...${head}`, '--']);
+    expect(gitOps.diffFile(base, head, 'lib/a.dart')).toEqual(['diff', '--no-color', '--no-ext-diff', '--find-renames', `${base}...${head}`, '--', ':(literal)lib/a.dart']);
+    expect(gitOps.diffFile(base, head, 'lib/b.dart', 'lib/a.dart').slice(-2)).toEqual([':(literal)lib/a.dart', ':(literal)lib/b.dart']);
+    expect(gitOps.diffFile(base, head, ':!x').at(-1)).toBe(':(literal):!x');
+    expect(() => gitOps.diffNumstat('develop', head)).toThrow(RepoOpError);
+    expect(() => gitOps.diffNumstat(base, '--output=x')).toThrow(RepoOpError);
+    expect(() => gitOps.diffFile(base, head, '../x')).toThrow(RepoOpError);
+    expect(() => gitOps.diffFile(base, head, 'a', '/etc/passwd')).toThrow(RepoOpError);
+  });
+
+  test('parseNumstat reads counts, renames and binaries of a -z numstat', () => {
+    const stdout = ['3\t1\tlib/a.dart', '-\t-\tlogo.png', '0\t0\t', 'old name.txt', 'new\tname.txt', '12\t0\tb.txt', ''].join('\0');
+    expect(parseNumstat(stdout)).toEqual([
+      { path: 'lib/a.dart', oldPath: null, adds: 3, dels: 1, binary: false },
+      { path: 'logo.png', oldPath: null, adds: null, dels: null, binary: true },
+      { path: 'new\tname.txt', oldPath: 'old name.txt', adds: 0, dels: 0, binary: false },
+      { path: 'b.txt', oldPath: null, adds: 12, dels: 0, binary: false },
+    ]);
+    expect(parseNumstat('')).toEqual([]);
+  });
+
+  test('a real numstat of a branch shows the rename and the binary file', async () => {
+    const root = temp();
+    const repo = makeRepo(root, 'repo', { 'old.txt': 'uno\ndos\ntres\ncuatro\n', 'keep.txt': 'a\n' });
+    git(repo, 'init', '-q', '-b', 'develop');
+    git(repo, 'add', '.');
+    git(repo, 'commit', '-q', '-m', 'inicio');
+    const base = git(repo, 'rev-parse', 'HEAD');
+    git(repo, 'mv', 'old.txt', 'new.txt');
+    writeFileSync(join(repo, 'keep.txt'), 'a\nb\n');
+    writeFileSync(join(repo, 'logo.bin'), Buffer.from([0, 1, 2, 0, 255]));
+    git(repo, 'add', '-A');
+    git(repo, 'commit', '-q', '-m', 'cambios');
+    const head = git(repo, 'rev-parse', 'HEAD');
+    const numstat = await run(runGit, repo, () => gitOps.diffNumstat(base, head));
+    expect(numstat.code).toBe(0);
+    expect(parseNumstat(numstat.stdout).sort((a, b) => a.path.localeCompare(b.path))).toEqual([
+      { path: 'keep.txt', oldPath: null, adds: 1, dels: 0, binary: false },
+      { path: 'logo.bin', oldPath: null, adds: null, dels: null, binary: true },
+      { path: 'new.txt', oldPath: 'old.txt', adds: 0, dels: 0, binary: false },
+    ]);
+    const patch = await run(runGit, repo, () => gitOps.diffFile(base, head, 'new.txt', 'old.txt'));
+    expect(patch.stdout).toContain('rename from old.txt');
+    expect(patch.stdout).toContain('rename to new.txt');
   });
 
   test('zList drops the empty tail of a NUL list', () => {

@@ -93,6 +93,17 @@ export const gitOps = {
   aheadBehind: (base: string, branch: string): string[] => ['rev-list', '--left-right', '--count', `${sha(base)}...${writable(branch)}`],
   isAncestor: (ancestor: string, descendant: string): string[] => ['merge-base', '--is-ancestor', sha(ancestor), ref(descendant, 'rama')],
   diffNames: (baseSha: string, head: string): string[] => ['diff', '--name-only', '-z', sha(baseSha), sha(head), '--'],
+  diffNumstat: (base: string, head: string): string[] => ['diff', '--no-color', '--no-ext-diff', '-z', '--numstat', '--find-renames', `${sha(base)}...${sha(head)}`, '--'],
+  diffFile: (base: string, head: string, path: string, oldPath: string | null = null): string[] => [
+    'diff',
+    '--no-color',
+    '--no-ext-diff',
+    '--find-renames',
+    `${sha(base)}...${sha(head)}`,
+    '--',
+    ...(oldPath !== null && oldPath !== path ? [`:(literal)${repoPath(oldPath)}`] : []),
+    `:(literal)${repoPath(path)}`,
+  ],
   show: (revision: string, path: string): string[] => ['show', `${sha(revision)}:${repoPath(path)}`],
   checkIgnore: (): string[] => ['check-ignore', '-z', '--stdin'],
   logOneLine: (baseSha: string, branch: string, max: number): string[] => [
@@ -154,4 +165,28 @@ export async function run(runner: GitRunner, cwd: string, build: () => string[],
 // NUL-separated names of git -z, without the empty tail.
 export function zList(stdout: string): string[] {
   return stdout.split('\0').filter((name) => name !== '');
+}
+
+export type NumstatEntry = { path: string; oldPath: string | null; adds: number | null; dels: number | null; binary: boolean };
+
+// git diff -z --numstat: "adds\tdels\tpath\0", or "adds\tdels\t\0old\0new\0" for a rename; a binary file counts "-\t-".
+export function parseNumstat(stdout: string): NumstatEntry[] {
+  const parts = stdout.split('\0');
+  const entries: NumstatEntry[] = [];
+  for (let i = 0; i < parts.length; i += 1) {
+    const match = /^(\d+|-)\t(\d+|-)\t(.*)$/s.exec(parts[i] ?? '');
+    if (!match) continue;
+    let path = match[3] ?? '';
+    let oldPath: string | null = null;
+    if (path === '') {
+      oldPath = parts[i + 1] ?? '';
+      path = parts[i + 2] ?? '';
+      i += 2;
+      if (!oldPath || !path) continue;
+    }
+    const adds = match[1] === '-' ? null : Number(match[1]);
+    const dels = match[2] === '-' ? null : Number(match[2]);
+    entries.push({ path, oldPath, adds, dels, binary: adds === null && dels === null });
+  }
+  return entries;
 }
