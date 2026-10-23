@@ -138,6 +138,7 @@ export type HubTextParams = {
   'hub.act.worktreesHeavy': { gb: number; max: number };
   'hub.act.worktreesUnknown': { n: number; slugs: string };
   'hub.act.branchDeleted': { branch: string; sha: string };
+  'hub.act.branchRestored': { branch: string; sha: string };
   'hub.round': { n: number };
   'hub.score': { n: number };
 
@@ -268,6 +269,11 @@ export type HubTextParams = {
   'hub.api.worktreeDirty': undefined;
   'hub.api.branchUnmerged': undefined;
   'hub.api.worktreeFailed': undefined;
+  'hub.api.branchRestoreBad': undefined;
+  'hub.api.branchDeletionNotFound': undefined;
+  'hub.api.branchRestoreExists': undefined;
+  'hub.api.branchCommitGone': undefined;
+  'hub.api.branchRestoreFailed': undefined;
   'hub.api.orderNoBranch': undefined;
   'hub.api.diffPath': undefined;
   'hub.api.diffFailed': undefined;
@@ -827,6 +833,11 @@ export type WorktreeView = {
   pending: boolean;
   kept: boolean;
 };
+
+// Why a deleted branch cannot come back: a branch has that name again, git no longer has the commit, or git did not answer.
+export type DeletedBranchBlock = 'exists' | 'gone' | 'unknown';
+
+export type DeletedBranchView = { floor: string; branch: string; sha: string; at: number; restorable: boolean; reason: DeletedBranchBlock | null };
 
 // What the popup of the end of an order or plan shows; it is a snapshot of the facts when the alert was made.
 export type FinishedView = {

@@ -8,6 +8,7 @@ import type { DocumentStatus, HubText, SettingsView } from '../types';
 import { deliveryEditor, type DeliveryContext } from './floor-delivery';
 import { deliverySwitch } from './floor-delivery-switch';
 import type { FloorDeliveryDraft } from './floor-delivery-model';
+import { deletedBranches, deletedBranchesContext, reloadOpen } from './deleted-branches';
 import { mountDiagnosticsPanel } from './diagnostics';
 import { mountWorktreesPanel } from './worktrees-panel';
 
@@ -42,6 +43,7 @@ export function mountProjects(host: HTMLElement, store: Store, api: OfficeApi | 
   mountWorktreesPanel(host, store, client);
   mountDiagnosticsPanel(host, client);
   const delivery: DeliveryContext = { store, api: client, drafts: new Map<string, FloorDeliveryDraft>(), open: new Set<string>() };
+  const branches = deletedBranchesContext(store, client);
 
   let busy = false;
   let deleting: string | null = null;
@@ -93,6 +95,7 @@ export function mountProjects(host: HTMLElement, store: Store, api: OfficeApi | 
       header,
       deliverySwitch(floor, delivery),
       floor.delivery ? deliveryEditor(floor, delivery) : el('p', 'setting-hint muted delivery-off', t('settings.delivery.off')),
+      deletedBranches(floor.slug, branches),
     );
   };
 
@@ -175,4 +178,10 @@ export function mountProjects(host: HTMLElement, store: Store, api: OfficeApi | 
 
   store.watch(['lang'], relabel);
   store.watch(['settings', 'documents'], renderList);
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  store.subscribe((topics) => {
+    if (!topics.has('worktrees')) return;
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => reloadOpen(branches), 400);
+  });
 }

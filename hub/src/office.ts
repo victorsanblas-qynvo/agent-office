@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { managedFloors } from './agents';
 import { AskDesk } from './ask-desk';
 import { BoardDesk, type CreateOrderRequest, type CreateOrderResult, type MoveResult, type ScriptRequest, type ScriptResult } from './board-desk';
+import { BranchRestoreDesk, type BranchRestoreResult } from './branch-restore';
 import { ChatDesk, GLOBAL_CHANNEL, SNAPSHOT_LIMIT } from './chat';
 import { CheckpointDesk } from './checkpoints';
 import { ChecksDesk } from './checks';
@@ -77,6 +78,7 @@ import type {
   CheckRunView,
   CheckTrigger,
   CheckpointView,
+  DeletedBranchView,
   DocumentContent,
   DocumentView,
   HookEvent,
@@ -199,6 +201,7 @@ export class Office {
   private readonly meter: MeterDesk;
   private readonly store: OrderStore;
   private readonly worktrees: WorktreeDesk;
+  private readonly branches: BranchRestoreDesk;
   private readonly checkpoints: CheckpointDesk;
   private readonly delivery: DeliveryDesk;
   private readonly checks: ChecksDesk;
@@ -363,6 +366,7 @@ export class Office {
       inside: (path) => this.sessionInside(path),
       changed: (order) => this.bus.emit({ type: 'worktrees', floor: order.floor }),
     });
+    this.branches = new BranchRestoreDesk({ db: opts.db, git: this.git, now: this.now, bus: this.bus, config: () => this.config });
     this.checkpoints = new CheckpointDesk({ db: opts.db, store: this.store, git: this.git, now: this.now, bus: this.bus, config: () => this.config });
     this.delivery = new DeliveryDesk({ store: this.store, git: this.git, config: () => this.config, latestChecks: (id) => this.checks.latest(id), now: this.now });
     this.checks = new ChecksDesk({
@@ -835,6 +839,15 @@ export class Office {
 
   keepWorktree(orderId: number): boolean {
     return this.worktrees.keep(orderId) !== null;
+  }
+
+  // null: the floor does not exist or is not managed.
+  async deletedBranches(floor: string): Promise<DeletedBranchView[] | null> {
+    return this.branches.managed(floor) ? this.branches.list(floor) : null;
+  }
+
+  restoreBranch(floor: string, branch: unknown, sha: unknown): Promise<BranchRestoreResult> {
+    return this.branches.restore(floor, branch, sha);
   }
 
   // Cleanup of folders nobody owns plus the daily expiry, on demand from the panel.

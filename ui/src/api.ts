@@ -6,6 +6,7 @@ import type {
   ChatUserResult,
   CheckRunView,
   CheckpointView,
+  DeletedBranchView,
   DiagnosticsView,
   OrderDiff,
   OrderDiffFile,
@@ -236,6 +237,14 @@ export class OfficeApi {
 
   pruneWorktrees(): Promise<ApiData<{ removed: number }>> {
     return this.send('POST', '/api/worktrees/prune', {});
+  }
+
+  deletedBranches(floor: string): Promise<ApiData<{ branches: DeletedBranchView[] }>> {
+    return this.get(`/api/floors/${encodeURIComponent(floor)}/deleted-branches`);
+  }
+
+  restoreBranch(floor: string, branch: string, sha: string): Promise<ApiData<{ ok: true }>> {
+    return this.send('POST', `/api/floors/${encodeURIComponent(floor)}/deleted-branches/restore`, { branch, sha });
   }
 
   // path comes from searchPath() in table/history.ts.

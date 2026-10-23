@@ -3,6 +3,7 @@ import { join, normalize, resolve, sep } from 'node:path';
 import type { Server, ServerWebSocket } from 'bun';
 import { Hono, type Context, type Next } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
+import type { BranchRestoreResult } from './branch-restore';
 import { collectDiagnostics, SampleRing } from './diagnostics';
 import { clampWait, errorTextFor } from './chat';
 import type { FloorAdmin } from './floor-admin';
@@ -64,6 +65,14 @@ const WORKTREE_FAILURES: Record<Exclude<RemoveResult, 'ok'>, { key: HubTextKey; 
   dirty: { key: 'hub.api.worktreeDirty', status: 409 },
   unmerged: { key: 'hub.api.branchUnmerged', status: 409 },
   failed: { key: 'hub.api.worktreeFailed', status: 500 },
+};
+const RESTORE_FAILURES: Record<Exclude<BranchRestoreResult, 'ok'>, { key: HubTextKey; status: 400 | 404 | 409 | 410 | 500 }> = {
+  bad: { key: 'hub.api.branchRestoreBad', status: 400 },
+  floor: { key: 'hub.api.floorNotManaged', status: 404 },
+  'not-found': { key: 'hub.api.branchDeletionNotFound', status: 404 },
+  exists: { key: 'hub.api.branchRestoreExists', status: 409 },
+  gone: { key: 'hub.api.branchCommitGone', status: 410 },
+  git: { key: 'hub.api.branchRestoreFailed', status: 500 },
 };
 const PENDING_MESSAGE: HubText = { key: 'hub.api.questionClosed' };
 
@@ -422,6 +431,20 @@ export function createApp(opts: ServerOptions, holdRequest: (req: Request) => vo
     const result = await office.removeWorktree(id, { deleteBranch: c.req.query('branch') === '1', force: c.req.query('force') === '1' });
     if (result === 'ok') return c.json({ ok: true });
     const failure = WORKTREE_FAILURES[result];
+    return c.json({ error: { key: failure.key } }, failure.status);
+  });
+
+  app.get('/api/floors/:floor/deleted-branches', requirePanel, async (c) => {
+    const branches = await office.deletedBranches(c.req.param('floor') ?? '');
+    return branches ? c.json({ branches }) : c.json({ error: { key: 'hub.api.floorNotManaged' } }, 404);
+  });
+
+  app.post('/api/floors/:floor/deleted-branches/restore', requirePanel, async (c) => {
+    const body = record(await readJson(c));
+    holdRequest(c.req.raw);
+    const result = await office.restoreBranch(c.req.param('floor') ?? '', body.branch, body.sha);
+    if (result === 'ok') return c.json({ ok: true });
+    const failure = RESTORE_FAILURES[result];
     return c.json({ error: { key: failure.key } }, failure.status);
   });
 

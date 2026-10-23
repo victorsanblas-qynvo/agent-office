@@ -100,6 +100,9 @@ export const gitOps = {
   branchDelete: (branch: string, force: boolean): string[] => ['branch', force ? '-D' : '-d', writable(branch)],
   // Deletes the branch only while it still points at the commit that was judged.
   branchDeleteAt: (branch: string, tip: string): string[] => ['update-ref', '-d', `refs/heads/${writable(branch)}`, sha(tip)],
+  // Creates the branch only while no branch of that name exists (the zero old value).
+  branchCreateAt: (branch: string, tip: string): string[] => ['update-ref', `refs/heads/${writable(branch)}`, sha(tip), '0'.repeat(40)],
+  commitExists: (commit: string): string[] => ['rev-parse', '--verify', '--quiet', `${sha(commit)}^{commit}`],
   branchTip: (branch: string): string[] => ['rev-parse', '--verify', '--quiet', `refs/heads/${ref(branch, 'rama')}^{commit}`],
   branchExists: (branch: string): string[] => ['rev-parse', '--verify', '--quiet', `refs/heads/${ref(branch, 'rama')}`],
   status: (): string[] => ['status', '--porcelain=v1', '-z', '-uall', '--no-renames'],
