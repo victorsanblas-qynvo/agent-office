@@ -11,8 +11,10 @@ import type { PaletteContext, PaletteTarget } from './palette/entries';
 import { openDocument } from './panel/deliverables';
 import { focusOrders } from './panel/orders';
 import { relaunchable } from './panel/orderable';
+import { togglePin } from './pins';
+import { relaunchCandidates } from './relaunch-all';
 import { openSection, type SectionId } from './panel/section';
-import { requestSession } from './panel/session-controls';
+import { requestRelaunchAll, requestSession } from './panel/session-controls';
 import type { Store } from './store';
 import type { TableHandle } from './table/table';
 import { TABS, type Tab } from './topbar';
@@ -134,6 +136,8 @@ export function paletteContext(nav: Nav): PaletteContext {
     reply: question ? { name: asker ? agentName(asker) : question.agentKey.slice(0, 8) } : null,
     status: selected && session?.office ? { sessionId: selected.sessionId, name: agentName(selected) } : null,
     relaunch: selected && main && relaunchable(main) && main.canRelaunch ? { sessionId: selected.sessionId, name: agentName(selected) } : null,
+    relaunchAll: relaunchCandidates(store.sessions.values()).length,
+    pins: store.pins,
     newOrder: nav.board().canCreate(),
     mute: nav.notifier?.preferences.enabled === true,
     muteSound: nav.sound?.preferences.enabled === true,
@@ -173,6 +177,12 @@ export function runTarget(nav: Nav, target: PaletteTarget): void {
       break;
     case 'relaunch':
       void requestSession(nav.api, store, target.sessionId, 'relaunch');
+      break;
+    case 'relaunchAll':
+      void requestRelaunchAll(nav.api, store);
+      break;
+    case 'pin':
+      store.setPins(togglePin(store.pins, target.key));
       break;
     case 'newOrder':
       nav.showTab('board');

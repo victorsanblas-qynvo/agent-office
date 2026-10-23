@@ -1,6 +1,7 @@
 import { StateDebouncer } from './debounce';
 import { deliveryFloors } from './deliveries';
 import { emptyLayouts } from './layouts';
+import { readPins, writePins } from './prefs';
 import { applyLang, currentLang, plural, storeLang, t, type Lang, type MessageKey } from './i18n';
 import type {
   ActivityView,
@@ -50,7 +51,8 @@ export type Topic =
   | 'deliveries'
   | 'layouts'
   | 'checks'
-  | 'worktrees';
+  | 'worktrees'
+  | 'pins';
 
 export type ConnectionStatus = 'nokey' | 'connecting' | 'online' | 'offline' | 'denied' | 'replay';
 export type ToastKind = 'ok' | 'info' | 'error';
@@ -102,6 +104,7 @@ export class Store {
   memoryVersion = new Map<string, number>();
   toasts: Toast[] = [];
   selectedKey: string | null = null;
+  pins: string[] = readPins();
   connection: ConnectionStatus = 'connecting';
   replay = false;
 
@@ -134,6 +137,12 @@ export class Store {
     applyLang(lang);
     storeLang(lang);
     this.mark('lang');
+  }
+
+  setPins(pins: readonly string[]): void {
+    this.pins = [...pins];
+    writePins(this.pins);
+    this.mark('pins');
   }
 
   setReplay(replay: boolean): void {

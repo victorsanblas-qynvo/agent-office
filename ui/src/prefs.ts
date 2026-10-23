@@ -94,6 +94,17 @@ export function writeJson(key: string, value: unknown): void {
   }
 }
 
+export const PINS_KEY = 'agent-office.pins';
+
+export function readPins(): string[] {
+  const raw = readJson(PINS_KEY);
+  return Array.isArray(raw) ? [...new Set(raw.filter((key): key is string => typeof key === 'string'))] : [];
+}
+
+export function writePins(pins: readonly string[]): void {
+  writeJson(PINS_KEY, pins);
+}
+
 export const SNOOZE_KEY = 'agent-office.snooze';
 
 // Postponed entries of the needs queue by need id; a null `until` lasts until the entry's signature changes.

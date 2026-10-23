@@ -88,6 +88,8 @@ Las teclas sueltas no actúan mientras escribes en un campo ni con un diálogo a
 | `?` | Ayuda de atajos |
 | `Esc` | Cierra, por este orden, paleta, ayuda, menú y visor |
 
+Desde la paleta puedes **fijar hasta 4 agentes** («Fijar agente X» / «Soltar agente X», o el botón «Fijar» del panel): sus chips en la cabecera muestran estado, herramienta abierta y contexto, y un clic selecciona al agente. Se guardan en este navegador y no salen en un replay.
+
 La paleta busca por letras sueltas, sin importar tildes, entre agentes, plantas, pestañas, planes, encargos del Tablero (por título, slug, rama o planta; abre el cajón del encargo) y acciones (Responder, Pedir estado, Relanzar, Nuevo encargo, Cambiar idioma, Ver historial, Silenciar notificaciones, Silenciar sonidos). En el replay no salen las acciones que escriben.
 
 ### Historial y búsqueda
@@ -127,6 +129,7 @@ El director recibe tus órdenes y las reparte a los jefes de planta con `ENCARGO
 - **Parado.** Un jefe con un encargo abierto que lleva `limits.stalledAfterMinutes` (10; 0 lo desactiva) sin hacer nada, sin esperar ni preguntar y con su equipo libre sale parado: lo ves en «Te necesitan» y puede sonar el aviso.
 - **Pedir estado.** Escribe en el inbox del agente «¿En qué estado está el encargo? Si esperas algo, escribe ESPERO: …». Solo en sesiones de la oficina.
 - **Relanzar.** Cuando cambia el lanzador de una sesión (modelo, esfuerzo, MCP, modo de permisos…), el panel la marca con «Relanzar». Relanzar reabre su ventana de tmux (`respawn-window`) retomando la conversación (`--resume`); solo se puede con la sesión libre (409 si no), con tmux instalado y con su ventana abierta.
+- **Relanzar los marcados.** La acción «Relanzar los marcados» de la paleta relanza, tras una sola confirmación, todas las sesiones marcadas, de una en una y sin parar si alguna falla; al final un aviso cuenta cuántas se relanzaron, cuántas estaban ocupadas (409) y cuántas fallaron.
 - **Reglas sin relanzar.** Si cambian las reglas de un puesto (el agente `office-*.md` generado, o la lista de plantas del director), no hace falta relanzar: el hub compara su huella, y en el siguiente turno de esa sesión entrega las reglas nuevas como contexto (si son largas, solo las secciones que cambiaron) y lo anota en la actividad.
 
 ### Redacción

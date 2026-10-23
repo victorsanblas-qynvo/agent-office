@@ -2,6 +2,7 @@ import { button, el } from './dom';
 import { LANG_NAMES, LANGS, plural, t, type Lang, type MessageKey } from './i18n';
 import { mountNeedsMenu, type NeedsMenu } from './needs-menu';
 import type { Need } from './needs';
+import { mountPinnedStrip } from './pinned-strip';
 import type { ConnectionStatus, Store } from './store';
 
 export type Tab = 'office' | 'table' | 'board' | 'plans' | 'chat' | 'settings';
@@ -31,10 +32,11 @@ export const TABS: readonly { tab: Tab; labelKey: MessageKey }[] = [
   { tab: 'settings', labelKey: 'topbar.tab.settings' },
 ];
 
-export function mountTopbar(store: Store, onTab: (tab: Tab) => void, onNeed: (need: Need) => void): Topbar {
+export function mountTopbar(store: Store, onTab: (tab: Tab) => void, onNeed: (need: Need) => void, onPin: (key: string) => void): Topbar {
   const dot = el('span', 'status-dot');
   const statusText = el('span', 'status-text');
   const needs = mountNeedsMenu(store, onNeed);
+  const pinned = mountPinnedStrip(store, onPin);
   const replayHost = el('div', 'replay-controls');
 
   const tabButtons = new Map<Tab, HTMLButtonElement>();
@@ -64,6 +66,7 @@ export function mountTopbar(store: Store, onTab: (tab: Tab) => void, onNeed: (ne
     el('h1', 'brand', 'Agent Office'),
     el('div', 'status', dot, statusText),
     needs.root,
+    pinned,
     replayHost,
     tabs,
     langSelect,

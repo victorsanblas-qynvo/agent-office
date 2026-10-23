@@ -1159,6 +1159,21 @@ export const es = {
   'settings.layout.modelCustom': '{name} (propio)',
   'settings.layout.aria.model': 'Modelo del rol {role}',
   ...hubEs,
+  'pins.label': 'Agentes fijados',
+  'pins.title': 'Selecciona al agente',
+  'pins.pin': 'Fijar',
+  'pins.unpin': 'Soltar',
+  'pins.hint': 'Muestra o quita a este agente de la cabecera',
+  'pins.full': 'Ya hay 4 agentes fijados: suelta uno antes',
+  'palette.action.pin': 'Fijar agente {name}',
+  'palette.action.unpin': 'Soltar agente {name}',
+  'palette.hint.pins': 'Cabecera',
+  'palette.action.relaunchAll': 'Relanzar los marcados',
+  'palette.hint.relaunchAll.one': '{n} sesión',
+  'palette.hint.relaunchAll.other': '{n} sesiones',
+  'floors.relaunchAllConfirm.one': '¿Relanzar {n} sesión marcada? Se hace de una en una y se cierra su equipo.',
+  'floors.relaunchAllConfirm.other': '¿Relanzar {n} sesiones marcadas? Se hace de una en una y se cierra su equipo.',
+  'toast.relaunchedAll': 'Relanzadas: {ok} · ocupadas: {busy} · fallidas: {failed}',
 } as const;
 
 export type Messages = { [K in keyof typeof es]: string };

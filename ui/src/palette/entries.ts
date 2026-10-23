@@ -1,5 +1,6 @@
 import { fuzzyFilter } from '../fuzzy';
-import { currentLang, t } from '../i18n';
+import { canPin } from '../pins';
+import { currentLang, plural, t } from '../i18n';
 import { agentName, documentStatusLabel, floorKindLabel, floorLabel, roleLabel } from '../labels';
 import type { AgentView, DocumentView, FloorView, OrderView } from '../types';
 
@@ -16,6 +17,8 @@ export type PaletteTarget =
   | { type: 'reply' }
   | { type: 'status'; sessionId: string }
   | { type: 'relaunch'; sessionId: string }
+  | { type: 'relaunchAll' }
+  | { type: 'pin'; key: string }
   | { type: 'newOrder' }
   | { type: 'lang' }
   | { type: 'history' }
@@ -35,6 +38,9 @@ export type PaletteContext = {
   reply: { name: string } | null;
   status: { sessionId: string; name: string } | null;
   relaunch: { sessionId: string; name: string } | null;
+  // How many open sessions are marked for relaunch.
+  relaunchAll: number;
+  pins: readonly string[];
   newOrder: boolean;
   mute: boolean;
   muteSound: boolean;
@@ -51,6 +57,7 @@ function actions(context: PaletteContext): PaletteEntry[] {
   if (context.reply) add('reply', t('palette.action.reply', { name: context.reply.name }), t('palette.hint.question'), { type: 'reply' }, true);
   if (context.status) add('status', t('palette.action.status', { name: context.status.name }), t('palette.hint.session'), { type: 'status', sessionId: context.status.sessionId }, true);
   if (context.relaunch) add('relaunch', t('palette.action.relaunch', { name: context.relaunch.name }), t('palette.hint.session'), { type: 'relaunch', sessionId: context.relaunch.sessionId }, true);
+  if (context.relaunchAll > 0) add('relaunchAll', t('palette.action.relaunchAll'), plural('palette.hint.relaunchAll', context.relaunchAll), { type: 'relaunchAll' }, true);
   if (context.newOrder) add('newOrder', t('palette.action.newOrder'), t('palette.hint.board'), { type: 'newOrder' }, true);
   add('lang', t(currentLang() === 'es' ? 'palette.action.langEn' : 'palette.action.langEs'), t('palette.hint.lang'), { type: 'lang' }, false);
   add('history', t('palette.action.history'), '/', { type: 'history' }, false);
@@ -107,6 +114,20 @@ export function buildEntries(context: PaletteContext): PaletteEntry[] {
     entries.push({ id: `plan:${doc.path}`, group: 'plan', label: doc.title, hint: documentStatusLabel(doc.status), target: { type: 'plan', path: doc.path }, write: false });
   }
   entries.push(...orderEntries(context));
+  for (const agent of context.agents) {
+    const pinned = context.pins.includes(agent.key);
+    if (!pinned && !canPin(context.pins, agent.key)) continue;
+    const name = agentName(agent);
+    entries.push({
+      id: `action:pin:${agent.key}`,
+      group: 'action',
+      label: t(pinned ? 'palette.action.unpin' : 'palette.action.pin', { name }),
+      hint: t('palette.hint.pins'),
+      keywords: name,
+      target: { type: 'pin', key: agent.key },
+      write: true,
+    });
+  }
   return context.live ? entries : entries.filter((entry) => !entry.write);
 }
 

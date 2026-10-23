@@ -8,7 +8,7 @@ import { mountHelp } from './help';
 import { applyLang, readStoredLang, t, type MessageKey, type Params } from './i18n';
 import { mountKeys } from './keys';
 import { LiveConnection } from './live';
-import { goToNeed, paletteContext, runKey, runTarget, type Nav } from './navigate';
+import { goToAgent, goToNeed, paletteContext, runKey, runTarget, type Nav } from './navigate';
 import { NeedCursor } from './needs';
 import { Notifier } from './notify';
 import { SoundDesk } from './sound';
@@ -87,7 +87,7 @@ async function boot(): Promise<void> {
     usageToday?.setActive(next === 'office');
   };
 
-  const topbar = mountTopbar(store, showTab, (need) => goToNeed(nav, need));
+  const topbar = mountTopbar(store, showTab, (need) => goToNeed(nav, need), (key) => goToAgent(nav, key));
   root.replaceChildren(
     topbar.root,
     el('main', 'main', officeHost, tableHost, boardHost, plansHost, chatHost, settingsHost, notice),
