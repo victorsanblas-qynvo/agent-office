@@ -463,6 +463,8 @@ export const en: Messages = {
   'deliverables.download': 'Download',
   'deliverables.downloadTitle': 'Download {file}',
   'deliverables.delivered': 'Plan delivered: decide in Plans · {title}',
+  'markdown.image': '[image: {alt}]',
+  'markdown.imageNoAlt': '[image]',
   'plans.title': 'Plans',
   'plans.intro': 'Drafting leaves every approved plan here. Execute sends it to the director, who splits it among the floors; Close it once the director confirms they finished.',
   'plans.group.pending': 'Awaiting decision',
