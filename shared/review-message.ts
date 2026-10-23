@@ -14,13 +14,23 @@ export type ReviewComment = { path: string; line: number | null; side: ReviewSid
 export type ReviewInput = { slug: string; summary: string; comments: readonly ReviewComment[] };
 
 export function oneLine(text: string): string {
-  return text.replace(/\s+/g, ' ').trim();
+  return text.replace(/[\x00-\x1f\x7f-\x9f]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+// The summary keeps its line breaks as ' / ' so it stays one line of the message.
+function summaryLine(text: string): string {
+  return text
+    .split(/\r\n?|[\n\v\f\u0085\u2028\u2029]/)
+    .map(oneLine)
+    .filter((line) => line !== '')
+    .join(' / ');
 }
 
 function commentText(comment: ReviewComment): HubText {
   const body = oneLine(comment.body);
-  if (comment.line === null) return { key: 'hub.review.file', params: { path: comment.path, body } };
-  return { key: comment.side === 'old' ? 'hub.review.oldLine' : 'hub.review.line', params: { path: comment.path, line: comment.line, body } };
+  const path = oneLine(comment.path);
+  if (comment.line === null) return { key: 'hub.review.file', params: { path, body } };
+  return { key: comment.side === 'old' ? 'hub.review.oldLine' : 'hub.review.line', params: { path, line: comment.line, body } };
 }
 
 function cut(line: string, max: number): string {
@@ -45,7 +55,7 @@ function lineCap(lengths: number[], room: number): number {
 // line; when they do not fit in max, the longest bodies are cut, never a comment left out.
 export function reviewMessage(input: ReviewInput, render: (text: HubText) => string, max = INBOX_MAX_TEXT): string {
   const head = [render({ key: 'hub.review.header', params: { slug: input.slug } }), render({ key: 'hub.review.intro' })];
-  const summary = input.summary.trim();
+  const summary = summaryLine(input.summary);
   if (summary) head.push(render({ key: 'hub.review.summary', params: { text: summary } }));
   const lines = input.comments.map((comment) => render(commentText(comment)));
   const room = max - head.join('\n').length - lines.length;

@@ -39,13 +39,17 @@ export function percentiles(samples: readonly number[], points: readonly number[
   return points.map((point) => sorted[Math.min(sorted.length - 1, Math.max(0, Math.ceil((point / 100) * sorted.length) - 1))] ?? null);
 }
 
-// The office key, the key header, bearer tokens and long hex or base64 runs never leave the hub.
+// The office key, the key header, bearer tokens, password-like key=value pairs, a mysql -p password, the
+// credentials of a url and long hex or base64 runs never leave the hub. A run with a slash is a path, kept readable.
 export function redactLog(text: string, key: string): string {
   let out = key.length > 0 ? text.split(key).join(REDACTED) : text;
   out = out.replace(/x-office-(?:key|panel)\s*[:=]\s*\S+/gi, REDACTED);
   out = out.replace(/Bearer\s+\S+/gi, REDACTED);
+  out = out.replace(/\b([a-z][a-z0-9+.-]*:\/\/)[^\s/@:]+:[^\s/]+@/gi, `$1${REDACTED}@`);
+  out = out.replace(/(pass(?:word)?|passwd|pwd|secret|token|api[_-]?key|auth)(["']?\s*[:=]\s*)\S+/gi, `$1$2${REDACTED}`);
+  out = out.replace(/(\b(?:mysql\w*|mariadb[\w-]*)\b[^\n]*?\s-p)\S+/g, `$1${REDACTED}`);
   out = out.replace(/[0-9a-fA-F]{32,}/g, REDACTED);
-  return out.replace(/[A-Za-z0-9+/_-]{32,}={0,2}/g, (run) => (/\d/.test(run) && /[A-Za-z]/.test(run) ? REDACTED : run));
+  return out.replace(/[A-Za-z0-9+/_-]{32,}={0,2}/g, (run) => (/\d/.test(run) && /[A-Za-z]/.test(run) && !run.includes('/') ? REDACTED : run));
 }
 
 export function tailLines(text: string, count: number): string[] {

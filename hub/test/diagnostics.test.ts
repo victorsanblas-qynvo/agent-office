@@ -52,6 +52,37 @@ describe('redaction', () => {
     expect(out).toContain('[redactado]');
   });
 
+  test('hides short password-like values but keeps their keys', () => {
+    const text = ['password=hunter2', 'DB_PASSWORD: s3cr3t', '"api_key":"abc"', 'apiKey = xyz', 'token=t1 secret=s1', 'auth: a1', 'pwd=p1', 'passwd=p2', 'pass=p3'].join('\n');
+    const out = redactLog(text, KEY).split('\n');
+    expect(out).toEqual([
+      'password=[redactado]',
+      'DB_PASSWORD: [redactado]',
+      '"api_key":[redactado]',
+      'apiKey = [redactado]',
+      'token=[redactado] secret=[redactado]',
+      'auth: [redactado]',
+      'pwd=[redactado]',
+      'passwd=[redactado]',
+      'pass=[redactado]',
+    ]);
+  });
+
+  test('hides a mysql -p password and the credentials of a url', () => {
+    expect(redactLog('mysql -u root -phunter2 app', KEY)).toBe('mysql -u root -p[redactado] app');
+    expect(redactLog('mysqldump -h db -P3306 -psecret app', KEY)).toBe('mysqldump -h db -P3306 -p[redactado] app');
+    expect(redactLog('rm -print', KEY)).toBe('rm -print');
+    expect(redactLog('clone https://bob:hunter2@github.com/o/r.git', KEY)).toBe('clone https://[redactado]@github.com/o/r.git');
+    expect(redactLog('db postgres://app:p@ss@db:5432/x', KEY)).toBe('db postgres://[redactado]@db:5432/x');
+    expect(redactLog('see http://localhost:4747/api and git@github.com:o/r', KEY)).toBe('see http://localhost:4747/api and git@github.com:o/r');
+  });
+
+  test('keeps long paths readable', () => {
+    const path = '/Users/someone/Projects/agent-office/hub/src/delivery2-desk.ts';
+    expect(redactLog(`at ${path}:12`, KEY)).toBe(`at ${path}:12`);
+    expect(redactLog('blob QWxhZGRpbjpvcGVuIHNlc2FtZTEyMzQ1Njc4OTA', KEY)).toBe('blob [redactado]');
+  });
+
   test('tailLines keeps the last lines', () => {
     expect(tailLines('a\nb\nc\n', 2)).toEqual(['b', 'c']);
   });

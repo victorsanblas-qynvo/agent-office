@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
 import { applyLang } from '../src/i18n/index';
-import { escapeHtml, isSafeHref, markdownToHtml, safeHref } from '../src/panel/markdown-safe';
+import { escapeHtml, isSafeHref, markdownToHtml, safeExternalUrl, safeHref } from '../src/panel/markdown-safe';
 
 beforeEach(() => applyLang('es'));
 
@@ -61,6 +61,19 @@ describe('safeHref', () => {
 
   test('a href that encodeURI cannot encode is dropped', () => {
     expect(safeHref('https://example.com/\uD800')).toBeNull();
+  });
+});
+
+describe('safeExternalUrl', () => {
+  test('keeps absolute http and https addresses, normalized', () => {
+    expect(safeExternalUrl('https://github.com/o/r/pull/3')).toBe('https://github.com/o/r/pull/3');
+    expect(safeExternalUrl('HTTP://Example.com')).toBe('http://example.com/');
+  });
+
+  test('drops script, mail, relative and malformed addresses', () => {
+    for (const url of [...HOSTILE_HREFS, 'mailto:someone@example.com', '/pull/3', '//example.com/x', '#x', '', 'not a url']) {
+      expect(safeExternalUrl(url), JSON.stringify(url)).toBeNull();
+    }
   });
 });
 

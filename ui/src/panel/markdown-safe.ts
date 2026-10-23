@@ -23,6 +23,16 @@ export function isSafeHref(href: string): boolean {
   }
 }
 
+// An absolute http or https address for a link out of the panel, normalized; null for anything else.
+export function safeExternalUrl(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'https:' || parsed.protocol === 'http:' ? parsed.href : null;
+  } catch {
+    return null;
+  }
+}
+
 export function safeHref(href: string): string | null {
   if (!isSafeHref(href)) return null;
   let encoded: string;

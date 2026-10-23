@@ -126,6 +126,10 @@ function trimBrief(text: string): string {
   return open === null ? `${cut}…` : `${cut}…\n${open}`;
 }
 
+function subjectLine(subject: string): string {
+  return subject.replace(/[\x00-\x1f\x7f-\x9f]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
 function cell(value: string): string {
   return value.replace(/\|/g, '\\|').replace(/\s+/g, ' ');
 }
@@ -137,7 +141,7 @@ function seconds(ms: number | null): string {
 // Pure: the title and the Markdown body to paste into the pull request of an order.
 export function prDraft(input: PrDraftInput): { title: string; body: string } {
   const say = (value: HubText): string => renderHubText(value, input.lang);
-  const subjects = input.commits.map((subject) => subject.trim()).filter((subject) => subject !== '');
+  const subjects = input.commits.map(subjectLine).filter((subject) => subject !== '');
   const shown = subjects.slice(0, PR_MAX_COMMITS).map((subject) => `- ${subject}`);
   const total = Math.max(subjects.length, input.commitsTotal ?? 0);
   if (total > PR_MAX_COMMITS) shown.push(`- ${say({ key: 'hub.pr.commitsMore', params: { n: total - PR_MAX_COMMITS } })}`);

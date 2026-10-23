@@ -5,6 +5,7 @@ import { fileStamp, saveFile } from '../download';
 import { floorLabel, formatTokens, tokensTotal } from '../labels';
 import { readBoardStaleHours, readJson, writeJson } from '../prefs';
 import type { BoardMove } from '../keys';
+import { safeExternalUrl } from '../panel/markdown-safe';
 import type { Store } from '../store';
 import { relativeTime } from '../time';
 import type { OrderStatus, OrderView } from '../types';
@@ -111,9 +112,10 @@ export function mountBoard(host: HTMLElement, store: Store, api: OfficeApi | nul
     }
     const age = ageBadge(order, now, readBoardStaleHours());
     const tokens = order.tokens ? tokensTotal(order.tokens) : 0;
-    const link = order.pr ? el('a', 'board-pr', t('board.card.pr')) : null;
-    if (link && order.pr) {
-      link.href = order.pr.url;
+    const prUrl = order.pr ? safeExternalUrl(order.pr.url) : null;
+    const link = prUrl ? el('a', 'board-pr', t('board.card.pr')) : null;
+    if (link && prUrl) {
+      link.href = prUrl;
       link.target = '_blank';
       link.rel = 'noopener noreferrer';
       link.addEventListener('click', (event) => event.stopPropagation());
