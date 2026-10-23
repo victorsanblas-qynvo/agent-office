@@ -73,7 +73,7 @@ import { settingsView } from './settings';
 import { StallDesk } from './stall-desk';
 import { DONE_PREFIX, EDIT_TOOLS, classify, record, text, type Classified } from './state-machine';
 import { SyncDesk, type SyncResult } from './sync';
-import { digest } from './digest';
+import { digest, weekDigest } from './digest';
 import { localDay, planDocSlugIn, planSlugIn } from './tokens';
 import type {
   ActivityView,
@@ -96,6 +96,7 @@ import type {
   OfficeConfig,
   FlakyCheckView,
   OfficeDigest,
+  WeekDigest,
   OrderCommentView,
   OrderStatus,
   PlanDecision,
@@ -761,6 +762,10 @@ export class Office {
   dayDigest(day: string | null): OfficeDigest | 'bad-day' | 'future-day' {
     const now = this.now();
     return digest(this.opts.db, day ?? localDay(now), now);
+  }
+
+  rangeDigest(from: string, to: string): WeekDigest | 'bad-range' {
+    return weekDigest(this.opts.db, from, to, this.now());
   }
 
   flakyChecks(days: number, floor?: string): FlakyCheckView[] | 'bad-floor' {

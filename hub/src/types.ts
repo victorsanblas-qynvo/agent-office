@@ -250,6 +250,7 @@ export type HubTextParams = {
   'hub.api.chatKind': undefined;
   'hub.api.usageRange': undefined;
   'hub.api.digestDay': undefined;
+  'hub.api.digestRange': undefined;
   'hub.api.flakyDays': undefined;
   'hub.api.flakyFloor': undefined;
   'hub.api.chatAuthorUnknown': undefined;
@@ -1045,6 +1046,8 @@ export type DigestCounts = {
 export type DigestFloor = DigestCounts & { floor: string; delivered: { slug: string; title: string }[] };
 
 export type OfficeDigest = { day: string; floors: DigestFloor[]; totals: DigestCounts & { delivered: number } };
+
+export type WeekDigest = { from: string; to: string; days: OfficeDigest[]; floors: DigestFloor[]; totals: DigestCounts & { delivered: number } };
 
 export type TokensEvent = {
   agentKey: string;

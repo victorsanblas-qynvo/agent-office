@@ -2,7 +2,7 @@ import type { OfficeApi } from '../api';
 import { button, el } from '../dom';
 import { currentLang, t } from '../i18n';
 import type { DiagnosticsView } from '../types';
-import { bytesText, msText, uptimeText } from './diagnostics-model';
+import { bytesText, diagnosticsMarkdown, msText, uptimeText } from './diagnostics-model';
 
 const decimal = (value: number): string => new Intl.NumberFormat(currentLang(), { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(value);
 const whole = (value: number): string => new Intl.NumberFormat(currentLang(), { maximumFractionDigits: 1 }).format(value);
@@ -12,10 +12,11 @@ export function mountDiagnosticsPanel(host: HTMLElement, api: OfficeApi): void {
   const title = el('h2', 'settings-title');
   const hint = el('p', 'settings-hint muted');
   const reload = button('');
+  const copy = button('');
   const status = el('p', 'settings-status');
   const facts = el('div', 'diagnostics-facts');
   const log = el('pre', 'diagnostics-log');
-  const section = el('section', 'settings-section diagnostics', title, hint, el('div', 'worktrees-head', status, reload), facts, log);
+  const section = el('section', 'settings-section diagnostics', title, hint, el('div', 'worktrees-head', status, copy, reload), facts, log);
   host.append(section);
 
   let view: DiagnosticsView | null = null;
@@ -44,6 +45,8 @@ export function mountDiagnosticsPanel(host: HTMLElement, api: OfficeApi): void {
     hint.textContent = t('settings.diagnostics.hint');
     reload.textContent = t('settings.diagnostics.reload');
     reload.disabled = busy;
+    copy.textContent = t('settings.diagnostics.copy');
+    copy.disabled = view === null;
     status.textContent = error ?? (view === null ? t('board.loading') : '');
     status.className = error ? 'settings-status error' : 'settings-status';
     if (view === null) {
@@ -68,6 +71,19 @@ export function mountDiagnosticsPanel(host: HTMLElement, api: OfficeApi): void {
   }
 
   reload.addEventListener('click', () => void load());
+  copy.addEventListener('click', () => {
+    if (view === null) return;
+    void navigator.clipboard
+      .writeText(diagnosticsMarkdown(view, { userAgent: navigator.userAgent, lang: currentLang() }))
+      .then(() => {
+        copy.textContent = t('settings.diagnostics.copied');
+        window.setTimeout(paint, 1500);
+      })
+      .catch(() => {
+        copy.textContent = t('settings.diagnostics.copyFailed');
+        window.setTimeout(paint, 1500);
+      });
+  });
   paint();
   void load();
 }

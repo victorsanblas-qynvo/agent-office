@@ -1,6 +1,6 @@
 import type { Database } from 'bun:sqlite';
 import { localDay } from './tokens';
-import type { DigestCounts, DigestFloor, OfficeDigest } from './types';
+import type { DigestCounts, DigestFloor, OfficeDigest, WeekDigest } from './types';
 
 type FloorCount = { floor: string; n: number };
 
@@ -97,4 +97,60 @@ export function digest(db: Database, day: string, now: number): OfficeDigest | '
     totals.lessons += f.lessons;
   }
   return { day, floors: active, totals };
+}
+
+export const MAX_DIGEST_DAYS = 7;
+
+const pad = (value: number): string => String(value).padStart(2, '0');
+
+// Pure: the YYYY-MM-DD days from `from` to `to` inclusive, null when either is not a calendar date, from is after to or
+// there are more than MAX_DIGEST_DAYS.
+export function daysBetween(from: string, to: string): string[] | null {
+  if (!dayRange(from) || !dayRange(to) || from > to) return null;
+  const [year, month, date] = from.split('-').map(Number) as [number, number, number];
+  const days: string[] = [];
+  for (let i = 0; i < MAX_DIGEST_DAYS + 1; i++) {
+    const at = new Date(year, month - 1, date + i);
+    const day = `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}`;
+    days.push(day);
+    if (day >= to) return day === to && days.length <= MAX_DIGEST_DAYS ? days : null;
+  }
+  return null;
+}
+
+// The days of an inclusive range, each built by digest(), with the floors and the totals summed over them.
+export function weekDigest(db: Database, from: string, to: string, now: number): WeekDigest | 'bad-range' {
+  const list = daysBetween(from, to);
+  if (!list || to > localDay(now)) return 'bad-range';
+  const days: OfficeDigest[] = [];
+  for (const day of list) {
+    const result = digest(db, day, now);
+    if (typeof result === 'string') return 'bad-range';
+    days.push(result);
+  }
+  const floors = new Map<string, DigestFloor>();
+  const totals = { delivered: 0, ...emptyCounts() };
+  const add = (into: DigestCounts, from: DigestCounts): void => {
+    into.blocked += from.blocked;
+    into.redRuns += from.redRuns;
+    into.greenRuns += from.greenRuns;
+    into.tokens += from.tokens;
+    into.plans.approved += from.plans.approved;
+    into.plans.noAgreement += from.plans.noAgreement;
+    into.lessons += from.lessons;
+  };
+  for (const one of days) {
+    add(totals, one.totals);
+    totals.delivered += one.totals.delivered;
+    for (const f of one.floors) {
+      let row = floors.get(f.floor);
+      if (!row) {
+        row = { floor: f.floor, delivered: [], ...emptyCounts() };
+        floors.set(f.floor, row);
+      }
+      row.delivered.push(...f.delivered);
+      add(row, f);
+    }
+  }
+  return { from, to, days, totals, floors: [...floors.values()].sort((a, b) => a.floor.localeCompare(b.floor)) };
 }
