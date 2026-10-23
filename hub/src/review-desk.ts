@@ -1,4 +1,5 @@
 import type { Database } from 'bun:sqlite';
+import { existsSync } from 'node:fs';
 import { REVIEW_MAX_BODY, REVIEW_MAX_COMMENTS, REVIEW_MAX_SUMMARY, reviewMessage, type ReviewComment } from '../../shared/review-message';
 import type { DiffResult } from './delivery-desk';
 import type { OfficeBus } from './office-bus';
@@ -29,6 +30,7 @@ export type ReviewDeskOpts = {
 };
 
 type CommentRow = { id: number; path: string; line: number; side: string; text: string; created_at: number; sent_at: number | null };
+type UnsentRow = Pick<CommentRow, 'id' | 'path' | 'line' | 'side' | 'text'>;
 
 // What a row keeps in text besides the body: the table has no column for the cycle or the commit it was about.
 type StoredText = { body: string; cycle: number | null; sha: string | null };
@@ -77,10 +79,14 @@ export class ReviewDesk {
   private readonly insert;
   private readonly markSent;
   private readonly byOrder;
+  private readonly unsent;
+  // One send or resend of an order at a time, so two of them never store or mark the same rows.
+  private readonly locks = new Map<number, Promise<void>>();
 
   constructor(private readonly opts: ReviewDeskOpts) {
     this.insert = opts.db.query('INSERT INTO order_comments (order_id, path, line, side, text, created_at) VALUES (?, ?, ?, ?, ?, ?)');
-    this.markSent = opts.db.query('UPDATE order_comments SET sent_at = ? WHERE order_id = ? AND id >= ? AND id <= ?');
+    this.markSent = opts.db.query('UPDATE order_comments SET sent_at = ? WHERE order_id = ? AND sent_at IS NULL AND id IN (SELECT value FROM json_each(?))');
+    this.unsent = opts.db.query<UnsentRow, [number]>('SELECT id, path, line, side, text FROM order_comments WHERE order_id = ? AND sent_at IS NULL ORDER BY id');
     this.byOrder = opts.db.query<CommentRow, [number]>(
       'SELECT id, path, line, side, text, created_at, sent_at FROM order_comments WHERE order_id = ? ORDER BY created_at DESC, id DESC',
     );
@@ -104,35 +110,87 @@ export class ReviewDesk {
     });
   }
 
-  async send(orderId: number, request: ReviewRequest): Promise<ReviewResult> {
-    const diff = await this.opts.diff(orderId);
-    if (!diff.ok) return diff;
-    const order = this.opts.store.get(orderId);
-    if (!order) return { ok: false, status: 404, error: { key: 'hub.api.orderNotFound' } };
+  send(orderId: number, request: ReviewRequest): Promise<ReviewResult> {
+    return this.serial(orderId, async () => {
+      const diff = await this.opts.diff(orderId);
+      if (!diff.ok) return diff;
+      const order = this.opts.store.get(orderId);
+      if (!order) return { ok: false, status: 404, error: { key: 'hub.api.orderNotFound' } };
+      const refused = this.refusal(order);
+      if (refused) return refused;
+      const paths = new Set(diff.diff.files.map((file) => file.path));
+      if (request.comments.some((item) => !paths.has(item.path))) return { ok: false, status: 400, error: { key: 'hub.api.diffPath' } };
+      const ids = this.keep(order, request.comments, diff.diff.head);
+      return this.deliver(order, request.comments, request.summary, request.lang, ids);
+    });
+  }
+
+  // The comments the lead never got, oldest first, again in one message; a review holds at most REVIEW_MAX_COMMENTS.
+  resend(orderId: number, lang: TextLang): Promise<ReviewResult> {
+    return this.serial(orderId, async () => {
+      const order = this.opts.store.get(orderId);
+      if (!order) return { ok: false, status: 404, error: { key: 'hub.api.orderNotFound' } };
+      const refused = this.refusal(order);
+      if (refused) return refused;
+      const rows = this.unsent.all(orderId).slice(0, REVIEW_MAX_COMMENTS);
+      if (rows.length === 0) return { ok: false, status: 409, error: { key: 'hub.api.reviewNothingUnsent' } };
+      const comments = rows.map((row): ReviewComment => {
+        const line = row.line > 0 ? row.line : null;
+        return { path: row.path, line, side: line !== null && row.side === 'old' ? 'old' : 'new', body: storedText(row.text).body };
+      });
+      return this.deliver(order, comments, '', lang, rows.map((row) => row.id));
+    });
+  }
+
+  private refusal(order: OrderRow): ReviewResult | null {
     if (order.status === 'descartado') return { ok: false, status: 409, error: { key: 'hub.api.orderBadState' } };
-    const paths = new Set(diff.diff.files.map((file) => file.path));
-    if (request.comments.some((item) => !paths.has(item.path))) return { ok: false, status: 400, error: { key: 'hub.api.diffPath' } };
-    const ids = this.keep(order, request.comments, diff.diff.head);
-    const content = reviewMessage({ slug: order.slug, summary: request.summary, comments: request.comments }, (text) => renderHubText(text, request.lang));
-    const count = request.comments.length;
+    // The lead is told to fix it in the folder of the order: without one there is nowhere to do it.
+    if (!order.worktree_path || order.worktree_state === 'retirado' || !existsSync(order.worktree_path)) {
+      return { ok: false, status: 409, error: { key: 'hub.api.orderNoFolder' } };
+    }
+    return null;
+  }
+
+  private async deliver(order: OrderRow, comments: readonly ReviewComment[], summary: string, lang: TextLang, ids: readonly number[]): Promise<ReviewResult> {
+    const content = reviewMessage({ slug: order.slug, summary, comments }, (text) => renderHubText(text, lang));
+    const count = comments.length;
     if (!(await this.opts.toLead(order, content))) {
       this.note({ key: 'hub.act.reviewUnsent', params: { slug: order.slug } });
       return { ok: true, delivered: false, count, reason: { key: 'hub.api.reviewUnsent' } };
     }
-    this.markSent.run(this.opts.now(), orderId, ids.first, ids.last);
+    this.markSent.run(this.opts.now(), order.id, JSON.stringify(ids));
     this.note({ key: 'hub.act.reviewSent', params: { floor: order.floor, title: order.title, n: count } });
-    const fresh = this.opts.store.get(orderId);
-    if (fresh && (fresh.status === 'revision' || fresh.status === 'hecho')) this.opts.reopen(orderId);
+    const fresh = this.opts.store.get(order.id);
+    if (fresh && (fresh.status === 'revision' || fresh.status === 'hecho')) this.opts.reopen(order.id);
     return { ok: true, delivered: true, count };
   }
 
-  private keep(order: OrderRow, comments: readonly ReviewComment[], sha: string): { first: number; last: number } {
+  // A comment that is already stored and unsent (a retry of a review the lead did not get) keeps its row.
+  private keep(order: OrderRow, comments: readonly ReviewComment[], sha: string): number[] {
     const now = this.opts.now();
     const text = (body: string) => JSON.stringify({ body, cycle: order.cycle, sha } satisfies StoredText);
     return this.opts.db.transaction(() => {
-      const ids = comments.map((item) => Number(this.insert.run(order.id, item.path, item.line ?? 0, item.side, text(item.body), now).lastInsertRowid));
-      return { first: Math.min(...ids), last: Math.max(...ids) };
+      const waiting = this.unsent.all(order.id);
+      return comments.map((item) => {
+        const line = item.line ?? 0;
+        const at = waiting.findIndex((row) => row.path === item.path && row.line === line && row.side === item.side && storedText(row.text).body === item.body);
+        if (at >= 0) return (waiting.splice(at, 1)[0] as UnsentRow).id;
+        return Number(this.insert.run(order.id, item.path, line, item.side, text(item.body), now).lastInsertRowid);
+      });
     })();
+  }
+
+  private serial(orderId: number, task: () => Promise<ReviewResult>): Promise<ReviewResult> {
+    const result = (this.locks.get(orderId) ?? Promise.resolve()).then(task);
+    const done = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.locks.set(orderId, done);
+    void done.then(() => {
+      if (this.locks.get(orderId) === done) this.locks.delete(orderId);
+    });
+    return result;
   }
 
   private note(summary: HubText): void {

@@ -3218,6 +3218,12 @@ button.diff-file.active {
   color: var(--danger);
 }
 
+.review-unsent-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .review-remove {
   flex: none;
   font-size: 11px;

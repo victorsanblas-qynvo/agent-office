@@ -144,6 +144,7 @@ export type HubTextParams = {
   'hub.act.worktreesUnknown': { n: number; slugs: string };
   'hub.act.branchDeleted': { branch: string; sha: string };
   'hub.act.branchRestored': { branch: string; sha: string };
+  'hub.act.branchMoved': { branch: string; sha: string };
   'hub.round': { n: number };
   'hub.score': { n: number };
 
@@ -289,6 +290,7 @@ export type HubTextParams = {
   'hub.api.worktreeBusy': undefined;
   'hub.api.worktreeDirty': undefined;
   'hub.api.branchUnmerged': undefined;
+  'hub.api.branchMoved': undefined;
   'hub.api.worktreeFailed': undefined;
   'hub.api.branchRestoreBad': undefined;
   'hub.api.branchDeletionNotFound': undefined;
@@ -296,9 +298,11 @@ export type HubTextParams = {
   'hub.api.branchCommitGone': undefined;
   'hub.api.branchRestoreFailed': undefined;
   'hub.api.orderNoBranch': undefined;
+  'hub.api.orderNoFolder': undefined;
   'hub.api.diffPath': undefined;
   'hub.api.reviewFields': undefined;
   'hub.api.reviewUnsent': undefined;
+  'hub.api.reviewNothingUnsent': undefined;
   'hub.api.diffFailed': undefined;
   'hub.api.logFailed': undefined;
 

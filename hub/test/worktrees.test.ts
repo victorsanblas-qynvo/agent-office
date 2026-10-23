@@ -686,7 +686,7 @@ describe('a branch is only deleted on facts git confirmed', () => {
     expect(views.find((v) => v.slug === 'aplastado-2222')).toMatchObject({ merged: true });
   });
 
-  test('a branch that moves after it was judged is not deleted', async () => {
+  test('a branch that moves after it was judged is not deleted, and its folder is still retired', async () => {
     let late = '';
     let repo = '';
     const r = rig({
@@ -702,7 +702,14 @@ describe('a branch is only deleted on facts git confirmed', () => {
     git(r.repo, 'fetch', '-q', 'origin');
     const tip = git(r.repo, 'rev-parse', 'refs/heads/encargo/login-a1b2');
     late = git(r.repo, 'commit-tree', `${tip}^{tree}`, '-p', tip, '-m', 'llega tarde');
-    expect(await r.desk.remove(made.id, { deleteBranch: true, force: false })).toBe('failed');
+    expect(await r.desk.remove(made.id, { deleteBranch: true, force: false })).toBe('branch-moved');
+    expect(git(r.repo, 'rev-parse', 'refs/heads/encargo/login-a1b2')).toBe(late);
+    expect(r.store.get(made.id)?.worktree_state).toBe('retirado');
+    expect(keyed(r, 'hub.act.branchDeleted')).toHaveLength(0);
+    const moved = keyed(r, 'hub.act.branchMoved');
+    expect(moved).toHaveLength(1);
+    expect(moved[0]?.summary).toMatchObject({ params: { branch: 'encargo/login-a1b2', sha: late } });
+    expect(await r.desk.remove(made.id, { deleteBranch: true, force: true })).toBe('not-found');
     expect(git(r.repo, 'rev-parse', 'refs/heads/encargo/login-a1b2')).toBe(late);
   });
 

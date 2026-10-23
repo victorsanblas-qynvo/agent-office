@@ -2,7 +2,7 @@ import { REVIEW_MAX_BODY, REVIEW_MAX_COMMENTS, reviewMessage, type ReviewSide } 
 import type { ReviewRequest } from '../api';
 import { type Lang, t } from '../i18n';
 import { renderHubText } from '../i18n/hub';
-import type { OrderCommentView } from '../types';
+import type { OrderCommentView, OrderView } from '../types';
 import type { PatchRow } from './diff-model';
 
 // Where a comment goes: a line of one side of the patch, or the whole file (line null, always the new side).
@@ -65,6 +65,15 @@ export function fileComments(comments: readonly OrderCommentView[], path: string
 export function targetLabel(target: ReviewTarget): string {
   if (target.line === null) return `${target.path} · ${t('board.review.wholeFile')}`;
   return target.side === 'old' ? `${target.path}:${target.line} (${t('board.review.oldSide')})` : `${target.path}:${target.line}`;
+}
+
+export function unsentCount(comments: readonly OrderCommentView[]): number {
+  return comments.filter((comment) => comment.sentAt === null).length;
+}
+
+// A review the lead gets moves an order in revision or done back to en-curso.
+export function reviewReopens(status: OrderView['status']): boolean {
+  return status === 'revision' || status === 'hecho';
 }
 
 export function reviewRequest(drafts: readonly ReviewDraft[], summary: string, lang: Lang): ReviewRequest {

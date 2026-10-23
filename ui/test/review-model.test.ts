@@ -12,10 +12,12 @@ import {
   fileTarget,
   removeDraft,
   reviewPreview,
+  reviewReopens,
   reviewRequest,
   rowTarget,
   targetKey,
   targetLabel,
+  unsentCount,
   type ReviewDraft,
 } from '../src/board/review-model';
 import { applyLang } from '../src/i18n/index';
@@ -120,5 +122,20 @@ describe('sending', () => {
     expect(lines.slice(2)).toEqual(['Resumen: ojo', '- lib/a.dart:2 — Esto falla', '- lib/b.dart — Sobra']);
     applyLang('en');
     expect(reviewPreview('login-ab12', '', drafts).split('\n')[0]).toBe('[Agent Office] REVIEW: encargo/login-ab12');
+  });
+});
+
+describe('after sending', () => {
+  test('counts the stored comments the lead never got', () => {
+    expect(unsentCount([past(1, 'lib/a.dart', 1), { ...past(2, 'lib/a.dart', 2), sentAt: null }, { ...past(3, 'lib/b.dart', null), sentAt: null }])).toBe(2);
+    expect(unsentCount([past(1, 'lib/a.dart', 1)])).toBe(0);
+    expect(unsentCount([])).toBe(0);
+  });
+
+  test('only a review of an order in revision or done moves the card', () => {
+    expect(reviewReopens('revision')).toBe(true);
+    expect(reviewReopens('hecho')).toBe(true);
+    expect(reviewReopens('en-curso')).toBe(false);
+    expect(reviewReopens('pendiente')).toBe(false);
   });
 });

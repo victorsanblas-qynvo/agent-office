@@ -3,10 +3,10 @@ import { button } from '../dom';
 import { plural, t } from '../i18n';
 import { agentName } from '../labels';
 import type { Store } from '../store';
-import { relaunchAll, relaunchCandidates } from '../relaunch-all';
+import { relaunchAll, relaunchCandidates, relaunchRunning } from '../relaunch-all';
 import { duration } from '../time';
 import type { AgentView, SessionView } from '../types';
-import { statusAllowed } from './orderable';
+import { relaunchable, statusAllowed } from './orderable';
 
 export function mainSession(store: Store, agent: AgentView): SessionView | undefined {
   return agent.key === agent.sessionId ? store.sessions.get(agent.sessionId) : undefined;
@@ -64,8 +64,12 @@ export async function runSessionAction(api: OfficeApi | null, store: Store, cont
 
 export async function requestRelaunchAll(api: OfficeApi | null, store: Store): Promise<void> {
   const ids = relaunchCandidates(store.sessions.values());
-  if (api === null || ids.length === 0) return;
+  if (api === null || ids.length === 0 || relaunchRunning()) return;
   if (!window.confirm(plural('floors.relaunchAllConfirm', ids.length))) return;
-  const tally = await relaunchAll(ids, (sessionId) => api.relaunch(sessionId));
-  store.toast(t('toast.relaunchedAll', tally), tally.failed > 0 ? 'error' : 'ok');
+  const tally = await relaunchAll(
+    ids,
+    (sessionId) => api.relaunch(sessionId),
+    (sessionId) => relaunchable(store.sessions.get(sessionId)),
+  );
+  if (tally) store.toast(t('toast.relaunchedAll', tally), tally.failed > 0 ? 'error' : 'ok');
 }

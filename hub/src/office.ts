@@ -895,6 +895,10 @@ export class Office {
     return this.reviews.send(id, request);
   }
 
+  resendReview(id: number, lang: TextLang): Promise<ReviewResult> {
+    return this.reviews.resend(id, lang);
+  }
+
   orderComments(id: number): OrderCommentView[] | null {
     return this.reviews.list(id);
   }

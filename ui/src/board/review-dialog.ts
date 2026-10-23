@@ -5,6 +5,8 @@ import { reviewPreview, targetLabel, type ReviewDraft } from './review-model';
 
 export type ReviewDialogOpts = {
   slug: string;
+  // What sending does to the card, when it moves it.
+  note: string | null;
   drafts: () => readonly ReviewDraft[];
   remove: (id: number) => void;
   // True once the hub took the review: the dialog closes.
@@ -28,6 +30,7 @@ export function openReviewDialog(host: HTMLElement, opts: ReviewDialogOpts): voi
     'div',
     'pr-draft review-dialog',
     el('h3', 'new-order-heading', t('board.review.heading')),
+    opts.note ? el('p', 'muted', opts.note) : null,
     summaryLabel,
     el('b', 'review-dialog-label', t('board.review.list')),
     list,
