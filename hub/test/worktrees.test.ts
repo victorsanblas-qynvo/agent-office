@@ -76,6 +76,24 @@ const created = async (r: Rig, row = order(r)) => {
   return result.order;
 };
 
+function work(path: string, file: string, message: string): void {
+  writeFileSync(join(path, file), `${message}\n`);
+  git(path, 'add', '.');
+  git(path, 'commit', '-q', '-m', message);
+}
+
+// The branch lands on develop of the remote the way GitHub would merge it; the clone does not know until it fetches.
+function landOnRemote(r: Rig, made: OrderRow, how: 'merge' | 'squash' | 'rebase'): void {
+  git(r.seed, 'fetch', '-q', r.repo, made.branch as string);
+  if (how === 'merge') git(r.seed, 'merge', '-q', '--no-ff', '-m', 'Merge pull request', 'FETCH_HEAD');
+  if (how === 'squash') {
+    git(r.seed, 'merge', '-q', '--squash', 'FETCH_HEAD');
+    git(r.seed, 'commit', '-q', '-m', 'Squashed pull request');
+  }
+  if (how === 'rebase') git(r.seed, 'cherry-pick', `${made.base_sha}..FETCH_HEAD`);
+  git(r.seed, 'push', '-q', r.origin, 'develop');
+}
+
 describe('create', () => {
   test('branches from origin/<base> after a fetch, with the marker and the exclude line', async () => {
     const r = rig();
@@ -295,6 +313,9 @@ describe('list', () => {
     const r = rig();
     const merged = await created(r, order(r, 'fusionado-1111'));
     const open = await created(r, order(r, 'abierto-2222'));
+    work(merged.worktree_path as string, 'm.txt', 'fusionado');
+    landOnRemote(r, merged, 'merge');
+    git(r.repo, 'fetch', '-q', 'origin');
     writeFileSync(join(open.worktree_path as string, 'f.txt'), 'f');
     git(open.worktree_path as string, 'add', '.');
     git(open.worktree_path as string, 'commit', '-q', '-m', 'trabajo');
@@ -309,9 +330,12 @@ describe('list', () => {
 });
 
 describe('remove', () => {
-  test('a merged branch goes with -d and the folder is retired', async () => {
+  test('a merged branch goes with its folder, even when the main copy is on another branch', async () => {
     const r = rig();
     const made = await created(r);
+    work(made.worktree_path as string, 'f.txt', 'trabajo');
+    landOnRemote(r, made, 'merge');
+    git(r.repo, 'fetch', '-q', 'origin');
     expect(await r.desk.remove(made.id, { deleteBranch: true, force: false })).toBe('ok');
     expect(existsSync(made.worktree_path as string)).toBe(false);
     expect(git(r.repo, 'branch', '--list', 'encargo/*')).toBe('');
@@ -352,6 +376,26 @@ describe('remove', () => {
     r.inside.paths.length = 0;
     expect(await r.desk.remove(made.id, { deleteBranch: false, force: true })).toBe('ok');
     expect(existsSync(path)).toBe(false);
+  });
+
+  test('a branch without commits of its own goes with its folder without force', async () => {
+    const r = rig();
+    const made = await created(r);
+    git(r.repo, 'checkout', '-q', '-b', 'otra', 'origin/develop');
+    git(r.repo, 'commit', '-q', '--allow-empty', '-m', 'la copia principal avanza');
+    expect(await r.desk.remove(made.id, { deleteBranch: true, force: false })).toBe('ok');
+    expect(git(r.repo, 'branch', '--list', 'encargo/*')).toBe('');
+  });
+
+  test('a folder somebody deleted by hand keeps an unmerged branch unless forced', async () => {
+    const r = rig();
+    const made = await created(r);
+    work(made.worktree_path as string, 'f.txt', 'trabajo');
+    await runGit(r.repo, ['worktree', 'remove', '--force', made.worktree_path as string]);
+    expect(await r.desk.remove(made.id, { deleteBranch: true, force: false })).toBe('failed');
+    expect(git(r.repo, 'branch', '--list', 'encargo/*')).toContain('encargo/login-a1b2');
+    expect(await r.desk.remove(made.id, { deleteBranch: true, force: true })).toBe('ok');
+    expect(git(r.repo, 'branch', '--list', 'encargo/*')).toBe('');
   });
 
   test('a folder somebody deleted by hand is retired without errors', async () => {
@@ -451,5 +495,91 @@ describe('expire', () => {
     expect(result.totalKb).toBe(12 * 1024 * 1024);
     const heavy = r.activity.find((a) => typeof a.summary !== 'string' && a.summary.key === 'hub.act.worktreesHeavy');
     expect(heavy?.summary).toMatchObject({ params: { gb: 12, max: 10 } });
+  });
+
+  test('a branch without commits of its own is not merged, and its folder still goes when it expires', async () => {
+    const r = rig();
+    const made = await created(r);
+    r.store.update(made.id, { status: 'hecho', updated_at: r.clock.now - 10 * DAY });
+    expect((await r.desk.list('mobile')).worktrees[0]).toMatchObject({ ahead: 0, merged: false, pending: false });
+    expect(await r.desk.expire()).toMatchObject({ removed: 1, pending: 0 });
+    expect(existsSync(made.worktree_path as string)).toBe(false);
+    expect(git(r.repo, 'branch', '--list', 'encargo/*')).toBe('');
+  });
+
+  test('a merge done on the remote after the folder was made counts once expire fetches, one fetch per floor and base', async () => {
+    const fetches: string[] = [];
+    const r = rig(
+      {
+        git: (cwd, args, ...rest) => {
+          if (args[0] === 'fetch') fetches.push(`${cwd} ${args.at(-1)}`);
+          return runGit(cwd, args, ...rest);
+        },
+      },
+      (config) => {
+        config.worktrees.maxActivePerFloor = 10;
+      },
+    );
+    const old = r.clock.now - 10 * DAY;
+    const merged = await created(r, order(r, 'fusionado-1111'));
+    const open = await created(r, order(r, 'abierto-2222'));
+    work(merged.worktree_path as string, 'm.txt', 'fusionado');
+    work(open.worktree_path as string, 'a.txt', 'abierto');
+    landOnRemote(r, merged, 'merge');
+    r.store.update(merged.id, { status: 'hecho', updated_at: old });
+    r.store.update(open.id, { status: 'hecho', updated_at: old });
+    expect((await r.desk.list('mobile')).worktrees.find((v) => v.slug === 'fusionado-1111')).toMatchObject({ merged: false, pending: true });
+
+    fetches.length = 0;
+    expect(await r.desk.expire()).toMatchObject({ removed: 1, pending: 1 });
+    expect(fetches).toEqual([`${realPath(r.repo)} develop`]);
+    expect(existsSync(merged.worktree_path as string)).toBe(false);
+    expect(existsSync(open.worktree_path as string)).toBe(true);
+    expect(git(r.repo, 'branch', '--list', 'encargo/fusionado-1111')).toBe('');
+    expect(git(r.repo, 'branch', '--list', 'encargo/*')).toContain('encargo/abierto-2222');
+  });
+
+  test('a squash merge and a rebase merge on the remote are merged too', async () => {
+    const r = rig({}, (config) => {
+      config.worktrees.maxActivePerFloor = 10;
+    });
+    const squashed = await created(r, order(r, 'aplastado-1111'));
+    const rebased = await created(r, order(r, 'rebasado-2222'));
+    const open = await created(r, order(r, 'abierto-3333'));
+    for (const made of [squashed, rebased, open]) {
+      work(made.worktree_path as string, `${made.slug}-1.txt`, `${made.slug} uno`);
+      work(made.worktree_path as string, `${made.slug}-2.txt`, `${made.slug} dos`);
+    }
+    pushCommit(r.seed, r.origin, 'otro.txt', 'o', 'avanza la base');
+    landOnRemote(r, squashed, 'squash');
+    landOnRemote(r, rebased, 'rebase');
+    git(r.repo, 'fetch', '-q', 'origin');
+    const views = (await r.desk.list('mobile')).worktrees;
+    expect(views.find((v) => v.slug === 'aplastado-1111')).toMatchObject({ merged: true });
+    expect(views.find((v) => v.slug === 'rebasado-2222')).toMatchObject({ merged: true });
+    expect(views.find((v) => v.slug === 'abierto-3333')).toMatchObject({ merged: false });
+  });
+
+  test('a fetch that fails changes nothing and does not throw', async () => {
+    const r = rig({}, (config) => {
+      config.worktrees.maxActivePerFloor = 10;
+    });
+    const old = r.clock.now - 10 * DAY;
+    const known = await created(r, order(r, 'conocido-1111'));
+    const remote = await created(r, order(r, 'remoto-2222'));
+    work(known.worktree_path as string, 'k.txt', 'conocido');
+    work(remote.worktree_path as string, 'r.txt', 'remoto');
+    landOnRemote(r, known, 'merge');
+    git(r.repo, 'fetch', '-q', 'origin');
+    landOnRemote(r, remote, 'merge');
+    git(r.repo, 'remote', 'set-url', 'origin', join(r.root, 'does-not-exist.git'));
+    r.store.update(known.id, { status: 'hecho', updated_at: old });
+    r.store.update(remote.id, { status: 'hecho', updated_at: old });
+
+    expect(await r.desk.expire()).toMatchObject({ removed: 1, pending: 1 });
+    expect(existsSync(known.worktree_path as string)).toBe(false);
+    expect(existsSync(remote.worktree_path as string)).toBe(true);
+    expect(r.store.get(remote.id)).toMatchObject({ status: 'hecho', worktree_state: 'listo', base_stale: 0 });
+    expect((await r.desk.list('mobile')).worktrees.find((v) => v.slug === 'remoto-2222')).toMatchObject({ merged: false, pending: true });
   });
 });

@@ -102,6 +102,10 @@ export const gitOps = {
   },
   aheadBehind: (base: string, branch: string): string[] => ['rev-list', '--left-right', '--count', `${sha(base)}...${writable(branch)}`],
   isAncestor: (ancestor: string, descendant: string): string[] => ['merge-base', '--is-ancestor', sha(ancestor), ref(descendant, 'rama')],
+  cherry: (upstream: string, head: string, limit: string): string[] => ['cherry', sha(upstream), sha(head), sha(limit)],
+  diffPatch: (base: string, head: string): string[] => ['diff', ...PINNED_DIFF, '--no-renames', sha(base), sha(head), '--'],
+  logPatches: (base: string, head: string): string[] => ['log', '-p', '--no-merges', ...PINNED_DIFF, '--no-renames', '--format=commit %H', `${sha(base)}..${sha(head)}`, '--'],
+  patchIds: (): string[] => ['patch-id', '--stable'],
   diffNames: (baseSha: string, head: string): string[] => ['diff', '--name-only', '-z', sha(baseSha), sha(head), '--'],
   diffNumstat: (base: string, head: string): string[] => ['diff', ...PINNED_DIFF, '-z', '--numstat', '--find-renames', `${sha(base)}...${sha(head)}`, '--'],
   diffFile: (base: string, head: string, path: string, oldPath: string | null = null): string[] => [

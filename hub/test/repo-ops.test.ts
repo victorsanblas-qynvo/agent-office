@@ -90,6 +90,9 @@ describe('git argv constructors', () => {
     expect(() => gitOps.show('abcdef1', '-x')).toThrow(RepoOpError);
     expect(() => gitOps.commit('')).toThrow(RepoOpError);
     expect(() => gitOps.worktreeRemove('/tmp/x/../y', false)).toThrow(RepoOpError);
+    expect(() => gitOps.cherry('--abbrev', 'abcdef1', 'abcdef1')).toThrow(RepoOpError);
+    expect(() => gitOps.diffPatch('abcdef1', '-p')).toThrow(RepoOpError);
+    expect(() => gitOps.logPatches('abcdef1', 'origin/develop')).toThrow(RepoOpError);
   });
 
   test('the fixed argv of the common operations', () => {
