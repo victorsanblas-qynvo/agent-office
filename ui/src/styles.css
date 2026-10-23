@@ -2467,6 +2467,16 @@ button.plans-action {
   width: auto;
 }
 
+.board-search {
+  width: 220px;
+}
+
+.board-age.stale {
+  color: var(--asking);
+  border-color: color-mix(in srgb, var(--asking) 55%, var(--border));
+  background: color-mix(in srgb, var(--asking) 14%, transparent);
+}
+
 .board-notice {
   padding: 12px 14px;
   border: 1px dashed var(--border);

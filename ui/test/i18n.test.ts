@@ -13,6 +13,7 @@ const SAME_KEYS: MessageKey[] = [
   'needs.snooze.15m',
   'needs.snooze.1h',
   'settings.notifications.hung.minutes',
+  'settings.board.stale.hours',
   'topbar.status.replay',
   'replay.label',
   'board.tab.diff',
