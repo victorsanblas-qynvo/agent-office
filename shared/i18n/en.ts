@@ -266,7 +266,7 @@ export const hubEn = {
   'hub.api.chatChannelUnknown': 'That channel does not exist',
   'hub.api.chatChannelForbidden': 'Only the own floor channel or #global can be written to',
   'hub.api.chatSessionUnknown': 'The session running the script is not open on that floor',
-  'hub.api.relaunchBusy': 'The lead or its team is working: wait until they are free',
+  'hub.api.relaunchBusy': 'The lead or its team is working, or that window was just relaunched or already has a newer session: wait a moment',
   'hub.api.relaunchNoWindow': 'There is no tmux window named like this session',
   'hub.api.relaunchNoTmux': 'There is no tmux session called agent-office: open the sessions with tmux to be able to relaunch them',
   'hub.api.relaunchNoScript': 'This session has no launcher in the office',

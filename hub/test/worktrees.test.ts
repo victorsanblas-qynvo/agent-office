@@ -1,6 +1,8 @@
+import type { Database } from 'bun:sqlite';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { existsSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { CheckpointDesk } from '../src/checkpoints';
 import { defaultConfig } from '../src/config';
 import { openDb } from '../src/db';
 import { realPath } from '../src/floors';
@@ -17,6 +19,8 @@ useGitIdentity();
 
 type Rig = {
   desk: WorktreeDesk;
+  db: Database;
+  bus: OfficeBus;
   store: OrderStore;
   config: OfficeConfig;
   repo: string;
@@ -63,7 +67,7 @@ function rig(overrides: Partial<WorktreeDeskOpts> = {}, tweak: (config: OfficeCo
     sizeOf: async () => 120,
     ...overrides,
   });
-  return { desk, store, config, repo, seed, origin, root: dir, activity, changed, clock, inside };
+  return { desk, db, bus, store, config, repo, seed, origin, root: dir, activity, changed, clock, inside };
 }
 
 function order(r: Rig, slug = 'login-a1b2', floor = 'mobile'): OrderRow {
@@ -199,6 +203,27 @@ describe('create', () => {
     const link = join(made.worktree_path as string, 'vendor');
     expect(lstatSync(link).isSymbolicLink()).toBe(true);
     expect(readFileSync(join(link, 'lib.txt'), 'utf8')).toBe('v');
+  });
+
+  test('a linked folder is excluded by name, so a checkpoint never commits its symlink', async () => {
+    const r = rig({}, (config) => {
+      config.floors.mobile.linkDirs = ['node_modules'];
+      config.worktrees.maxActivePerFloor = 10;
+    });
+    pushCommit(r.seed, r.origin, '.gitignore', 'node_modules/\n', 'ignora las dependencias');
+    mkdirSync(join(r.repo, 'node_modules'));
+    writeFileSync(join(r.repo, 'node_modules', 'dep.js'), 'x');
+    const made = await created(r);
+    await created(r, order(r, 'otro-c3d4'));
+    const exclude = readFileSync(join(r.repo, '.git', 'info', 'exclude'), 'utf8').split('\n');
+    expect(exclude.filter((line) => line === '/node_modules')).toHaveLength(1);
+    const path = made.worktree_path as string;
+    expect(lstatSync(join(path, 'node_modules')).isSymbolicLink()).toBe(true);
+    writeFileSync(join(path, 'a.txt'), 'a');
+    const checkpoints = new CheckpointDesk({ db: r.db, store: r.store, git: runGit, now: () => r.clock.now, bus: r.bus, config: () => r.config });
+    const result = await checkpoints.commit(made, 'listo', 'listo');
+    expect(result).toMatchObject({ committed: true, skipped: [] });
+    expect(git(path, 'ls-tree', '-r', '--name-only', 'HEAD').split('\n').sort()).toEqual(['.gitignore', 'README.md', 'a.txt']);
   });
 
   test('setup runs in the background: preparando, then listo or error with the tail of its output', async () => {
@@ -711,6 +736,22 @@ describe('a branch is only deleted on facts git confirmed', () => {
     expect(moved[0]?.summary).toMatchObject({ params: { branch: 'encargo/login-a1b2', sha: late } });
     expect(await r.desk.remove(made.id, { deleteBranch: true, force: true })).toBe('not-found');
     expect(git(r.repo, 'rev-parse', 'refs/heads/encargo/login-a1b2')).toBe(late);
+  });
+
+  test('a branch git cannot delete stays at its tip, and its folder already gone is still retired', async () => {
+    const r = rig({ git: failing('update-ref') });
+    const made = await created(r);
+    const path = made.worktree_path as string;
+    work(path, 'f.txt', 'trabajo');
+    landOnRemote(r, made, 'merge');
+    git(r.repo, 'fetch', '-q', 'origin');
+    const tip = git(r.repo, 'rev-parse', 'refs/heads/encargo/login-a1b2');
+    expect(await r.desk.remove(made.id, { deleteBranch: true, force: false })).toBe('failed');
+    expect(existsSync(path)).toBe(false);
+    expect(r.store.get(made.id)?.worktree_state).toBe('retirado');
+    expect(git(r.repo, 'rev-parse', 'refs/heads/encargo/login-a1b2')).toBe(tip);
+    expect(keyed(r, 'hub.act.branchDeleted')).toHaveLength(0);
+    expect(keyed(r, 'hub.act.branchMoved')).toHaveLength(0);
   });
 
   test('a deleted branch leaves a line with its sha and the command that brings it back', async () => {

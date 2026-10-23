@@ -352,6 +352,30 @@ describe('relaunch', () => {
     expect(await h.office.relaunch(LEAD)).toBe('ok');
   });
 
+  test('one tmux window is relaunched once: a call while one runs or within 30 s after it is busy', async () => {
+    prepare();
+    const respawns = () => calls.filter((args) => args[0] === 'respawn-window');
+    const [first, second] = await Promise.all([h.office.relaunch(LEAD), h.office.relaunch(LEAD)]);
+    expect([first, second]).toEqual(['ok', 'busy']);
+    expect(respawns()).toHaveLength(1);
+    h.clock.advance(10_000);
+    expect(await h.office.relaunch(LEAD)).toBe('busy');
+    h.clock.advance(21_000);
+    expect(await h.office.relaunch(LEAD)).toBe('ok');
+    expect(respawns()).toHaveLength(2);
+  });
+
+  test('an older session of a window a newer open session already has is busy', async () => {
+    prepare();
+    const NEWER = '33333333-cccc-4ddd-8eee-000000000003';
+    h.clock.advance(1000);
+    h.office.ingest(ev(NEWER, repo, 'SessionStart', { source: 'startup' }), leadMeta(socket));
+    h.office.ingest(ev(NEWER, repo, 'Stop'));
+    expect(await h.office.relaunch(LEAD)).toBe('busy');
+    expect(calls).toEqual([]);
+    expect(await h.office.relaunch(NEWER)).toBe('ok');
+  });
+
   test('answers no-window, no-tmux, no-script, not-found and failed', async () => {
     prepare();
     tmuxReply = () => ({ code: 0, stdout: 'director\n' });
@@ -406,9 +430,13 @@ describe('relaunch and status routes', () => {
     expect((await post('/api/sessions/nope/relaunch')).status).toBe(404);
     expect((await post(`/api/sessions/${LEAD}/relaunch`, { resume: false })).status).toBe(200);
     expect(calls.at(-1)?.at(-1)).toBe(sq(join(sessionsDir, 'lead-mobile.sh')));
+    const again = await post(`/api/sessions/${LEAD}/relaunch`, {});
+    expect([again.status, await again.json()]).toEqual([409, { error: { key: 'hub.api.relaunchBusy' } }]);
+    h.clock.advance(30_000);
     expect((await post(`/api/sessions/${LEAD}/relaunch`, {})).status).toBe(200);
     expect(calls.at(-1)?.at(-1)).toContain('--resume');
 
+    h.clock.advance(30_000);
     tmuxReply = () => ({ code: 0, stdout: 'director\n' });
     const noWindow = await post(`/api/sessions/${LEAD}/relaunch`);
     expect([noWindow.status, await noWindow.json()]).toEqual([409, { error: { key: 'hub.api.relaunchNoWindow' } }]);
