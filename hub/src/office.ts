@@ -11,7 +11,8 @@ import { withoutChatCalls } from './chat-commands';
 import { ChatRoom, type ReadChatResult, type UserChatResult } from './chat-room';
 import { ContextDesk } from './context-desk';
 import { deliver } from './courier';
-import { DeliveryDesk, type DiffFileResult, type DiffResult } from './delivery-desk';
+import type { TextLang } from './render-text';
+import { DeliveryDesk, type DiffFileResult, type DiffResult, type PrDraftResult } from './delivery-desk';
 import { DocumentDesk } from './documents';
 import { FloorDirtyError, FloorInUseError, purgeFloorData } from './floor-data';
 import { FloorResolver, isInside, memoryRegistry, realPath, type FloorRegistry, type GitRootFn } from './floors';
@@ -359,7 +360,7 @@ export class Office {
       changed: (order) => this.bus.emit({ type: 'worktrees', floor: order.floor }),
     });
     this.checkpoints = new CheckpointDesk({ db: opts.db, store: this.store, git: this.git, now: this.now, bus: this.bus, config: () => this.config });
-    this.delivery = new DeliveryDesk({ store: this.store, git: this.git, config: () => this.config });
+    this.delivery = new DeliveryDesk({ store: this.store, git: this.git, config: () => this.config, latestChecks: (id) => this.checks.latest(id) });
     this.checks = new ChecksDesk({
       db: opts.db,
       store: this.store,
@@ -775,6 +776,10 @@ export class Office {
 
   orderDiff(id: number): Promise<DiffResult> {
     return this.delivery.diff(id);
+  }
+
+  orderPrDraft(id: number, lang: TextLang): Promise<PrDraftResult> {
+    return this.delivery.prDraft(id, lang);
   }
 
   orderDiffFile(id: number, path: string): Promise<DiffFileResult> {

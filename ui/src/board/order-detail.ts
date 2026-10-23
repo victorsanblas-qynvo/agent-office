@@ -8,6 +8,7 @@ import type { CheckRunView, CheckView, CheckpointView, OrderDiff, OrderDiffFile,
 import { checksBadgeNode, folderBadgeNode } from './badges';
 import { diffSummary, patchRows, statRows } from './diff-model';
 import { parseDiff } from './diff-parse';
+import { openPrDraft } from './pr-draft';
 
 export type OrderDetail = { destroy(): void };
 
@@ -190,6 +191,11 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
         return result.ok ? { ok: true } : result;
       }));
       row.append(retry);
+    }
+    if (current.branch && current.worktree?.path) {
+      const draft = button(t('board.pr.open'));
+      draft.addEventListener('click', () => openPrDraft(host, store, api, orderId));
+      row.append(draft);
     }
     if (current.status !== 'descartado') {
       const discard = button(t('board.discard'), 'doc-discard');

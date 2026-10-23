@@ -139,6 +139,38 @@ describe('diff of a delivery order', () => {
   });
 });
 
+describe('pull request draft of a delivery order', () => {
+  test('commit subjects, diff totals and the language of the headings', async () => {
+    rig = deliveryRig();
+    const call = api(rig);
+    const { id, path } = await orderWithFolder(rig);
+    write(path, 'a.txt', 'a\nb\n');
+    commitAll(path, 'feat: add a');
+    write(path, 'b.txt', 'b\n');
+    commitAll(path, 'fix: add b');
+
+    const es = await call(`/api/board/orders/${id}/pr-draft`);
+    expect(es.status).toBe(200);
+    expect(es.body.title).toBe('Pantalla de login');
+    expect(es.body.body).toContain('- fix: add b\n- feat: add a');
+    expect(es.body.body).toContain('## Resumen');
+    expect(es.body.body).toContain('2 archivos, +3 −0');
+    const en = await call(`/api/board/orders/${id}/pr-draft?lang=en`);
+    expect(en.body.body).toContain('## Summary');
+    expect(en.body.body).toContain('2 files, +3 −0');
+  });
+
+  test('bad id, unknown order and an order without a branch', async () => {
+    rig = deliveryRig();
+    const call = api(rig);
+    const { id } = await orderWithFolder(rig);
+    expect(await call('/api/board/orders/abc/pr-draft')).toMatchObject({ status: 400, body: { error: { key: 'hub.api.badId' } } });
+    expect(await call('/api/board/orders/9999/pr-draft')).toMatchObject({ status: 404, body: { error: { key: 'hub.api.orderNotFound' } } });
+    rig.h.db.query('UPDATE orders SET branch = NULL, worktree_path = NULL, worktree_state = NULL WHERE id = ?').run(id);
+    expect(await call(`/api/board/orders/${id}/pr-draft`)).toMatchObject({ status: 409, body: { error: { key: 'hub.api.orderNoBranch' } } });
+  });
+});
+
 describe('capPatch', () => {
   test('keeps a small patch and cuts a large one at the end of a line without breaking a character', () => {
     expect(capPatch('a\nb\n', 10)).toEqual({ patch: 'a\nb\n', truncated: false });

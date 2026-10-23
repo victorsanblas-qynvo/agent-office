@@ -1,18 +1,22 @@
 import { existsSync } from 'node:fs';
+import { prDraft } from './delivery-text';
 import { realPath } from './floors';
 import type { GitRunner } from './git';
 import type { OrderRow, OrderStore } from './order-store';
+import type { TextLang } from './render-text';
 import { RepoOpError, gitOps, numstatPath, parseNumstat, repoPath, run, validSha, type NumstatEntry } from './repo-ops';
-import type { HubText, OfficeConfig, OrderDiff, OrderDiffFile } from './types';
+import type { CheckRunView, HubText, OfficeConfig, OrderDiff, OrderDiffFile } from './types';
 
 const GIT_TIMEOUT_MS = 30_000;
 export const MAX_DIFF_FILES = 300;
 export const MAX_PATCH_BYTES = 400 * 1024;
+const MAX_PR_COMMITS = 500;
 
 export type DeliveryDeskOpts = {
   store: OrderStore;
   git: GitRunner;
   config: () => OfficeConfig;
+  latestChecks: (orderId: number) => CheckRunView | null;
   timeoutMs?: number;
 };
 
@@ -20,11 +24,22 @@ export type DeliveryFailure = { ok: false; status: 400 | 404 | 409 | 500; error:
 
 export type DiffResult = { ok: true; diff: OrderDiff } | DeliveryFailure;
 
+export type PrDraftResult = { ok: true; draft: { title: string; body: string } } | DeliveryFailure;
+
 export type DiffFileResult = { ok: true; file: OrderDiffFile } | DeliveryFailure;
 
 type Compared = { ok: true; cwd: string; base: string; head: string; entries: NumstatEntry[] };
 
 const failure = (status: DeliveryFailure['status'], error: HubText): DeliveryFailure => ({ ok: false, status, error });
+
+function totalsOf(entries: NumstatEntry[]): OrderDiff['totals'] {
+  const totals = { files: entries.length, adds: 0, dels: 0 };
+  for (const entry of entries) {
+    totals.adds += entry.adds ?? 0;
+    totals.dels += entry.dels ?? 0;
+  }
+  return totals;
+}
 
 // A patch cut to max bytes at the end of a line, so the panel never draws half a line.
 export function capPatch(patch: string, max = MAX_PATCH_BYTES): { patch: string; truncated: boolean } {
@@ -41,12 +56,29 @@ export class DeliveryDesk {
     const compared = await this.compare(orderId);
     if (!compared.ok) return compared;
     const { base, head, entries } = compared;
-    const totals = { files: entries.length, adds: 0, dels: 0 };
-    for (const entry of entries) {
-      totals.adds += entry.adds ?? 0;
-      totals.dels += entry.dels ?? 0;
-    }
-    return { ok: true, diff: { base, head, files: entries.slice(0, MAX_DIFF_FILES), totals, truncated: entries.length > MAX_DIFF_FILES } };
+    return { ok: true, diff: { base, head, files: entries.slice(0, MAX_DIFF_FILES), totals: totalsOf(entries), truncated: entries.length > MAX_DIFF_FILES } };
+  }
+
+  async prDraft(orderId: number, lang: TextLang): Promise<PrDraftResult> {
+    const compared = await this.compare(orderId);
+    if (!compared.ok) return compared;
+    const { cwd, base, head, entries } = compared;
+    const row = this.opts.store.get(orderId);
+    if (!row?.branch) return failure(409, { key: 'hub.api.orderNoBranch' });
+    const log = await run(this.opts.git, cwd, () => gitOps.logSubjects(base, head, MAX_PR_COMMITS), this.timeout());
+    if (log.code !== 0) return failure(500, { key: 'hub.api.logFailed' });
+    const checks = this.opts.latestChecks(orderId)?.checks ?? [];
+    const draft = prDraft({
+      title: row.title,
+      brief: row.description,
+      branch: row.branch,
+      base: row.base_ref ?? base.slice(0, 7),
+      commits: log.stdout.split('\n'),
+      checks: checks.map((check) => ({ name: check.name, status: check.status, durationMs: check.durationMs })),
+      totals: totalsOf(entries),
+      lang,
+    });
+    return { ok: true, draft };
   }
 
   async diffFile(orderId: number, path: string): Promise<DiffFileResult> {
