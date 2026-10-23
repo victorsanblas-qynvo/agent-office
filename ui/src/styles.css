@@ -18,7 +18,7 @@
 }
 
 @media (prefers-color-scheme: light) {
-  :root {
+  :root:not([data-theme="dark"]) {
     color-scheme: light;
     --bg: #f3f5f8;
     --surface: #ffffff;
@@ -30,6 +30,32 @@
     --canvas-bg: #dfe5ec;
     --shadow: 0 8px 28px rgba(20, 30, 50, 0.2);
   }
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f3f5f8;
+  --surface: #ffffff;
+  --surface-2: #eef1f5;
+  --border: #d5dbe3;
+  --text: #18202a;
+  --muted: #5d6b7c;
+  --accent: #2f5fe0;
+  --canvas-bg: #dfe5ec;
+  --shadow: 0 8px 28px rgba(20, 30, 50, 0.2);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0f1318;
+  --surface: #161b22;
+  --surface-2: #1e252e;
+  --border: #2a333f;
+  --text: #e6edf3;
+  --muted: #8b97a6;
+  --accent: #4f7cff;
+  --canvas-bg: #0b0e12;
+  --shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
 }
 
 * {
@@ -4318,4 +4344,33 @@ button.diff-file.active {
   position: absolute;
   top: 0;
   bottom: 0;
+}
+
+.history-saved {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 10px;
+}
+
+.history-saved-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0;
+}
+
+.history-saved-open,
+.history-saved-remove {
+  background: transparent;
+  border: 0;
+  padding: 2px 8px;
+}
+
+.history-saved-remove {
+  color: var(--muted);
+}
+
+.history-save {
+  align-self: flex-end;
 }

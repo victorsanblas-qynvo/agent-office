@@ -94,7 +94,7 @@ describe('the slash shortcut', () => {
     ({
       api,
       showTab: (tab: string) => calls.push(`tab:${tab}`),
-      table: () => ({ showHistory: () => (calls.push('history'), true) }),
+      table: () => ({ showHistory: () => (calls.push('history'), true), showSearch: () => true }),
     }) as unknown as Nav;
 
   test('opens the Tabla on the history and focuses its box, in that order', () => {
@@ -118,7 +118,7 @@ describe('the slash key and the palette entry on the board', () => {
       tab: () => tab,
       showTab: (next: string) => calls.push(`tab:${next}`),
       board: () => ({ focusFilter: () => calls.push('filter') }),
-      table: () => ({ showHistory: () => (calls.push('history'), true) }),
+      table: () => ({ showHistory: () => (calls.push('history'), true), showSearch: () => true }),
     }) as unknown as Nav;
   const cursor = {} as never;
   const extra = { palette() {}, help() {} };

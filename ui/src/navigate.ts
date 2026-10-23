@@ -13,6 +13,8 @@ import { focusOrders } from './panel/orders';
 import { relaunchable } from './panel/orderable';
 import { togglePin } from './pins';
 import { broadcastRunning } from './broadcast';
+import { theme } from './theme';
+import { readSaved } from './table/history';
 import { relaunchCandidates, relaunchRunning } from './relaunch-all';
 import { openSection, type SectionId } from './panel/section';
 import { broadcastTargets, requestMessageAll, requestRelaunchAll, requestSession, requestStatusAll } from './panel/session-controls';
@@ -144,6 +146,7 @@ export function paletteContext(nav: Nav): PaletteContext {
     newOrder: nav.board().canCreate(),
     mute: nav.notifier?.preferences.enabled === true,
     muteSound: nav.sound?.preferences.enabled === true,
+    searches: readSaved(),
   };
 }
 
@@ -203,6 +206,16 @@ export function runTarget(nav: Nav, target: PaletteTarget): void {
     case 'history':
       openHistory(nav);
       break;
+    case 'theme':
+      theme.set(target.theme);
+      break;
+    case 'search': {
+      const search = readSaved().find((item) => item.name === target.name);
+      if (!search || nav.api === null) break;
+      nav.showTab('table');
+      nav.table().showSearch(search);
+      break;
+    }
     case 'mute': {
       const prefs = nav.notifier?.preferences;
       if (!nav.notifier || !prefs) break;

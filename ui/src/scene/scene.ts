@@ -21,6 +21,7 @@ import {
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
 import { ambient, coffeePlan, daylightFor, quantizeDaylight, type CoffeeVisit } from '../ambient';
+import { effectiveTheme, theme } from '../theme';
 import { t } from '../i18n';
 import { resolveOverride } from '../layouts';
 import { agentName, contextOf, floorLabel } from '../labels';
@@ -264,6 +265,7 @@ class OfficeScene {
         this.updateDaylight(true);
         this.meetingTimer = MEETING_REFRESH_S;
       }),
+      theme.subscribe(() => this.applyTheme()),
       store.watch(['selection'], () => this.onSelection()),
     );
 
@@ -792,7 +794,7 @@ class OfficeScene {
   // theme pins it to day or night; the clock lets it run through dawn and dusk. The buildings are rebuilt only
   // when it crosses one of its steps.
   private updateDaylight(force: boolean): void {
-    const k = quantizeDaylight(daylightFor(ambient.get(), this.media.matches, new Date()));
+    const k = quantizeDaylight(daylightFor(ambient.get(), effectiveTheme(theme.get(), this.media.matches) === 'dark', new Date()));
     if (!force && k === this.daylight) return;
     this.daylight = k;
     applyDaylight(k);

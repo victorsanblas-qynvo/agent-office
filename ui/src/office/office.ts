@@ -1,5 +1,6 @@
 import { Application, Container, Graphics } from 'pixi.js';
 import { ambient, coffeePlan, daylightFor, type CoffeeVisit } from '../ambient';
+import { effectiveTheme, theme } from '../theme';
 import { paletteRole, resolveOverride } from '../layouts';
 import { LiftController, linkLift } from '../lift';
 import { contextOf } from '../labels';
@@ -167,6 +168,10 @@ class OfficeView {
       this.app.renderer.background.color = canvasBackground();
       this.dirty = true;
     });
+    theme.subscribe(() => {
+      this.app.renderer.background.color = canvasBackground();
+      this.dirty = true;
+    });
     ambient.subscribe(() => {
       this.dirty = true;
       this.meetingTimer = MEETING_REFRESH_S;
@@ -236,7 +241,7 @@ class OfficeView {
 
   // The sky is night when the system theme is dark, or when the clock says so if the ambient life follows it.
   private isDark(): boolean {
-    return daylightFor(ambient.get(), this.media.matches, new Date()) < 0.5;
+    return daylightFor(ambient.get(), effectiveTheme(theme.get(), this.media.matches) === 'dark', new Date()) < 0.5;
   }
 
   private ground(): FloorScene | undefined {
