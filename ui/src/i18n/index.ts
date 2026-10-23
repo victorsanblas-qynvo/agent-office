@@ -32,6 +32,10 @@ export function createTranslator(dict: Messages): Translator {
   return { t, plural };
 }
 
+export function translatorFor(language: Lang): Translator {
+  return createTranslator(DICTIONARIES[language]);
+}
+
 let lang: Lang = 'es';
 let active = createTranslator(es);
 

@@ -21,6 +21,7 @@ import { parseReview } from './review-desk';
 import { parseSearchParams } from './search';
 import type { SettingsService } from './settings';
 import { record, text } from './state-machine';
+import { parseFlakyDays } from './flaky-report';
 import type { ChatKind, ChatPostRequest, ClientMessage, HookMeta, HubText, HubTextKey, OrderStatus, PlanDecision, ServerMessage } from './types';
 import type { RemoveResult } from './worktrees';
 
@@ -514,6 +515,13 @@ export function createApp(opts: ServerOptions, holdRequest: (req: Request) => vo
   app.get('/api/digest', requirePanel, (c) => {
     const result = office.dayDigest(c.req.query('day') ?? null);
     return typeof result === 'string' ? c.json({ error: { key: 'hub.api.digestDay' } }, 400) : c.json(result);
+  });
+
+  app.get('/api/checks/flaky', requirePanel, (c) => {
+    const days = parseFlakyDays(c.req.query('days'));
+    if (days === null) return c.json({ error: { key: 'hub.api.flakyDays' } }, 400);
+    const result = office.flakyChecks(days, c.req.query('floor') || undefined);
+    return result === 'bad-floor' ? c.json({ error: { key: 'hub.api.flakyFloor' } }, 400) : c.json({ days, flaky: result });
   });
 
   app.get('/api/reports/:agentKey', requirePanel, (c) => {

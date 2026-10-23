@@ -246,6 +246,8 @@ export type HubTextParams = {
   'hub.api.chatKind': undefined;
   'hub.api.usageRange': undefined;
   'hub.api.digestDay': undefined;
+  'hub.api.flakyDays': undefined;
+  'hub.api.flakyFloor': undefined;
   'hub.api.chatAuthorUnknown': undefined;
   'hub.api.chatFloorUnknown': undefined;
   'hub.api.chatChannelUnknown': undefined;
@@ -788,6 +790,9 @@ export type OrderChecksView = {
   touched: string[];
   forced: boolean;
 };
+
+// A check that failed and later passed on the same commit within an order.
+export type FlakyCheckView = { floor: string; check: string; flakyCount: number; lastAt: number; orders: number };
 
 export type OrderWorktreeView = { path: string; state: WorktreeState; error: string | null; stale: boolean };
 

@@ -237,6 +237,8 @@ export const hubEs = {
   'hub.api.chatKind': 'Tipo de mensaje desconocido',
   'hub.api.usageRange': 'El rango debe ser today o week',
   'hub.api.digestDay': 'El día debe ser AAAA-MM-DD y no futuro',
+  'hub.api.flakyDays': 'Los días deben ser un número entero de 1 a 60',
+  'hub.api.flakyFloor': 'Esa planta no existe',
   'hub.api.chatAuthorUnknown': 'No hay ningún agente vivo con ese nombre en la planta',
   'hub.api.chatFloorUnknown': 'La carpeta no pertenece a ninguna planta gestionada',
   'hub.api.chatChannelUnknown': 'Ese canal no existe',

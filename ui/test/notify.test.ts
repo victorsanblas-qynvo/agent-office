@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
 import { applyLang, t } from '../src/i18n/index';
 import { MUTED_FLOORS_KEY, QUIET_KEY } from '../src/prefs';
-import { NOTIFY_EVENTS, Notifier, checkTransitionNotice, SEEN_LIMIT, type NotifyPrefs } from '../src/notify';
+import { NOTIFY_EVENTS, Notifier, checkTransitionNotice, QuietRecap, recapText, SEEN_LIMIT, type NotifyPrefs } from '../src/notify';
 import type { Store } from '../src/store';
 import type { AgentView, CheckRunView, DocumentView, OrderView, QuestionView, ServerMessage, Snapshot } from '../src/types';
 
@@ -546,5 +546,98 @@ describe('check result notices', () => {
     desk.observe({ type: 'checks', orderId: 7, data: run(1, 'running') });
     desk.observe({ type: 'checks', orderId: 7, data: run(1, 'passed') });
     expect(FakeNotification.created).toHaveLength(0);
+  });
+});
+
+describe('quiet recap', () => {
+  const at = (day: number, hour: number): Date => new Date(2026, 9, day, hour, 0);
+  const blocked = (id: number, fromKey = DEV) => ({ id, ts: 1, fromKey, toName: 'lead', toKey: LEAD, text: 'BLOQUEADO: falta la key', floor: 'mobile' });
+  const alert = (id: number) => ({ id, level: 'alerta', floor: 'mobile', files: ['a.ts'], agentKey: DEV }) as never;
+  let clock: Date;
+  let toasts: string[];
+  let desk: Notifier;
+
+  beforeEach(() => {
+    storage.clear();
+    storage.set(QUIET_KEY, JSON.stringify({ enabled: true, from: '22:00', to: '08:00', allowPermissions: true }));
+    FakeNotification.permission = 'granted';
+    FakeNotification.created = [];
+    page.visible = false;
+    page.focused = false;
+    clock = at(23, 23);
+    toasts = [];
+    const store = { ...fakeStore([]), toast: (text: string) => toasts.push(text) } as unknown as Store;
+    desk = new Notifier(store, () => clock);
+    desk.save(allOn());
+  });
+
+  test('recapText lists only the kinds that dropped something, pluralized', () => {
+    const none = { delivery: 0, blocked: 0, checks: 0, plans: 0, alerts: 0, stalled: 0 };
+    expect(recapText(none, 'es')).toBeNull();
+    expect(recapText({ ...none, delivery: 3, blocked: 1, checks: 2 }, 'es')).toBe('Mientras estabas en silencio: 3 entregas, 1 BLOQUEADO, 2 checks en rojo');
+    expect(recapText({ ...none, alerts: 1, checks: 1 }, 'es')).toBe('Mientras estabas en silencio: 1 check en rojo, 1 alerta');
+    expect(recapText({ ...none, delivery: 1, checks: 2 }, 'en')).toBe('While you were away: 1 delivery, 2 red checks');
+  });
+
+  test('QuietRecap counts by kind and empties when taken', () => {
+    const recap = new QuietRecap();
+    recap.add('delivery');
+    recap.add('delivery');
+    recap.add('blocked');
+    expect(recap.total).toBe(3);
+    expect(recap.take()).toEqual({ delivery: 2, blocked: 1, checks: 0, plans: 0, alerts: 0, stalled: 0 });
+    expect(recap.total).toBe(0);
+  });
+
+  test('one notice when quiet hours end, with the counts, then nothing more', () => {
+    desk.observe({ type: 'message', data: blocked(1) });
+    desk.observe({ type: 'message', data: blocked(2) });
+    desk.observe({ type: 'alert', data: alert(3) });
+    desk.tick();
+    expect(FakeNotification.created).toHaveLength(0);
+    clock = at(24, 8);
+    desk.tick();
+    desk.tick();
+    expect(FakeNotification.created.map((n) => n.title)).toEqual(['Mientras estabas en silencio: 2 BLOQUEADOS, 1 alerta']);
+  });
+
+  test('a green check and a deferred question are not counted', () => {
+    const order = { id: 7, title: 'Login' };
+    const store = { ...fakeStore([], [question('q1')]), orders: [order], toast: () => {} } as unknown as Store;
+    const night = new Notifier(store, () => clock);
+    night.save(allOn());
+    const run = (status: string) => ({ id: 1, orderId: 7, sha: 'a', trigger: 'listo', status, startedAt: 1, endedAt: null, checks: [] }) as never;
+    night.observe({ type: 'checks', orderId: 7, data: run('running') });
+    night.observe({ type: 'checks', orderId: 7, data: run('passed') });
+    night.observe({ type: 'question', data: question('q1') });
+    clock = at(24, 8);
+    night.tick();
+    expect(FakeNotification.created.map((n) => n.options.tag)).toEqual(['question:q1']);
+  });
+
+  test('a muted floor is not counted', () => {
+    storage.set(MUTED_FLOORS_KEY, JSON.stringify(['mobile']));
+    desk.observe({ type: 'message', data: blocked(1, LEAD) });
+    desk.observe({ type: 'message', data: blocked(2) });
+    clock = at(24, 8);
+    desk.tick();
+    expect(FakeNotification.created.map((n) => n.title)).toEqual(['Mientras estabas en silencio: 1 BLOQUEADO']);
+  });
+
+  test('nothing dropped means no recap', () => {
+    clock = at(24, 8);
+    desk.tick();
+    expect(FakeNotification.created).toHaveLength(0);
+    expect(toasts).toEqual([]);
+  });
+
+  test('with the panel in front the recap is a toast', () => {
+    desk.observe({ type: 'message', data: blocked(1) });
+    page.visible = true;
+    page.focused = true;
+    clock = at(24, 8);
+    desk.tick();
+    expect(FakeNotification.created).toHaveLength(0);
+    expect(toasts).toEqual(['Mientras estabas en silencio: 1 BLOQUEADO']);
   });
 });

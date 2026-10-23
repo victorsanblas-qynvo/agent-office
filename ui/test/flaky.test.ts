@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { flakyChecks } from '../src/board/flaky';
+import { flakyHits } from '../../shared/flaky';
 import type { CheckRunView, CheckStatus } from '../src/types';
 
 function run(id: number, sha: string, status: CheckStatus, name = 'test'): CheckRunView {
@@ -39,5 +40,15 @@ describe('flakyChecks', () => {
 
   test('is per check name', () => {
     expect(flakyChecks([run(1, 'aaa', 'failed', 'lint'), run(2, 'aaa', 'passed', 'test')]).size).toBe(0);
+  });
+});
+
+describe('flakyHits', () => {
+  test('one hit per commit and check, at the run that passed', () => {
+    const hits = flakyHits([run(1, 'aaa', 'failed'), run(2, 'aaa', 'passed'), run(3, 'aaa', 'failed'), run(4, 'aaa', 'passed'), run(5, 'bbb', 'failed'), run(6, 'bbb', 'passed')]);
+    expect(hits).toEqual([
+      { name: 'test', sha: 'aaa', at: 2 },
+      { name: 'test', sha: 'bbb', at: 6 },
+    ]);
   });
 });

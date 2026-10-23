@@ -237,6 +237,8 @@ export const hubEn = {
   'hub.api.chatKind': 'Unknown message kind',
   'hub.api.usageRange': 'The range must be today or week',
   'hub.api.digestDay': 'The day must be YYYY-MM-DD and not in the future',
+  'hub.api.flakyDays': 'The days must be a whole number from 1 to 60',
+  'hub.api.flakyFloor': 'That floor does not exist',
   'hub.api.chatAuthorUnknown': 'No live agent on the floor has that name',
   'hub.api.chatFloorUnknown': 'The folder belongs to no managed floor',
   'hub.api.chatChannelUnknown': 'That channel does not exist',

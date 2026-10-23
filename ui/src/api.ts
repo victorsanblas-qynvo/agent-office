@@ -15,6 +15,7 @@ import type {
   DocumentContent,
   DocumentRound,
   DocumentRoundDiff,
+  FlakyCheckView,
   FloorAddRequest,
   FloorAddResult,
   FloorRemoveResult,
@@ -249,6 +250,10 @@ export class OfficeApi {
 
   markFinishedSeen(id: number): Promise<ApiData<{ ok: true }>> {
     return this.send('POST', `/api/alerts/${id}/seen`, {});
+  }
+
+  flakyChecks(floor: string, days = 14): Promise<ApiData<{ days: number; flaky: FlakyCheckView[] }>> {
+    return this.get(`/api/checks/flaky?days=${days}&floor=${encodeURIComponent(floor)}`);
   }
 
   worktrees(floor?: string): Promise<ApiData<{ worktrees: WorktreeView[]; totalKb: number; warnKb: number }>> {
