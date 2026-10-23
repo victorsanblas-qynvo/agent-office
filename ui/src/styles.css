@@ -2851,6 +2851,109 @@ button.order-tab-button.active {
   font-size: 12px;
 }
 
+.diff-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.diff-files {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+button.diff-file {
+  display: flex;
+  width: 100%;
+  justify-content: space-between;
+  gap: 8px;
+  text-align: left;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  border-color: transparent;
+  background: transparent;
+}
+
+button.diff-file.active {
+  background: var(--surface-2);
+  border-color: var(--border);
+}
+
+.diff-file-path {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.diff-file-stat {
+  flex: none;
+}
+
+.diff-add-count {
+  color: var(--ok);
+}
+
+.diff-del-count {
+  color: var(--danger);
+}
+
+.diff-patch {
+  margin-top: 8px;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+
+.diff-line {
+  display: flex;
+  min-width: max-content;
+  white-space: pre;
+}
+
+.diff-no {
+  flex: none;
+  width: 4ch;
+  padding: 0 4px;
+  text-align: right;
+  color: var(--muted);
+  user-select: none;
+}
+
+.diff-marker {
+  flex: none;
+  width: 2ch;
+  text-align: center;
+}
+
+.diff-add {
+  background: color-mix(in srgb, var(--ok) 18%, transparent);
+}
+
+.diff-del {
+  background: color-mix(in srgb, var(--danger) 18%, transparent);
+}
+
+.diff-hunk {
+  background: var(--surface-2);
+  color: var(--muted);
+}
+
+.diff-hunk .diff-text {
+  padding-left: 8px;
+}
+
+.diff-note {
+  color: var(--muted);
+  font-style: italic;
+}
+
 .point-row {
   display: flex;
   flex-wrap: wrap;

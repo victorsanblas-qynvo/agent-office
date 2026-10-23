@@ -11,6 +11,8 @@ import { createTranslator, interpolate } from '../src/i18n/index';
 const SAME_KEYS: MessageKey[] = [
   'topbar.status.replay',
   'replay.label',
+  'board.tab.diff',
+  'board.diff.summary',
   'role.director',
   'role.tester',
   'settings.role.director',

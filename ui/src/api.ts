@@ -6,6 +6,8 @@ import type {
   ChatUserResult,
   CheckRunView,
   CheckpointView,
+  OrderDiff,
+  OrderDiffFile,
   DocumentContent,
   FloorAddRequest,
   FloorAddResult,
@@ -187,6 +189,14 @@ export class OfficeApi {
 
   orderCheckpoints(id: number): Promise<ApiData<{ checkpoints: CheckpointView[]; skipped: SkippedFile[] }>> {
     return this.get(`/api/board/orders/${id}/checkpoints`);
+  }
+
+  orderDiff(id: number): Promise<ApiData<OrderDiff>> {
+    return this.get(`/api/board/orders/${id}/diff`);
+  }
+
+  orderDiffFile(id: number, path: string): Promise<ApiData<OrderDiffFile>> {
+    return this.get(`/api/board/orders/${id}/diff/file?path=${encodeURIComponent(path)}`);
   }
 
   markFinishedSeen(id: number): Promise<ApiData<{ ok: true }>> {
