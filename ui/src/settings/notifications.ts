@@ -2,7 +2,7 @@ import { button, el } from '../dom';
 import { t, type MessageKey } from '../i18n';
 import { NOTIFY_EVENTS, notificationsSupported, type Notifier } from '../notify';
 import { FINISHED_MODES, readFinishedMode, writeFinishedMode, type FinishedMode } from '../panel/finished';
-import { HUNG_OPTIONS, inQuietHours, isClock, readHungMinutes, readQuietHours, writeHungMinutes, writeQuietHours } from '../prefs';
+import { BOARD_STALE_OPTIONS, HUNG_OPTIONS, inQuietHours, isClock, readBoardStaleHours, readHungMinutes, readQuietHours, writeBoardStaleHours, writeHungMinutes, writeQuietHours } from '../prefs';
 import { toggleRow } from './settings';
 
 const HOLD_EVENTS: ReadonlySet<string> = new Set(['permission', 'question']);
@@ -43,6 +43,18 @@ export function mountNotifySection(notifier: Notifier): HTMLElement {
     'setting-row',
     el('span', 'setting-text', el('span', 'setting-label', t('settings.notifications.hung.label')), el('span', 'setting-hint muted', t('settings.notifications.hung.hint'))),
     hungAfter,
+  );
+
+  const staleAfter = el('select', 'setting-mode');
+  staleAfter.setAttribute('aria-label', t('settings.board.stale.label'));
+  for (const hours of BOARD_STALE_OPTIONS) staleAfter.append(new Option(hours === 0 ? t('settings.board.stale.off') : t('settings.board.stale.hours', { n: hours }), String(hours)));
+  staleAfter.value = String(readBoardStaleHours());
+  staleAfter.addEventListener('change', () => writeBoardStaleHours(Number(staleAfter.value)));
+  const staleRow = el(
+    'label',
+    'setting-row',
+    el('span', 'setting-text', el('span', 'setting-label', t('settings.board.stale.label')), el('span', 'setting-hint muted', t('settings.board.stale.hint'))),
+    staleAfter,
   );
 
   const quiet = readQuietHours();
@@ -130,6 +142,7 @@ export function mountNotifySection(notifier: Notifier): HTMLElement {
     general.root,
     finishedRow,
     hungRow,
+    staleRow,
     quietOn.root,
     quietRow,
     quietPermissions.root,

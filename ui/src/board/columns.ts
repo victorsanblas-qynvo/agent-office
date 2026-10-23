@@ -1,3 +1,5 @@
+import { fold } from '../fuzzy';
+import { t } from '../i18n';
 import type { OrderStatus, OrderView } from '../types';
 
 // The four columns of the Tablero, in order; a discarded card has no column.
@@ -53,4 +55,30 @@ export function deliveryFloors(floors: readonly { slug: string; kind: string; de
 
 export function folderBusy(order: OrderView): boolean {
   return order.worktree?.state === 'creando' || order.worktree?.state === 'preparando';
+}
+
+// The orders whose title, slug, branch, floor or status contain every word of the query, ignoring case and accents.
+export function filterOrders(orders: readonly OrderView[], query: string, floorLabelOf: (slug: string) => string = (slug) => slug): OrderView[] {
+  const terms = fold(query).split(/\s+/).filter((term) => term !== '');
+  if (terms.length === 0) return [...orders];
+  return orders.filter((order) => {
+    const haystack = fold([order.title, order.slug, order.branch ?? '', order.floor, floorLabelOf(order.floor), t(`board.col.${order.status}`)].join('\n'));
+    return terms.every((term) => haystack.includes(term));
+  });
+}
+
+export type AgeBadge = { text: string; stale: boolean };
+
+const HOUR = 3_600_000;
+
+// How long an open card has waited in its column (the hub keeps no status-change time, so since it was last
+// updated); stale past `staleHours`, and never when that is 0. Finished cards have none.
+export function ageBadge(order: OrderView, now: number, staleHours: number): AgeBadge | null {
+  if (order.status === 'hecho' || order.status === 'descartado') return null;
+  const elapsed = Math.max(0, now - order.updatedAt);
+  const column = t(`board.col.${order.status}`);
+  const hours = Math.floor(elapsed / HOUR);
+  const text =
+    hours >= 24 ? t('board.age.days', { n: Math.floor(hours / 24), column }) : hours >= 1 ? t('board.age.hours', { n: hours, column }) : t('board.age.minutes', { n: Math.floor(elapsed / 60_000), column });
+  return { text, stale: staleHours > 0 && elapsed > staleHours * HOUR };
 }

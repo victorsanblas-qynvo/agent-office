@@ -12,6 +12,20 @@ export function writeHungMinutes(minutes: number): void {
   writeJson(HUNG_KEY, minutes);
 }
 
+export const BOARD_STALE_KEY = 'agent-office.boardStale';
+export const BOARD_STALE_OPTIONS: readonly number[] = [6, 12, 24, 48, 0];
+export const BOARD_STALE_DEFAULT = 24;
+
+// Hours an open card may wait in its column before it is marked stale; 0 turns the mark off.
+export function readBoardStaleHours(): number {
+  const stored = readJson(BOARD_STALE_KEY);
+  return typeof stored === 'number' && BOARD_STALE_OPTIONS.includes(stored) ? stored : BOARD_STALE_DEFAULT;
+}
+
+export function writeBoardStaleHours(hours: number): void {
+  writeJson(BOARD_STALE_KEY, hours);
+}
+
 export function readJson(key: string): unknown {
   try {
     const raw = localStorage.getItem(key);

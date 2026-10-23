@@ -2,12 +2,12 @@ import type { OfficeApi } from '../api';
 import { button, el } from '../dom';
 import { t } from '../i18n';
 import { floorLabel, formatTokens, tokensTotal } from '../labels';
-import { readJson, writeJson } from '../prefs';
+import { readBoardStaleHours, readJson, writeJson } from '../prefs';
 import type { Store } from '../store';
 import { relativeTime } from '../time';
 import type { OrderStatus, OrderView } from '../types';
 import { checksBadgeNode, folderBadgeNode } from './badges';
-import { columnsOf, deliveryFloors, neighbours, orderFloors } from './columns';
+import { ageBadge, columnsOf, deliveryFloors, filterOrders, neighbours, orderFloors } from './columns';
 import { mountOrderDetail, type OrderDetail } from './order-detail';
 import { openNewOrder } from './new-order';
 
@@ -19,6 +19,8 @@ export type BoardHandle = {
   // Whether a new order can be started from here, and opens its form.
   canCreate(): boolean;
   newOrder(): void;
+  // Puts the cursor in the text filter.
+  focusFilter(): void;
 };
 
 function readFilter(): string | null {
@@ -30,14 +32,17 @@ export function mountBoard(host: HTMLElement, store: Store, api: OfficeApi | nul
   const heading = el('h2', 'board-heading');
   const filterLabel = el('label', 'board-filter');
   const filter = el('select', 'board-filter-select');
+  const search = el('input', 'board-search');
+  search.type = 'search';
   const add = button('', 'primary board-new');
-  const head = el('header', 'board-head', heading, filterLabel, add);
+  const head = el('header', 'board-head', heading, filterLabel, search, add);
   const notice = el('p', 'board-notice muted');
   const columnsHost = el('div', 'board-columns');
   const drawerHost = el('div', 'board-drawer-host');
   host.replaceChildren(el('div', 'board', head, notice, columnsHost), drawerHost);
 
   let floor: string | null = readFilter();
+  let query = '';
   let dragging = false;
   let pendingRender = false;
   let open: OrderDetail | null = null;
@@ -90,6 +95,7 @@ export function mountBoard(host: HTMLElement, store: Store, api: OfficeApi | nul
         arrows.append(arrow);
       }
     }
+    const age = ageBadge(order, now, readBoardStaleHours());
     const tokens = order.tokens ? tokensTotal(order.tokens) : 0;
     const link = order.pr ? el('a', 'board-pr', t('board.card.pr')) : null;
     if (link && order.pr) {
@@ -118,6 +124,7 @@ export function mountBoard(host: HTMLElement, store: Store, api: OfficeApi | nul
         order.checks && order.checks.touched.length > 0 ? touchedBadge(order) : null,
         order.review.state !== 'none' ? el('span', 'chip', t('board.card.review', { state: order.review.state })) : null,
         folderBadgeNode(order),
+        age ? el('span', `chip board-age${age.stale ? ' stale' : ''}`, age.text) : null,
         link,
       ),
       el(
@@ -190,16 +197,19 @@ export function mountBoard(host: HTMLElement, store: Store, api: OfficeApi | nul
     pendingRender = false;
     heading.textContent = t('board.title');
     filterLabel.replaceChildren(t('board.filter.label'), ' ', filter);
+    search.placeholder = t('board.search.placeholder');
+    search.setAttribute('aria-label', t('board.search.placeholder'));
     add.textContent = t('board.new');
     add.hidden = api === null;
     add.disabled = deliveryFloors(store.floorList()).length === 0;
     add.title = add.disabled ? t('board.new.none') : '';
     relabelFilter();
     const now = store.now();
-    const grouped = columnsOf(store.orders, floor);
+    const shown = filterOrders(store.orders, query, (slug) => (store.floorBySlug(slug) ? floorLabel(store.floorBySlug(slug) as never) : slug));
+    const grouped = columnsOf(shown, floor);
     const total = grouped.reduce((sum, group) => sum + group.orders.length, 0);
     notice.textContent =
-      api === null ? t(store.replay ? 'board.replay' : 'board.offline') : [total === 0 ? t('board.empty') : '', add.disabled ? t('board.new.none') : ''].filter((part) => part !== '').join(' ');
+      api === null ? t(store.replay ? 'board.replay' : 'board.offline') : [total === 0 ? t(query.trim() !== '' && store.orders.length > 0 ? 'board.search.empty' : 'board.empty') : '', add.disabled ? t('board.new.none') : ''].filter((part) => part !== '').join(' ');
     notice.hidden = notice.textContent === '';
     columnsHost.replaceChildren(...grouped.map((group) => column(group.status, group.orders, now)));
     if (openId !== null && !store.orders.some((order) => order.id === openId)) closeDetail();
@@ -208,6 +218,17 @@ export function mountBoard(host: HTMLElement, store: Store, api: OfficeApi | nul
   filter.addEventListener('change', () => {
     floor = filter.value || null;
     writeJson(FILTER_KEY, floor);
+    render();
+  });
+  search.addEventListener('input', () => {
+    query = search.value;
+    render();
+  });
+  search.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape' || search.value === '') return;
+    event.preventDefault();
+    search.value = '';
+    query = '';
     render();
   });
   const newOrder = (): void => {
@@ -224,6 +245,7 @@ export function mountBoard(host: HTMLElement, store: Store, api: OfficeApi | nul
   return {
     canCreate: () => api !== null && deliveryFloors(store.floorList()).length > 0,
     newOrder,
+    focusFilter: () => search.focus(),
     show(next, orderSlug) {
       floor = next;
       writeJson(FILTER_KEY, floor);
