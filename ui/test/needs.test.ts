@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { applyLang } from '../src/i18n/index';
 import { clockMinutes } from '../src/time';
 import { collectNeeds, NeedCursor, needLabel, needToast, type Need, type NeedSources } from '../src/needs';
+import type { Collision } from '../src/chat/claims';
 import type { UsageForecast, UsageView, UsageWindow } from '../src/types';
 import { agent, doc, order, question } from './fixtures';
 
@@ -11,7 +12,7 @@ const NOW = 1_000_000_000;
 const HOUR = 3_600_000;
 
 function sources(extra: Partial<NeedSources> & { agents?: ReturnType<typeof agent>[] } = {}): NeedSources {
-  return { agents: [], questions: [], documents: [], orders: [], usage: null, now: NOW, hungAfterMinutes: 10, stateOf: (a) => a.state, ...extra };
+  return { agents: [], questions: [], documents: [], orders: [], usage: null, claims: [], now: NOW, hungAfterMinutes: 10, stateOf: (a) => a.state, ...extra };
 }
 
 const kinds = (needs: Need[]): string[] => needs.map((need) => `${need.kind}:${need.agentKey ?? need.docPath ?? need.orderSlug}`);
@@ -241,5 +242,30 @@ describe('NeedCursor', () => {
     cursor.step(list('a', 'b'), 1);
     cursor.reset();
     expect(cursor.step(list('a', 'b'), 1)?.need.id).toBe('a');
+  });
+});
+
+describe('file claim collisions', () => {
+  const clash = (path: string, since: number, names: string[] = ['dev-1', 'dev-2']): Collision => ({
+    path,
+    channel: 'mobile',
+    since,
+    holders: names.map((name) => ({ key: name, name, floor: 'mobile', since })),
+  });
+
+  test('one entry per colliding path, labelled with both holders', () => {
+    const needs = collectNeeds(sources({ claims: [clash('lib/a.dart', 5), clash('lib/b.dart', 9, ['x', 'y', 'z', 'w'])] }));
+    expect(needs.map((need) => [need.id, need.kind, need.channel])).toEqual([
+      ['claim:mobile:lib/a.dart', 'claim', 'mobile'],
+      ['claim:mobile:lib/b.dart', 'claim', 'mobile'],
+    ]);
+    expect(needs[0].name).toBe('lib/a.dart: dev-1 y dev-2');
+    expect(needs[1].name).toBe('lib/b.dart: x, y y 2 más');
+    expect(needLabel(needs[0])).toBe('Colisión de ficheros: lib/a.dart: dev-1 y dev-2');
+  });
+
+  test('ranks after stalled and before plan', () => {
+    const needs = collectNeeds(sources({ agents: [agent('stalled', { stalledSince: 10 })], documents: [doc('plans/a.md')], claims: [clash('a.dart', 1)] }));
+    expect(needs.map((need) => need.kind)).toEqual(['stalled', 'claim', 'plan']);
   });
 });

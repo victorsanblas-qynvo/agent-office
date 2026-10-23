@@ -204,3 +204,33 @@ button.chat-older {
     width: auto;
   }
 }
+
+.chat-collisions {
+  margin-top: 6px;
+  font-size: 12px;
+}
+
+.chat-collisions-badge,
+.chat-collision-count {
+  color: var(--danger);
+  font-weight: 700;
+}
+
+.chat-collisions-badge {
+  cursor: pointer;
+}
+
+.chat-collisions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chat-collision {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}

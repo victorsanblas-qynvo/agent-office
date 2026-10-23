@@ -6,9 +6,9 @@ import { floorLabel, roleLabel } from '../labels';
 import type { Store } from '../store';
 import { clockTime } from '../time';
 import type { ChatKind, ChatMessageView, RoleId, RoleKind } from '../types';
-import { openClaims } from './claims';
+import { collisions, heldClaims, openClaims, type Collision } from './claims';
 
-export type ChatHandle = { setActive(active: boolean): void };
+export type ChatHandle = { setActive(active: boolean): void; show(channel: string): void };
 
 const GLOBAL = 'global';
 const HISTORY_PAGE = 100;
@@ -59,6 +59,7 @@ export function mountChat(host: HTMLElement, store: Store, api: OfficeApi | null
   const channelTitle = el('h2', 'chat-channel-title');
   const claimsTitle = el('span', 'chat-claims-title');
   const claimsList = el('div', 'chat-claims-list');
+  const collisionsBox = el('details', 'chat-collisions');
   const older = button('', 'chat-older');
   const list = el('div', 'chat-messages');
   const textarea = el('textarea', 'chat-input');
@@ -69,7 +70,7 @@ export function mountChat(host: HTMLElement, store: Store, api: OfficeApi | null
     el(
       'div',
       'chat-page',
-      el('header', 'chat-head', heading, intro),
+      el('header', 'chat-head', heading, intro, collisionsBox),
       el(
         'div',
         'chat',
@@ -118,13 +119,15 @@ export function mountChat(host: HTMLElement, store: Store, api: OfficeApi | null
     return el('article', `chat-msg${message.origin === 'user' ? ' chat-msg-user' : ''}`, head, files, text);
   };
 
-  const paintChannels = (channel: string): void => {
+  const paintChannels = (channel: string, found: readonly Collision[]): void => {
     channelList.replaceChildren(
       ...channels().map((id) => {
         const unread = store.unreadChat(id);
         const item = button('', `chat-channel${id === channel ? ' active' : ''}`);
         item.append(el('span', 'chat-channel-name', channelName(id)));
         if (unread > 0 && !(active && id === channel)) item.append(el('b', 'tab-count', String(unread)));
+        const clashes = found.filter((collision) => collision.channel === id).length;
+        if (clashes > 0) item.append(el('b', 'chat-collision-count', String(clashes)));
         item.addEventListener('click', () => {
           selected = id;
           signature = '';
@@ -146,6 +149,28 @@ export function mountChat(host: HTMLElement, store: Store, api: OfficeApi | null
     );
   };
 
+  const paintCollisions = (found: readonly Collision[]): void => {
+    collisionsBox.hidden = found.length === 0;
+    if (found.length === 0) {
+      collisionsBox.open = false;
+      return;
+    }
+    const summary = el('summary', 'chat-collisions-badge', t('chat.collisionsBadge', { n: found.length }));
+    summary.title = t('chat.collisions');
+    collisionsBox.replaceChildren(
+      summary,
+      el(
+        'ul',
+        'chat-collisions-list',
+        ...found.map((collision) => {
+          const row = el('li', 'chat-collision', el('code', '', collision.path), ' ', el('span', 'muted', channelName(collision.channel)));
+          for (const holder of collision.holders) row.append(el('span', 'chat-claim', t('chat.claimSince', { who: holder.name, time: shortTime(holder.since) })));
+          return row;
+        }),
+      ),
+    );
+  };
+
   const paintMessages = (channel: string, messages: readonly ChatMessageView[]): void => {
     const atBottom = list.scrollHeight - list.scrollTop - list.clientHeight < BOTTOM_PX;
     const children: HTMLElement[] = [];
@@ -159,7 +184,9 @@ export function mountChat(host: HTMLElement, store: Store, api: OfficeApi | null
   const paint = (): void => {
     const channel = current();
     if (active) store.markChatSeen(channel);
-    paintChannels(channel);
+    const found = collisions(heldClaims(store.chat, store.now()));
+    paintChannels(channel, found);
+    paintCollisions(found);
     const messages = store.chatOf(channel);
     const next = JSON.stringify([store.lang, channel, messages.length, messages[0]?.id, messages.at(-1)?.id, exhausted(channel), loadingOlder]);
     if (next === signature) return;
@@ -243,6 +270,12 @@ export function mountChat(host: HTMLElement, store: Store, api: OfficeApi | null
   refresh();
 
   return {
+    show(channel: string): void {
+      selected = channel;
+      signature = '';
+      paint();
+      list.scrollTop = list.scrollHeight;
+    },
     setActive(next: boolean): void {
       active = next;
       if (!active) return;

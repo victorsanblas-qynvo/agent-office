@@ -3318,6 +3318,10 @@ button.diff-file.active {
   --c: #eab308;
 }
 
+.needs-claim {
+  --c: #f97316;
+}
+
 .needs-plan {
   --c: #a855f7;
 }
