@@ -289,6 +289,7 @@ export const hubEn = {
   'hub.pr.noCommits': 'No commits',
   'hub.pr.checks': 'Checks',
   'hub.pr.noChecks': 'No checks ran',
+  'hub.pr.staleChecks': 'These checks are from an earlier commit ({sha})',
   'hub.pr.colCheck': 'Check',
   'hub.pr.colResult': 'Result',
   'hub.pr.colDuration': 'Duration',

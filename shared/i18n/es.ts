@@ -290,6 +290,7 @@ export const hubEs = {
   'hub.pr.noCommits': 'Sin commits',
   'hub.pr.checks': 'Comprobaciones',
   'hub.pr.noChecks': 'No se ejecutó ninguna comprobación',
+  'hub.pr.staleChecks': 'Estas comprobaciones son de un commit anterior ({sha})',
   'hub.pr.colCheck': 'Comprobación',
   'hub.pr.colResult': 'Resultado',
   'hub.pr.colDuration': 'Duración',
