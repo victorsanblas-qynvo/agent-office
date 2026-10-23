@@ -3330,6 +3330,17 @@ button.diff-file.active {
   color: var(--muted);
 }
 
+.deleted-branches-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 0 4px;
+}
+
+.deleted-branch code {
+  overflow-wrap: anywhere;
+}
+
 .delivery-body {
   display: flex;
   flex-direction: column;
