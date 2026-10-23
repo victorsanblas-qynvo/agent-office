@@ -385,11 +385,11 @@ export function createApp(opts: ServerOptions, holdRequest: (req: Request) => vo
     return c.json({ ok: true, cancelled: office.cancelOrderChecks(id) });
   });
 
-  app.get('/api/board/orders/:id/checkpoints', requirePanel, (c) => {
+  app.get('/api/board/orders/:id/checkpoints', requirePanel, async (c) => {
     const id = idOf(c.req.param('id'));
     if (id === null) return c.json({ error: { key: 'hub.api.badId' } }, 400);
     const result = office.orderCheckpoints(id);
-    return result ? c.json(result) : c.json({ error: { key: 'hub.api.orderNotFound' } }, 404);
+    return result ? c.json({ ...result, safetyRefs: await office.orderSafetyRefs(id) }) : c.json({ error: { key: 'hub.api.orderNotFound' } }, 404);
   });
 
   app.get('/api/board/orders/:id/spend', requirePanel, (c) => {
@@ -404,7 +404,7 @@ export function createApp(opts: ServerOptions, holdRequest: (req: Request) => vo
     if (id === null) return c.json({ error: { key: 'hub.api.badId' } }, 400);
     const body = record(await readJson(c));
     holdRequest(c.req.raw);
-    const result = await office.undoOrderReset(id, body.safetyRef);
+    const result = await office.undoOrderReset(id, body.safetyRef, body.force === true);
     return result.ok ? c.json(result) : c.json({ error: result.error }, result.status);
   });
 
@@ -412,8 +412,9 @@ export function createApp(opts: ServerOptions, holdRequest: (req: Request) => vo
     const id = idOf(c.req.param('id'));
     const cp = idOf(c.req.param('cp'));
     if (id === null || cp === null) return c.json({ error: { key: 'hub.api.badId' } }, 400);
+    const body = record(await readJson(c));
     holdRequest(c.req.raw);
-    const result = await office.resetOrderToCheckpoint(id, cp);
+    const result = await office.resetOrderToCheckpoint(id, cp, body.force === true);
     return result.ok ? c.json(result) : c.json({ error: result.error }, result.status);
   });
 

@@ -28,6 +28,8 @@ export type CreateResult =
   | { ok: true; order: OrderRow; ready: Promise<OrderRow> }
   | { ok: false; error: CreateFailure; detail: string };
 
+export type ForkClaim = { ok: true; baseSha: string } | { ok: false; error: CreateFailure; detail: string };
+
 export type RemoveResult = 'ok' | 'not-found' | 'busy' | 'dirty' | 'unmerged' | 'branch-moved' | 'failed';
 
 export type WorktreeSummary = { worktrees: WorktreeView[]; totalKb: number; warnKb: number };
@@ -46,6 +48,8 @@ export type WorktreeDeskOpts = {
   // A live session works with its folder inside this one.
   inside: (path: string) => boolean;
   changed: (order: OrderRow) => void;
+  // The tip an existing branch of this order may have to be reused: a checkpoint of the order it was forked from.
+  forkPoint?: (order: OrderRow, sha: string) => boolean;
   sizeOf?: (path: string) => Promise<number | null>;
   shell?: typeof runShell;
 };
@@ -115,12 +119,12 @@ export class WorktreeDesk {
       }
     }
     if (!sha) return { ok: false, error: 'base', detail: base };
-    // A fork leaves from a checkpoint of another order, not from the tip of its base.
-    const start = order.base_sha ?? sha;
-    if (start !== sha && (await run(git, repo, () => gitOps.commitExists(start))).code !== 0) return { ok: false, error: 'base', detail: start };
-    if ((await run(git, repo, () => gitOps.branchExists(branch))).code === 0) return { ok: false, error: 'exists', detail: branch };
+    // A fork's branch already exists at its checkpoint (claimFork); any other branch of that name is not ours.
+    const exists = (await run(git, repo, () => gitOps.branchExists(branch))).code === 0;
+    const tip = exists ? await this.branchTip(repo, branch) : null;
+    if (exists && !(tip && this.opts.forkPoint?.(order, tip))) return { ok: false, error: 'exists', detail: branch };
     mkdirSync(dirname(path), { recursive: true });
-    const added = await run(git, repo, () => gitOps.worktreeAdd(branch, path, start));
+    const added = await run(git, repo, () => (tip ? gitOps.worktreeAddExisting(branch, path) : gitOps.worktreeAdd(branch, path, sha)));
     if (added.code !== 0) return { ok: false, error: 'git', detail: added.stderr.trim() };
     await this.markAndExclude(repo, path);
     await this.copyIncludes(repo, path);
@@ -130,7 +134,7 @@ export class WorktreeDesk {
     const row = store.update(order.id, {
       branch,
       base_ref: baseRef,
-      base_sha: start,
+      base_sha: tip ? (order.base_sha ?? sha) : sha,
       base_stale: stale ? 1 : 0,
       worktree_path: path,
       worktree_state: state,
@@ -142,6 +146,31 @@ export class WorktreeDesk {
     const ready = setup ? this.prepare(row, setup) : Promise.resolve(row);
     this.opts.bus.background(ready);
     return { ok: true, order: row, ready };
+  }
+
+  // The branch of a fork, created at the checkpoint only while no branch of that name exists. Its base stays the
+  // one the parent left from, so its own commits, the files it touched and its diff count from there.
+  async claimFork(order: OrderRow, parent: OrderRow, start: string): Promise<ForkClaim> {
+    const { git, config } = this.opts;
+    const floor = config().floors[order.floor];
+    if (!floor?.managed) return { ok: false, error: 'floor', detail: order.floor };
+    const repo = realPath(floor.path);
+    const branch = orderBranch(order.slug);
+    if ((await run(git, repo, () => gitOps.commitExists(start))).code !== 0) return { ok: false, error: 'base', detail: start };
+    const inherited = parent.base_sha && validSha(parent.base_sha) ? parent.base_sha : null;
+    let baseSha = inherited && (await run(git, repo, () => gitOps.descends(inherited, start))).code === 0 ? inherited : null;
+    if (!baseSha) {
+      const baseName = parent.base_ref ?? floor.baseBranch;
+      const baseTip = baseName ? await this.resolve(repo, baseName) : null;
+      const merged = baseTip ? await run(git, repo, () => gitOps.mergeBase(baseTip, start)) : null;
+      const found = merged?.code === 0 ? merged.stdout.trim() : '';
+      if (!validSha(found)) return { ok: false, error: 'base', detail: baseName ?? '' };
+      baseSha = found;
+    }
+    const created = await run(git, repo, () => gitOps.branchCreateAt(branch, start));
+    if (created.code === 0) return { ok: true, baseSha };
+    if ((await run(git, repo, () => gitOps.branchExists(branch))).code === 0) return { ok: false, error: 'exists', detail: branch };
+    return { ok: false, error: 'git', detail: created.stderr.trim() };
   }
 
   private async fetchBase(repo: string, base: string): Promise<boolean> {

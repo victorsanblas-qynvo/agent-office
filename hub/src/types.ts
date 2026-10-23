@@ -280,6 +280,11 @@ export type HubTextParams = {
   'hub.api.restoreFailed': undefined;
   'hub.api.safetyRefInvalid': undefined;
   'hub.api.safetyRefNotFound': undefined;
+  'hub.api.restorePrOpen': undefined;
+  'hub.api.restoreDone': undefined;
+  'hub.api.forkViaLead': undefined;
+  'hub.api.forkBranchExists': { branch: string };
+  'hub.api.forkStartFailed': { reason: string };
   'hub.api.boardFields': undefined;
   'hub.api.floorNotManaged': undefined;
   'hub.api.deliveryOff': { floor: string };
@@ -843,6 +848,9 @@ export type OrderView = {
 };
 
 export type CheckpointView = { id: number; sha: string; reason: string; label: string; createdAt: number };
+
+// A HEAD a restore replaced, kept under refs/office/<slug>/before-reset-<at>.
+export type SafetyRefView = { ref: string; sha: string; at: number };
 
 export type SkippedFile = { path: string; size: number; mtime: number };
 

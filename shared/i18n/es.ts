@@ -156,6 +156,11 @@ export const hubEs = {
   'hub.api.restoreFailed': 'Git no pudo restaurar la carpeta',
   'hub.api.safetyRefInvalid': 'Esa referencia no es una copia de seguridad de este encargo',
   'hub.api.safetyRefNotFound': 'Esa copia de seguridad ya no existe',
+  'hub.api.restorePrOpen': 'El encargo tiene una PR abierta: restaurar cambiaría lo que ya se está revisando',
+  'hub.api.restoreDone': 'El encargo ya está hecho: confirma que quieres restaurarlo igualmente',
+  'hub.api.forkViaLead': 'Una bifurcación se encarga siempre al jefe de la planta',
+  'hub.api.forkBranchExists': 'Ya existe la rama {branch}: no se crea la bifurcación',
+  'hub.api.forkStartFailed': 'No se pudo preparar la rama de la bifurcación ({reason})',
   'hub.settings.badChecks':
     'Las comprobaciones de {slug} no valen: hasta 8, cada una con un nombre de letras minúsculas, números y guiones (20 como mucho) y un comando de una línea de 300 caracteres como mucho',
   'hub.settings.badSetup': 'El comando de preparación de {slug} no vale: una línea de 300 caracteres como mucho',

@@ -156,6 +156,11 @@ export const hubEn = {
   'hub.api.restoreFailed': 'Git could not restore the folder',
   'hub.api.safetyRefInvalid': 'That ref is not a backup of this order',
   'hub.api.safetyRefNotFound': 'That backup no longer exists',
+  'hub.api.restorePrOpen': 'The order has an open PR: a restore would change what is already under review',
+  'hub.api.restoreDone': 'The order is already done: confirm that you want to restore it anyway',
+  'hub.api.forkViaLead': 'A fork always goes to the lead of the floor',
+  'hub.api.forkBranchExists': 'The branch {branch} already exists: the fork is not created',
+  'hub.api.forkStartFailed': 'The branch of the fork could not be prepared ({reason})',
   'hub.settings.badChecks':
     'The checks of {slug} are not valid: up to 8, each with a name of lowercase letters, digits and dashes (20 at most) and a one-line command of 300 characters at most',
   'hub.settings.badSetup': 'The setup command of {slug} is not valid: one line of 300 characters at most',
