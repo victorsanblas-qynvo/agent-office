@@ -2,7 +2,7 @@ import { button, el } from '../dom';
 import { t, type MessageKey } from '../i18n';
 import { NOTIFY_EVENTS, notificationsSupported, type Notifier } from '../notify';
 import { FINISHED_MODES, readFinishedMode, writeFinishedMode, type FinishedMode } from '../panel/finished';
-import { BOARD_STALE_OPTIONS, CONTEXT_WARN_OPTIONS, HUNG_OPTIONS, REMIND_OPTIONS, inQuietHours, isClock, readBoardStaleHours, readContextWarn, readHungMinutes, readQuietHours, readRemindMinutes, writeBoardStaleHours, writeContextWarn, writeHungMinutes, writeQuietHours, writeRemindMinutes } from '../prefs';
+import { BOARD_STALE_OPTIONS, EDITOR_OPTIONS, CONTEXT_WARN_OPTIONS, HUNG_OPTIONS, REMIND_OPTIONS, inQuietHours, isClock, readBoardStaleHours, readEditor, writeEditor, readContextWarn, readHungMinutes, readQuietHours, readRemindMinutes, writeBoardStaleHours, writeContextWarn, writeHungMinutes, writeQuietHours, writeRemindMinutes } from '../prefs';
 import { toggleRow } from './settings';
 
 const HOLD_EVENTS: ReadonlySet<string> = new Set(['permission', 'question']);
@@ -79,6 +79,21 @@ export function mountNotifySection(notifier: Notifier): HTMLElement {
     'setting-row',
     el('span', 'setting-text', el('span', 'setting-label', t('settings.board.stale.label')), el('span', 'setting-hint muted', t('settings.board.stale.hint'))),
     staleAfter,
+  );
+
+  const editorSelect = el('select', 'setting-mode');
+  editorSelect.setAttribute('aria-label', t('settings.board.editor.label'));
+  for (const editor of EDITOR_OPTIONS) editorSelect.append(new Option(t(`settings.board.editor.${editor}`), editor));
+  editorSelect.value = readEditor();
+  editorSelect.addEventListener('change', () => {
+    const chosen = EDITOR_OPTIONS.find((editor) => editor === editorSelect.value);
+    if (chosen) writeEditor(chosen);
+  });
+  const editorRow = el(
+    'label',
+    'setting-row',
+    el('span', 'setting-text', el('span', 'setting-label', t('settings.board.editor.label')), el('span', 'setting-hint muted', t('settings.board.editor.hint'))),
+    editorSelect,
   );
 
   const quiet = readQuietHours();
@@ -173,6 +188,7 @@ export function mountNotifySection(notifier: Notifier): HTMLElement {
     contextRow,
     remindRow,
     staleRow,
+    editorRow,
     quietOn.root,
     quietRow,
     quietPermissions.root,

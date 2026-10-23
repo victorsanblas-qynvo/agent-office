@@ -7,9 +7,11 @@ import { clockTime, relativeTime } from '../time';
 import type { CheckRunView, CheckView, CheckpointView, OrderDiff, OrderDiffFile, OrderView, SkippedFile } from '../types';
 import { checksBadgeNode, folderBadgeNode } from './badges';
 import { flakyChecks } from './flaky';
-import { diffStale, diffSummary, latestSha, orderSignature, patchRows, shouldReloadForChecks, statRows } from './diff-model';
+import { diffStale, diffSummary, firstChangedLine, latestSha, orderSignature, patchRows, shouldReloadForChecks, statRows } from './diff-model';
 import type { RunMark } from './diff-model';
 import { parseDiff } from './diff-parse';
+import { editorLink } from './editor-link';
+import { readEditor } from '../prefs';
 import { openPrDraft } from './pr-draft';
 
 export type OrderDetail = { destroy(): void };
@@ -116,7 +118,7 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
   let diffFile: OrderDiffFile | null = null;
   let diffFileError = '';
   let diffFileLoading = false;
-  let patchCache: { file: OrderDiffFile; lang: string; node: HTMLElement } | null = null;
+  let patchCache: { file: OrderDiffFile; lang: string; root: string; node: HTMLElement } | null = null;
   let lastSignature = '';
   let lastRun: RunMark | null = null;
   let lastPaint = store.now();
@@ -271,24 +273,37 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
     return el('div', 'order-tab', list, left);
   };
 
-  const patchView = (): HTMLElement | null => {
+  const openLink = (root: string | null, path: string, line?: number, label = t('board.diff.open')): HTMLAnchorElement | null => {
+    const href = root === null ? null : editorLink(readEditor(), root, path, line);
+    if (href === null) return null;
+    const link = el('a', 'diff-open', label);
+    link.href = href;
+    link.rel = 'noreferrer';
+    return link;
+  };
+
+  const patchView = (root: string | null): HTMLElement | null => {
     if (diffPath === null) return el('p', 'muted', t('board.diff.pick'));
     if (diffFileLoading) return el('p', 'muted', t('board.loading'));
     if (diffFileError !== '') return el('p', 'order-warning', t('board.diff.loadFailed', { error: diffFileError }));
     if (!diffFile) return null;
     if (diffFile.binary) return el('p', 'muted', t('board.diff.patchBinary'));
-    if (patchCache && patchCache.file === diffFile && patchCache.lang === currentLang()) return patchCache.node;
+    const linkKey = `${root ?? ''}|${readEditor()}`;
+    if (patchCache && patchCache.file === diffFile && patchCache.lang === currentLang() && patchCache.root === linkKey) return patchCache.node;
     const rows = parseDiff(diffFile.patch).flatMap(patchRows);
-    const lines = rows.map((row) =>
-      el('div', row.className, el('span', 'diff-no', row.oldNo), el('span', 'diff-no', row.newNo), el('span', 'diff-marker', row.marker), el('span', 'diff-text', row.text)),
-    );
+    const filePath = diffFile.path;
+    const lines = rows.map((row) => {
+      const link = row.newLine === null ? null : openLink(root, filePath, row.newLine, row.newNo);
+      const newNo = el('span', 'diff-no', link ?? row.newNo);
+      return el('div', row.className, el('span', 'diff-no', row.oldNo), newNo, el('span', 'diff-marker', row.marker), el('span', 'diff-text', row.text));
+    });
     const node = el(
       'div',
       'diff-patch-wrap',
       diffFile.truncated ? el('p', 'order-warning', t('board.diff.patchTruncated')) : null,
       lines.length === 0 ? el('p', 'muted', t('board.diff.patchEmpty')) : el('div', 'diff-patch', ...lines),
     );
-    patchCache = { file: diffFile, lang: currentLang(), node };
+    patchCache = { file: diffFile, lang: currentLang(), root: linkKey, node };
     return node;
   };
 
@@ -303,6 +318,7 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
     reload.addEventListener('click', () => void loadDiff());
     if (diffError !== '') return el('div', 'order-tab', el('p', 'order-warning', t('board.diff.loadFailed', { error: diffError })), el('div', 'order-actions', reload));
     if (!diff) return el('div', 'order-tab', el('p', 'muted', t('board.loading')));
+    const root = current.worktree?.path ?? null;
     const rows = statRows(diff).map((row) => {
       const pick = button('', `${row.className}${row.path === diffPath ? ' active' : ''}`);
       pick.append(
@@ -310,7 +326,8 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
         row.binary ? el('span', 'muted', t('board.diff.binary')) : el('span', 'diff-file-stat', el('span', 'diff-add-count', row.adds), ' ', el('span', 'diff-del-count', row.dels)),
       );
       pick.addEventListener('click', () => void loadDiffFile(row.path));
-      return el('li', '', pick);
+      const line = row.path === diffPath && diffFile ? firstChangedLine(parseDiff(diffFile.patch)) : 1;
+      return el('li', 'diff-file-item', pick, row.binary ? null : openLink(root, row.path, line));
     });
     const stale = diffStale(diff, current, newestSha(current)) ? button(t('board.diff.stale'), 'order-warning') : null;
     stale?.addEventListener('click', () => void loadDiff());
@@ -321,7 +338,7 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
       stale,
       diff.truncated ? el('p', 'order-warning', t('board.diff.truncated')) : null,
       rows.length === 0 ? el('p', 'muted', t('board.diff.none')) : el('ul', 'diff-files', ...rows),
-      patchView(),
+      patchView(root),
     );
   };
 
