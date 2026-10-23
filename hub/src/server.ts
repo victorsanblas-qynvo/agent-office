@@ -15,6 +15,8 @@ import { isHookEvent, type Office, type RelaunchResult } from './office';
 import { claimLaunchToken, mintPanelToken, verifyPanelToken } from './panel-auth';
 import { hostAllowed, keyMatches, originAllowed } from './security';
 import { buildRecording, MAX_REPLAY_EVENTS } from './replay-build';
+import { INBOX_MAX_TEXT } from '../../shared/review-message';
+import { parseReview } from './review-desk';
 import { parseSearchParams } from './search';
 import type { SettingsService } from './settings';
 import { record, text } from './state-machine';
@@ -49,7 +51,6 @@ const SECURITY_HEADERS: Readonly<Record<string, string>> = {
 const HOOK_ROUTE = /^\/(events|hook|ask|permission|gate[a-z-]*|guard|usage|chat|encargo)(\/|$)/;
 const PLAN_DECISIONS: readonly PlanDecision[] = ['ejecutar', 'aparcar', 'cerrar'];
 const ORDER_STATUSES: readonly OrderStatus[] = ['pendiente', 'en-curso', 'revision', 'hecho'];
-const MAX_ORDER_LENGTH = 4000;
 const RELAUNCH_FAILURES: Record<Exclude<RelaunchResult, 'ok'>, { key: HubTextKey; status: 403 | 404 | 409 | 501 | 502 }> = {
   'not-found': { key: 'hub.api.sessionNotFound', status: 404 },
   'not-office': { key: 'hub.api.sessionNotOffice', status: 403 },
@@ -242,7 +243,7 @@ export function createApp(opts: ServerOptions, holdRequest: (req: Request) => vo
     const sessionId = text(body.sessionId);
     const order = text(body.text);
     if (!sessionId || !order) return c.json({ error: { key: 'hub.api.orderFields' } }, 400);
-    if (order.length > MAX_ORDER_LENGTH) return c.json({ error: { key: 'hub.api.orderTooLong' } }, 400);
+    if (order.length > INBOX_MAX_TEXT) return c.json({ error: { key: 'hub.api.orderTooLong' } }, 400);
     const result = await office.order(sessionId, order);
     if (result === 'ok') return c.json({ ok: true });
     if (result === 'not-found') return c.json({ error: { key: 'hub.api.sessionNotFound' } }, 404);
@@ -404,6 +405,24 @@ export function createApp(opts: ServerOptions, holdRequest: (req: Request) => vo
     holdRequest(c.req.raw);
     const result = await office.orderDiffFile(id, path);
     return result.ok ? c.json(result.file) : c.json({ error: result.error }, result.status);
+  });
+
+  app.get('/api/board/orders/:id/comments', requirePanel, (c) => {
+    const id = idOf(c.req.param('id'));
+    if (id === null) return c.json({ error: { key: 'hub.api.badId' } }, 400);
+    const comments = office.orderComments(id);
+    return comments ? c.json({ comments }) : c.json({ error: { key: 'hub.api.orderNotFound' } }, 404);
+  });
+
+  app.post('/api/board/orders/:id/comments', requirePanel, async (c) => {
+    const id = idOf(c.req.param('id'));
+    if (id === null) return c.json({ error: { key: 'hub.api.badId' } }, 400);
+    const request = parseReview(await readJson(c));
+    if (!request) return c.json({ error: { key: 'hub.api.reviewFields' } }, 400);
+    holdRequest(c.req.raw);
+    const result = await office.reviewOrder(id, request);
+    if (!result.ok) return c.json({ error: result.error }, result.status);
+    return c.json(result.delivered ? { delivered: true, count: result.count } : { delivered: false, count: result.count, reason: result.reason });
   });
 
   app.post('/api/alerts/:id/seen', requirePanel, (c) => {

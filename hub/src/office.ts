@@ -61,6 +61,7 @@ import { parseProtocol } from './protocol';
 import { ProtocolDesk } from './protocol-desk';
 import { QuestionDesk } from './questions';
 import type { ReplayDeps } from './replay-build';
+import { ReviewDesk, type ReviewRequest, type ReviewResult } from './review-desk';
 import { RulesDesk } from './rules-desk';
 import { isDepartmentFloor, remembers, roleKind } from './scope';
 import { SearchDesk, type SearchQuery } from './search';
@@ -90,6 +91,7 @@ import type {
   MessageView,
   OfficeConfig,
   OfficeDigest,
+  OrderCommentView,
   OrderStatus,
   PlanDecision,
   ReportView,
@@ -207,6 +209,7 @@ export class Office {
   private readonly delivery: DeliveryDesk;
   private readonly checks: ChecksDesk;
   private readonly board: BoardDesk;
+  private readonly reviews: ReviewDesk;
   private readonly searches: SearchDesk;
   private readonly live: boolean;
   readonly chat: ChatDesk;
@@ -400,6 +403,15 @@ export class Office {
         const root = this.floors.rootOf(realPath(cwd));
         return managedFloors(this.config).find(([, floor]) => realPath(floor.path) === root)?.[0] ?? null;
       },
+    });
+    this.reviews = new ReviewDesk({
+      db: opts.db,
+      store: this.store,
+      now: this.now,
+      bus: this.bus,
+      diff: (id) => this.delivery.diff(id),
+      toLead: (order, content) => this.board.toLead(order, content),
+      reopen: (id) => void this.board.move(id, 'en-curso'),
     });
     this.book.restoreSessions();
     if (this.live) this.docs.refresh();
@@ -820,6 +832,14 @@ export class Office {
 
   orderDiffFile(id: number, path: string): Promise<DiffFileResult> {
     return this.delivery.diffFile(id, path);
+  }
+
+  reviewOrder(id: number, request: ReviewRequest): Promise<ReviewResult> {
+    return this.reviews.send(id, request);
+  }
+
+  orderComments(id: number): OrderCommentView[] | null {
+    return this.reviews.list(id);
   }
 
   orderScript(request: ScriptRequest, meta: HookMeta): Promise<ScriptResult> {

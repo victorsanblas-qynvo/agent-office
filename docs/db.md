@@ -379,16 +379,16 @@ Escribe: `checkpoints.ts`. No caduca; se borra con la planta. Índice: `checkpoi
 
 ## order_comments
 
-Reservada (v5) para los comentarios del diff, que no están hechos: ningún código la escribe todavía.
+Comentarios de revisión del usuario sobre el diff de un encargo (v5).
 
 | Columna | Tipo | Notas |
 | --- | --- | --- |
 | `id`, `order_id` | INTEGER | |
-| `path`, `line`, `side` | | fichero, línea y lado del diff |
-| `text` | TEXT | |
-| `created_at`, `sent_at` | INTEGER | cuándo se escribió y cuándo se mandó al jefe |
+| `path`, `line`, `side` | | fichero, línea (`0`: el fichero entero) y lado del diff (`new` u `old`) |
+| `text` | TEXT | JSON `{"body","cycle","sha"}`: el comentario, y el ciclo y el `head` del encargo cuando se escribió |
+| `created_at`, `sent_at` | INTEGER | cuándo se escribió y cuándo se mandó al jefe (`NULL` si no lo recibió) |
 
-Se borra con la planta. Índice: `order_comments_order`.
+Escribe: `review-desk.ts`. No caduca; se borra con la planta. Índice: `order_comments_order`.
 
 ## review_findings
 

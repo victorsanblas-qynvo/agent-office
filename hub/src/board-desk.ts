@@ -304,17 +304,20 @@ export class BoardDesk {
   }
 
   async tellLead(order: OrderRow, content: string): Promise<void> {
+    if (!(await this.toLead(order, content))) this.note({ key: 'hub.act.folderUnsent', params: { slug: order.slug } });
+  }
+
+  // False when the floor has no lead session to write to, or the message did not get there.
+  async toLead(order: OrderRow, content: string): Promise<boolean> {
     const lead = this.leadOf(order.floor);
-    if (lead?.socket) {
-      try {
-        await this.opts.deliver(lead.socket, encodeInbox(lead.token, content));
-        if (order.lead_session !== lead.sessionId) this.opts.store.update(order.id, { lead_session: lead.sessionId });
-        return;
-      } catch {
-        // Reported below, like a lead that is not there.
-      }
+    if (!lead?.socket) return false;
+    try {
+      await this.opts.deliver(lead.socket, encodeInbox(lead.token, content));
+    } catch {
+      return false;
     }
-    this.note({ key: 'hub.act.folderUnsent', params: { slug: order.slug } });
+    if (order.lead_session !== lead.sessionId) this.opts.store.update(order.id, { lead_session: lead.sessionId });
+    return true;
   }
 
   // ---- activity -------------------------------------------------------------------------------------------
