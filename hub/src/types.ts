@@ -136,6 +136,8 @@ export type HubTextParams = {
   'hub.act.worktreesOrphan': { n: number; paths: string };
   'hub.act.worktreesPending': { n: number; sizeKb: number };
   'hub.act.worktreesHeavy': { gb: number; max: number };
+  'hub.act.worktreesUnknown': { n: number; slugs: string };
+  'hub.act.branchDeleted': { branch: string; sha: string };
   'hub.round': { n: number };
   'hub.score': { n: number };
 

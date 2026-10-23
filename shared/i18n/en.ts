@@ -116,6 +116,8 @@ export const hubEn = {
   'hub.act.worktreesOrphan': '{n} folders without an order card: {paths}',
   'hub.act.worktreesPending': '{n} folders of finished orders with no merge wait for your decision ({sizeKb} KB)',
   'hub.act.worktreesHeavy': 'Order folders take {gb} GB and the warning is at {max} GB',
+  'hub.act.worktreesUnknown': '{n} order folders stay until tomorrow: git could not confirm whether their branch is merged ({slugs})',
+  'hub.act.branchDeleted': 'Deleting branch {branch} at {sha}; if needed, git branch {branch} {sha} brings it back',
   'hub.act.orderCreated': 'New order on {floor}: {title}',
   'hub.act.orderMoved': '{title} ({floor}) moves to {status}',
   'hub.act.orderDiscarded': 'Order discarded on {floor}: {title}',

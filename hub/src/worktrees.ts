@@ -1,10 +1,10 @@
 import { appendFileSync, cpSync, existsSync, mkdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join, sep } from 'node:path';
 import { isInside, realPath } from './floors';
-import type { GitResult, GitRunner } from './git';
+import type { GitRunner } from './git';
 import type { OfficeBus } from './office-bus';
 import type { OrderRow, OrderStore } from './order-store';
-import { absolutePath, gitOps, orderBranch, run, validRef } from './repo-ops';
+import { absolutePath, gitOps, orderBranch, run, validRef, validSha, zList } from './repo-ops';
 import { runShell } from './shell';
 import { setupOf } from './profiles';
 import type { HubText, OfficeConfig, WorktreeState, WorktreeView } from './types';
@@ -19,6 +19,8 @@ const BUILDING = new Set<WorktreeState>(['creando', 'preparando', 'listo']);
 const REMOTE = 'origin/';
 const PATCH_BYTES = 16 * 1024 * 1024;
 const LANDED_CACHE = 500;
+const PATHSPEC_BYTES = 256 * 1024;
+const SQUASH_CANDIDATES = 5;
 
 export type CreateFailure = 'floor' | 'limit' | 'base' | 'exists' | 'git';
 
@@ -30,8 +32,9 @@ export type RemoveResult = 'ok' | 'not-found' | 'busy' | 'dirty' | 'unmerged' | 
 
 export type WorktreeSummary = { worktrees: WorktreeView[]; totalKb: number; warnKb: number };
 
-// own: commits of the branch that were not in the base it started from.
-type Facts = { ahead: number; behind: number; own: number; dirty: boolean; merged: boolean };
+// own: commits of the branch that were not in the base it started from. known: every git call the facts rest on
+// answered, the branch tip resolved and the folder (if any) is on that tip; without it nothing is decided.
+type Facts = { ahead: number; behind: number; own: number; dirty: boolean; merged: boolean; known: boolean; tip: string | null };
 
 export type WorktreeDeskOpts = {
   store: OrderStore;
@@ -268,62 +271,112 @@ export class WorktreeDesk {
   }
 
   private async facts(row: OrderRow): Promise<Facts> {
-    const empty = { ahead: 0, behind: 0, own: 0, dirty: false, merged: false };
+    const facts: Facts = { ahead: 0, behind: 0, own: 0, dirty: false, merged: false, known: false, tip: null };
     const path = row.worktree_path;
     const branch = row.branch;
-    if (!path || !branch || !existsSync(path)) return empty;
-    const { git } = this.opts;
     const repo = this.repoOf(row);
-    const tip = (await run(git, path, () => gitOps.head())).stdout.trim();
-    if (!tip) return empty;
-    const baseName = row.base_ref ?? '';
-    const baseTip = (baseName && repo ? await this.resolve(repo, baseName) : null) ?? row.base_sha ?? '';
-    const counts = async (from: string) => (await run(git, path, () => gitOps.aheadBehind(from, branch))).stdout.trim().split(/\s+/).map(Number);
-    let ahead = 0;
-    let behind = 0;
-    if (baseTip) {
-      const [left, right] = await counts(baseTip);
-      behind = left ?? 0;
-      ahead = right ?? 0;
+    if (!path || !branch || !repo) return facts;
+    const { git } = this.opts;
+    const present = existsSync(path);
+    let known = row.base_sha !== null;
+    if (present) {
+      const status = await run(git, path, () => gitOps.status());
+      facts.dirty = status.code !== 0 || status.stdout.length > 0;
+      if (status.code !== 0) known = false;
     }
-    const own = !row.base_sha ? 0 : row.base_sha === baseTip ? ahead : ((await counts(row.base_sha))[1] ?? 0);
-    const status = await run(git, path, () => gitOps.status());
-    const merged = own > 0 && baseName !== '' && row.base_sha !== null && (await this.landed(path, row.base_sha, tip, baseName, baseTip));
-    return { ahead, behind, own, dirty: status.stdout.length > 0, merged };
+    facts.tip = await this.branchTip(repo, branch);
+    if (!facts.tip) return facts;
+    if (present) {
+      const head = await run(git, path, () => gitOps.head());
+      if (head.code !== 0 || head.stdout.trim() !== facts.tip) known = false;
+    }
+    const baseName = row.base_ref ?? '';
+    const baseTip = (baseName ? await this.resolve(repo, baseName) : null) ?? row.base_sha ?? '';
+    const counted = baseTip ? await this.counts(repo, baseTip, facts.tip) : null;
+    if (counted) [facts.behind, facts.ahead] = counted;
+    const own = !row.base_sha ? null : row.base_sha === baseTip ? counted : await this.counts(repo, row.base_sha, facts.tip);
+    if (!counted || !own) known = false;
+    facts.own = own?.[1] ?? 0;
+    facts.known = known;
+    facts.merged = known && facts.own > 0 && baseName !== '' && row.base_sha !== null && (await this.landed(repo, row.base_sha, facts.tip, baseName, baseTip));
+    return facts;
+  }
+
+  private async branchTip(repo: string, branch: string): Promise<string | null> {
+    const result = await run(this.opts.git, repo, () => gitOps.branchTip(branch));
+    const tip = result.stdout.trim();
+    return result.code === 0 && validSha(tip) ? tip : null;
+  }
+
+  // rev-list --left-right --count: the commits only in from, then the ones only in to; anything else is no answer.
+  private async counts(repo: string, from: string, to: string): Promise<[number, number] | null> {
+    const result = await run(this.opts.git, repo, () => gitOps.aheadBehind(from, to));
+    const match = /^(\d+)\s+(\d+)$/.exec(result.stdout.trim());
+    return result.code === 0 && match ? [Number(match[1]), Number(match[2])] : null;
   }
 
   // The tip is in the base: merged as it is, or replayed as commits with the same patches (rebase) or as one
-  // commit with the patch of the whole branch (squash).
-  private async landed(path: string, baseSha: string, tip: string, baseName: string, baseTip: string): Promise<boolean> {
+  // commit with the change of the whole branch (squash). A check git could not finish is not cached.
+  private async landed(repo: string, baseSha: string, tip: string, baseName: string, baseTip: string): Promise<boolean> {
     const { git } = this.opts;
-    if ((await run(git, path, () => gitOps.isAncestor(tip, baseName))).code === 0) return true;
+    if ((await run(git, repo, () => gitOps.isAncestor(tip, baseName))).code === 0) return true;
     if (!baseTip || baseTip === baseSha) return false;
     const key = `${baseSha}:${tip}:${baseTip}`;
     const known = this.landedAt.get(key);
     if (known !== undefined) return known;
-    const result = (await this.replayed(path, baseSha, tip, baseTip)) || (await this.squashed(path, baseSha, tip, baseTip));
+    const replayed = await this.replayed(repo, baseSha, tip, baseTip);
+    const squashed = replayed === true ? true : await this.squashed(repo, baseSha, tip, baseTip);
+    if (squashed !== true && (replayed === null || squashed === null)) return false;
+    const result = squashed;
     if (this.landedAt.size >= LANDED_CACHE) this.landedAt.clear();
     this.landedAt.set(key, result);
     return result;
   }
 
-  private async replayed(path: string, baseSha: string, tip: string, baseTip: string): Promise<boolean> {
-    const cherry = await run(this.opts.git, path, () => gitOps.cherry(baseTip, tip, baseSha));
+  private async replayed(repo: string, baseSha: string, tip: string, baseTip: string): Promise<boolean | null> {
+    const cherry = await run(this.opts.git, repo, () => gitOps.cherry(baseTip, tip, baseSha));
+    if (cherry.code !== 0) return null;
     const lines = cherry.stdout.split('\n').filter((line) => line !== '');
-    return cherry.code === 0 && lines.length > 0 && lines.every((line) => line.startsWith('-'));
+    return lines.length > 0 && lines.every((line) => line.startsWith('-'));
   }
 
-  private async squashed(path: string, baseSha: string, tip: string, baseTip: string): Promise<boolean> {
+  // patch-id only finds the candidates: it ignores whitespace and, before git 2.39, binary content. A candidate
+  // counts when its own diff, over the paths of the branch, is the same text as the branch's (full blob ids).
+  private async squashed(repo: string, baseSha: string, tip: string, baseTip: string): Promise<boolean | null> {
     const { git } = this.opts;
     const limits = { maxStdoutBytes: PATCH_BYTES };
-    const ids = async (patch: GitResult): Promise<string[]> => {
-      if (patch.code !== 0 || patch.cut || patch.stdout === '') return [];
-      const result = await run(git, path, () => gitOps.patchIds(), undefined, patch.stdout);
-      return result.code === 0 ? result.stdout.split('\n').map((line) => line.split(' ')[0] ?? '').filter((id) => id !== '') : [];
-    };
-    const [whole] = await ids(await run(git, path, () => gitOps.diffPatch(baseSha, tip), undefined, undefined, limits));
-    if (!whole) return false;
-    return (await ids(await run(git, path, () => gitOps.logPatches(baseSha, baseTip), undefined, undefined, limits))).includes(whole);
+    const names = await run(git, repo, () => gitOps.diffNames(baseSha, tip));
+    if (names.code !== 0) return null;
+    const paths = zList(names.stdout);
+    if (paths.length === 0 || paths.some((name) => name.includes('\uFFFD')) || paths.reduce((n, name) => n + name.length + 12, 0) > PATHSPEC_BYTES) return false;
+    const whole = await run(git, repo, () => gitOps.diffPatch(baseSha, tip, paths), undefined, undefined, limits);
+    if (whole.code !== 0) return null;
+    if (whole.cut || whole.stdout === '') return false;
+    const [wanted] = (await this.patchIds(repo, whole.stdout)) ?? [];
+    if (!wanted) return null;
+    const log = await run(git, repo, () => gitOps.logPatches(baseSha, baseTip, paths), undefined, undefined, limits);
+    if (log.code !== 0) return null;
+    if (log.cut) return false;
+    const found = await this.patchIds(repo, log.stdout);
+    if (!found) return null;
+    let answered = true;
+    for (const { commit } of found.filter((entry) => entry.id === wanted.id).slice(0, SQUASH_CANDIDATES)) {
+      const own = await run(git, repo, () => gitOps.commitPatch(commit, paths), undefined, undefined, limits);
+      if (own.code !== 0) answered = false;
+      else if (!own.cut && own.stdout === whole.stdout) return true;
+    }
+    return answered ? false : null;
+  }
+
+  private async patchIds(repo: string, patch: string): Promise<{ id: string; commit: string }[] | null> {
+    if (patch === '') return [];
+    const result = await run(this.opts.git, repo, () => gitOps.patchIds(), undefined, patch);
+    if (result.code !== 0) return null;
+    return result.stdout
+      .split('\n')
+      .map((line) => line.split(' '))
+      .filter((parts): parts is [string, string] => parts.length === 2 && parts[0] !== '' && validSha(parts[1]))
+      .map(([id, commit]) => ({ id, commit }));
   }
 
   // One fetch of the base of every folder about to be judged, so a merge done on the remote counts; the floors
@@ -370,7 +423,9 @@ export class WorktreeDesk {
   async dirtyIn(floor: string): Promise<string[]> {
     const dirty: string[] = [];
     for (const row of this.opts.store.withWorktree().filter((r) => r.floor === floor)) {
-      if (row.worktree_path && existsSync(row.worktree_path) && (await this.facts(row)).dirty) dirty.push(row.slug);
+      if (!row.worktree_path || !existsSync(row.worktree_path)) continue;
+      const status = await run(this.opts.git, row.worktree_path, () => gitOps.status());
+      if (status.code !== 0 || status.stdout.length > 0) dirty.push(row.slug);
     }
     return dirty;
   }
@@ -391,15 +446,21 @@ export class WorktreeDesk {
     const repo = this.repoOf(row);
     if (!repo) return 'failed';
     const present = existsSync(path);
-    const facts: Facts = present ? await this.facts(row) : { ahead: 0, behind: 0, own: 0, dirty: false, merged: true };
-    if (facts.dirty && !opts.force) return 'dirty';
-    if (opts.deleteBranch && undecided(facts) && !opts.force) return 'unmerged';
+    const facts = present ? await this.facts(row) : null;
+    if (facts?.dirty && !opts.force) return 'dirty';
+    // A folder whose HEAD may hold commits the branch does not, or a branch git could not judge, needs force.
+    if (facts && undecided(facts) && !opts.force && (opts.deleteBranch || !facts.known)) return 'unmerged';
+    const branch = opts.deleteBranch ? row.branch : null;
+    const tip = branch ? (facts?.tip ?? (await this.branchTip(repo, branch))) : null;
+    if (branch && !tip) return 'failed';
     if (present) {
       const removed = await run(this.opts.git, repo, () => gitOps.worktreeRemove(path, opts.force));
       if (removed.code !== 0) return 'failed';
     } else await run(this.opts.git, repo, () => gitOps.worktreePrune());
-    if (opts.deleteBranch && row.branch) {
-      const deleted = await run(this.opts.git, repo, () => gitOps.branchDelete(row.branch ?? '', present || opts.force));
+    if (branch && tip) {
+      this.note({ key: 'hub.act.branchDeleted', params: { branch, sha: tip } });
+      // Without its folder nothing was judged: git deletes it only if it is merged into the main copy.
+      const deleted = await run(this.opts.git, repo, () => (present || opts.force ? gitOps.branchDeleteAt(branch, tip) : gitOps.branchDelete(branch, false)));
       if (deleted.code !== 0) return 'failed';
     }
     const next = this.opts.store.update(orderId, { worktree_state: 'retirado', updated_at: this.opts.now() }) as OrderRow;
@@ -468,6 +529,7 @@ export class WorktreeDesk {
     let pending = 0;
     let pendingKb = 0;
     let totalKb = 0;
+    const unknown: string[] = [];
     const rows = this.opts.store.withWorktree();
     const due = (row: OrderRow) => row.updated_at < cutoff && (row.status === 'hecho' || row.status === 'descartado');
     await this.refreshBases(rows.filter(due));
@@ -477,6 +539,10 @@ export class WorktreeDesk {
       totalKb += size.kb ?? 0;
       if (!due(row)) continue;
       const facts = await this.facts(row);
+      if (!facts.known) {
+        unknown.push(row.slug);
+        continue;
+      }
       if (row.status === 'hecho' && undecided(facts)) {
         if (row.kept_at === null) {
           pending += 1;
@@ -489,6 +555,7 @@ export class WorktreeDesk {
       if (outcome === 'ok') removed += 1;
     }
     if (pending > 0) this.note({ key: 'hub.act.worktreesPending', params: { n: pending, sizeKb: pendingKb } });
+    if (unknown.length > 0) this.note({ key: 'hub.act.worktreesUnknown', params: { n: unknown.length, slugs: unknown.join(', ') } });
     if (totalKb > cfg.warnTotalGb * 1024 * 1024) {
       this.note({ key: 'hub.act.worktreesHeavy', params: { gb: Math.round((totalKb / 1024 / 1024) * 10) / 10, max: cfg.warnTotalGb } });
     }
@@ -500,9 +567,9 @@ export class WorktreeDesk {
   }
 }
 
-// Commits of its own that are not in the base: somebody has to decide whether they are kept.
+// Commits of its own that are not in the base, or facts git could not confirm: somebody has to decide.
 function undecided(facts: Facts): boolean {
-  return facts.own > 0 && !facts.merged;
+  return !facts.known || (facts.own > 0 && !facts.merged);
 }
 
 function isUnder(cwd: string, folder: string): boolean {

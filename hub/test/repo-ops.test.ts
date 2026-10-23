@@ -93,6 +93,15 @@ describe('git argv constructors', () => {
     expect(() => gitOps.cherry('--abbrev', 'abcdef1', 'abcdef1')).toThrow(RepoOpError);
     expect(() => gitOps.diffPatch('abcdef1', '-p')).toThrow(RepoOpError);
     expect(() => gitOps.logPatches('abcdef1', 'origin/develop')).toThrow(RepoOpError);
+    expect(() => gitOps.commitPatch('HEAD')).toThrow(RepoOpError);
+    expect(() => gitOps.diffPatch('abcdef1', 'abcdef2', ['../x'])).toThrow(RepoOpError);
+  });
+
+  test('the diffs that judge a squash name every blob in full, binary ones included, and only the given paths', () => {
+    const exact = ['--no-color', '--no-ext-diff', '--no-textconv', '--src-prefix=a/', '--dst-prefix=b/', '--no-renames', '--full-index', '--binary'];
+    expect(gitOps.diffPatch('abcdef1', 'abcdef2', ['a.txt', '-b'])).toEqual(['diff', ...exact, 'abcdef1', 'abcdef2', '--', ':(literal)a.txt', ':(literal)-b']);
+    expect(gitOps.commitPatch('abcdef2', ['a.txt'])).toEqual(['diff', ...exact, 'abcdef2^', 'abcdef2', '--', ':(literal)a.txt']);
+    expect(gitOps.logPatches('abcdef1', 'abcdef2', ['a.txt'])).toEqual(['log', '-p', '--no-merges', ...exact, '--format=commit %H', 'abcdef1..abcdef2', '--', ':(literal)a.txt']);
   });
 
   test('the fixed argv of the common operations', () => {
@@ -100,7 +109,12 @@ describe('git argv constructors', () => {
     expect(gitOps.worktreeAdd('encargo/x', '/r/.claude/worktrees/office-x', 'abcdef1')).toEqual([
       'worktree', 'add', '-q', '-b', 'encargo/x', '/r/.claude/worktrees/office-x', 'abcdef1',
     ]);
-    expect(gitOps.aheadBehind('abcdef1', 'encargo/x')).toEqual(['rev-list', '--left-right', '--count', 'abcdef1...encargo/x']);
+    expect(gitOps.aheadBehind('abcdef1', 'abcdef2')).toEqual(['rev-list', '--left-right', '--count', 'abcdef1...abcdef2']);
+    expect(() => gitOps.aheadBehind('abcdef1', 'encargo/x')).toThrow(RepoOpError);
+    expect(gitOps.branchTip('encargo/x')).toEqual(['rev-parse', '--verify', '--quiet', 'refs/heads/encargo/x^{commit}']);
+    expect(gitOps.branchDeleteAt('encargo/x', 'abcdef1')).toEqual(['update-ref', '-d', 'refs/heads/encargo/x', 'abcdef1']);
+    expect(() => gitOps.branchDeleteAt('develop', 'abcdef1')).toThrow(RepoOpError);
+    expect(() => gitOps.branchDeleteAt('encargo/x', 'HEAD')).toThrow(RepoOpError);
     expect(gitOps.addFromStdin()).toEqual(['add', '--pathspec-from-file=-', '--pathspec-file-nul']);
     expect(gitOps.logOneLine('abcdef1', 'encargo/x', 9999)).toContain('--max-count=200');
   });
