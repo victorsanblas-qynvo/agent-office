@@ -26,6 +26,34 @@ export function neighbours(status: OrderStatus): { back: OrderStatus | null; nex
   return { back: COLUMNS[at - 1] ?? null, next: COLUMNS[at + 1] ?? null };
 }
 
+export type CardDirection = 'up' | 'down' | 'left' | 'right';
+
+// The card the keyboard highlight lands on after a step. `columns` holds the ids of the visible cards per
+// column. Up and down stay in the column and clamp at its ends; left and right go to the nearest non-empty
+// column at the same position, clamped. Without a current card (or when it is no longer shown) the first
+// card of the first non-empty column; at an edge the highlight stays.
+export function nextCard(columns: readonly (readonly string[])[], current: string | null, dir: CardDirection): string | null {
+  const first = columns.find((ids) => ids.length > 0)?.[0] ?? null;
+  if (current === null) return first;
+  const col = columns.findIndex((ids) => ids.includes(current));
+  if (col < 0) return first;
+  const ids = columns[col] ?? [];
+  const row = ids.indexOf(current);
+  if (dir === 'up' || dir === 'down') return ids[Math.min(ids.length - 1, Math.max(0, row + (dir === 'down' ? 1 : -1)))] ?? current;
+  const step = dir === 'right' ? 1 : -1;
+  for (let at = col + step; at >= 0 && at < columns.length; at += step) {
+    const target = columns[at] ?? [];
+    if (target.length > 0) return target[Math.min(row, target.length - 1)] ?? current;
+  }
+  return current;
+}
+
+// The column `[` and `]` take a card to: the same neighbour the arrows of the card use.
+export function neighbourStatus(status: OrderStatus, dir: 'prev' | 'next'): OrderStatus | null {
+  const near = neighbours(status);
+  return dir === 'prev' ? near.back : near.next;
+}
+
 export type ChecksBadge = { kind: 'none' | 'running' | 'passed' | 'failed'; passed: number; total: number } | null;
 
 // The checks badge of a card: ✓/✗/spinner with passed/total, or nothing when the floor runs none.

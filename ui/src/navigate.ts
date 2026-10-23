@@ -221,6 +221,9 @@ export function runKey(nav: Nav, action: KeyAction, cursor: NeedCursor, extra: {
     case 'orders':
       focusOrders();
       break;
+    case 'board':
+      nav.board().key(action.move);
+      break;
     case 'escape':
       break;
   }
