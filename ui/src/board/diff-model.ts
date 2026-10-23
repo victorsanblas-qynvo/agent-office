@@ -72,3 +72,10 @@ export function orderSignature(order: OrderView, extra: unknown): string {
     extra,
   ]);
 }
+
+export type RunMark = { id: number; status: string };
+
+export function shouldReloadForChecks(run: CheckRunView | undefined, lastSeen: RunMark | null): boolean {
+  if (!run) return false;
+  return lastSeen === null || lastSeen.id !== run.id || lastSeen.status !== run.status;
+}
