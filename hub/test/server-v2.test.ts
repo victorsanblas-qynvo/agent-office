@@ -256,6 +256,9 @@ describe('hub server v2 routes', () => {
     expect(await (await call('DELETE', `/api/memory/${lesson.id}`)).json()).toEqual({ ok: true });
     expect((await call('DELETE', `/api/memory/${lesson.id}`)).status).toBe(404);
     expect((await call('DELETE', '/api/memory/abc')).status).toBe(400);
+    for (const bad of ['1e2', '0x10', '%207', '-3', '1.5', '1234567890123456']) {
+      expect((await call('DELETE', `/api/memory/${bad}`)).status).toBe(400);
+    }
   });
 
   test('reports, documents and sources answer with clear errors', async () => {
