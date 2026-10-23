@@ -3314,6 +3314,18 @@ button.diff-file.active {
   margin-bottom: 8px;
 }
 
+.diagnostics-log {
+  max-height: 240px;
+  overflow: auto;
+  margin: 8px 0 0;
+  padding: 8px;
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  background: rgba(127, 127, 127, 0.1);
+  border-radius: 6px;
+}
+
 .worktrees-total.over {
   color: var(--danger);
   font-weight: 600;

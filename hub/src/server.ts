@@ -3,6 +3,7 @@ import { join, normalize, resolve, sep } from 'node:path';
 import type { Server, ServerWebSocket } from 'bun';
 import { Hono, type Context, type Next } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
+import { collectDiagnostics, SampleRing } from './diagnostics';
 import { clampWait, errorTextFor } from './chat';
 import type { FloorAdmin } from './floor-admin';
 import { hookResponse, runHook } from './hook';
@@ -30,6 +31,7 @@ export type ServerOptions = {
   settings?: SettingsService;
   floors?: FloorAdmin;
   log?: Log;
+  logFile?: string;
 };
 
 export type RunningServer = { server: Server<WsData>; stop: () => void };
@@ -77,6 +79,8 @@ function secure(response: Response): Response {
 export function createApp(opts: ServerOptions, holdRequest: (req: Request) => void): Hono {
   const app = new Hono();
   const { office, port } = opts;
+  const startedAt = Date.now();
+  const hookTimes = new SampleRing();
 
   app.use('*', async (c, next) => {
     if (!hostAllowed(c.req.header('host'), port)) return secure(c.text('forbidden', 403));
@@ -129,9 +133,14 @@ export function createApp(opts: ServerOptions, holdRequest: (req: Request) => vo
   });
 
   app.post('/hook', requireKey, async (c) => {
-    const event = await readJson(c);
-    if (!isHookEvent(event)) return c.text('pass');
-    return c.text(hookResponse(runHook(office, event, metaOf(c), (error) => console.error(`Agent Office: /hook ingest: ${(error as Error).message}`))));
+    const began = performance.now();
+    try {
+      const event = await readJson(c);
+      if (!isHookEvent(event)) return c.text('pass');
+      return c.text(hookResponse(runHook(office, event, metaOf(c), (error) => console.error(`Agent Office: /hook ingest: ${(error as Error).message}`))));
+    } finally {
+      hookTimes.record(performance.now() - began);
+    }
   });
 
   app.post('/guard', requireKey, async (c) => {
@@ -443,6 +452,8 @@ export function createApp(opts: ServerOptions, holdRequest: (req: Request) => vo
     if (id === null) return c.json({ error: { key: 'hub.api.badId' } }, 400);
     return office.removeLesson(id) ? c.json({ ok: true }) : c.json({ error: { key: 'hub.api.lessonNotFound' } }, 404);
   });
+
+  app.get('/api/diagnostics', requirePanel, (c) => c.json(collectDiagnostics({ office, hook: hookTimes, key: opts.key(), logFile: opts.logFile, startedAt })));
 
   app.get('/api/usage/summary', requirePanel, (c) => {
     const range = c.req.query('range') ?? 'today';

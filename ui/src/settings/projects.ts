@@ -8,6 +8,7 @@ import type { DocumentStatus, HubText, SettingsView } from '../types';
 import { deliveryEditor, type DeliveryContext } from './floor-delivery';
 import { deliverySwitch } from './floor-delivery-switch';
 import type { FloorDeliveryDraft } from './floor-delivery-model';
+import { mountDiagnosticsPanel } from './diagnostics';
 import { mountWorktreesPanel } from './worktrees-panel';
 
 type ProjectFloor = SettingsView['floors'][number];
@@ -39,6 +40,7 @@ export function mountProjects(host: HTMLElement, store: Store, api: OfficeApi | 
   const list = el('div', 'project-list');
   host.append(el('section', 'settings-section', title, hint, el('div', 'project-form', pathInput, slugInput, add), status, list));
   mountWorktreesPanel(host, store, client);
+  mountDiagnosticsPanel(host, client);
   const delivery: DeliveryContext = { store, api: client, drafts: new Map<string, FloorDeliveryDraft>(), open: new Set<string>() };
 
   let busy = false;
