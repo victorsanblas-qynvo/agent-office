@@ -13,7 +13,7 @@ const NOW = 1_000_000_000;
 const HOUR = 3_600_000;
 
 function sources(extra: Partial<NeedSources> & { agents?: ReturnType<typeof agent>[] } = {}): NeedSources {
-  return { agents: [], questions: [], documents: [], orders: [], usage: null, claims: [], now: NOW, hungAfterMinutes: 10, stateOf: (a) => a.state, ...extra };
+  return { agents: [], questions: [], documents: [], orders: [], usage: null, claims: [], now: NOW, hungAfterMinutes: 10, contextWarnPct: 85, stateOf: (a) => a.state, ...extra };
 }
 
 const kinds = (needs: Need[]): string[] => needs.map((need) => `${need.kind}:${need.agentKey ?? need.docPath ?? need.orderSlug}`);
@@ -496,5 +496,63 @@ describe('the menu', () => {
     expect(triggerSignature('es', 2, 3)).not.toBe(triggerSignature('es', 1, 3));
     expect(triggerSignature('es', 0, 1)).not.toBe(triggerSignature('es', 0, 0));
     expect(triggerSignature('es', 2, 3)).not.toBe(triggerSignature('en', 2, 3));
+  });
+});
+
+describe('context almost full', () => {
+  const full = (extra: Partial<ReturnType<typeof agent>> = {}, context: Partial<NonNullable<ReturnType<typeof agent>['context']>> = {}) =>
+    agent('lead', { context: { usedPct: 87, tokens: 870_000, window: 1_000_000, compactions: 0, source: 'transcript', at: NOW - 60_000, ...context }, ...extra });
+
+  test('below the threshold nothing is flagged', () => {
+    expect(collectNeeds(sources({ agents: [full({}, { usedPct: 84.9 })] }))).toEqual([]);
+  });
+
+  test('at and above it, one need with the percentage', () => {
+    const at = collectNeeds(sources({ agents: [full({}, { usedPct: 85 })] }));
+    expect(at.map((need) => need.id)).toEqual(['context:lead']);
+    const above = collectNeeds(sources({ agents: [full()] }));
+    expect(needLabel(above[0])).toBe('lead al 87 % de contexto');
+    expect(above[0].agentKey).toBe('lead');
+  });
+
+  test('a sample older than ten minutes is ignored', () => {
+    expect(collectNeeds(sources({ agents: [full({}, { at: NOW - 11 * 60_000 })] }))).toEqual([]);
+  });
+
+  test('away, closed and done agents are left out', () => {
+    expect(collectNeeds(sources({ agents: [full({ away: true })] }))).toEqual([]);
+    expect(collectNeeds(sources({ agents: [full({ endedAt: NOW - 1 })] }))).toEqual([]);
+    expect(collectNeeds(sources({ agents: [full({ state: 'done' })] }))).toEqual([]);
+  });
+
+  test('off, nothing is flagged', () => {
+    expect(collectNeeds(sources({ agents: [full()], contextWarnPct: 0 }))).toEqual([]);
+  });
+
+  test('a compaction is a new occurrence', () => {
+    const before = collectNeeds(sources({ agents: [full()] }))[0];
+    const after = collectNeeds(sources({ agents: [full({}, { compactions: 1 })] }))[0];
+    expect(before.instance).not.toBe(after.instance);
+    expect(needSignature(before)).not.toBe(needSignature(after));
+  });
+
+  test('the percentage moving does not wake an until-it-changes snooze', () => {
+    const early = collectNeeds(sources({ agents: [full()] }))[0];
+    const later = collectNeeds(sources({ agents: [full({}, { usedPct: 91 })] }))[0];
+    expect(needLabel(early)).not.toBe(needLabel(later));
+    expect(needSignature(early)).toBe(needSignature(later));
+    expect(activeNeeds([later], snoozeNeed({}, early, null), NOW)).toEqual([]);
+  });
+
+  test('ranks after stalled and before claim', () => {
+    const agents = [full({ key: 'ctx' }), agent('stalled', { stalledSince: 10 })];
+    const claims: Collision[] = [{ channel: '#g', path: 'a.ts', since: 1, holders: [{ key: 'x', name: 'x', floor: null }, { key: 'y', name: 'y', floor: null }] } as unknown as Collision];
+    expect(kinds(collectNeeds(sources({ agents, claims })))).toEqual(['stalled:stalled', 'context:ctx', 'claim:null']);
+  });
+
+  test('an agent also hung appears once, as hung', () => {
+    const MIN = 60_000;
+    const needs = collectNeeds(sources({ agents: [full({ state: 'testing', tool: 'Bash', detail: '', toolSince: NOW - 12 * MIN })] }));
+    expect(kinds(needs)).toEqual(['hung:lead']);
   });
 });
