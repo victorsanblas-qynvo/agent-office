@@ -10,6 +10,7 @@ import type {
   DiagnosticsView,
   HubText,
   OrderCommentView,
+  OrphanBranchView,
   OrderDiff,
   OrderDiffFile,
   DocumentContent,
@@ -296,6 +297,10 @@ export class OfficeApi {
 
   deletedBranches(floor: string): Promise<ApiData<{ branches: DeletedBranchView[] }>> {
     return this.get(`/api/floors/${encodeURIComponent(floor)}/deleted-branches`);
+  }
+
+  orphanBranches(floor: string): Promise<ApiData<{ branches: OrphanBranchView[] }>> {
+    return this.get(`/api/floors/${encodeURIComponent(floor)}/orphan-branches`);
   }
 
   restoreBranch(floor: string, branch: string, sha: string): Promise<ApiData<{ ok: true }>> {

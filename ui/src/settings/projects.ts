@@ -11,6 +11,7 @@ import type { FloorDeliveryDraft } from './floor-delivery-model';
 import { flakyChecks } from './flaky-checks';
 import { deletedBranches, deletedBranchesContext, reloadOpen } from './deleted-branches';
 import { reloadDelay } from './deleted-branches-model';
+import { orphanBranches } from './orphan-branches';
 import { mountDiagnosticsPanel } from './diagnostics';
 import { mountWorktreesPanel } from './worktrees-panel';
 
@@ -99,6 +100,7 @@ export function mountProjects(host: HTMLElement, store: Store, api: OfficeApi | 
       floor.delivery ? deliveryEditor(floor, delivery) : el('p', 'setting-hint muted delivery-off', t('settings.delivery.off')),
       flakyChecks(floor.slug, store, client),
       deletedBranches(floor.slug, branches),
+      orphanBranches(floor.slug, floor.baseBranch, store, client),
     );
   };
 

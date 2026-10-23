@@ -894,6 +894,16 @@ export type DeletedBranchBlock = 'exists' | 'gone' | 'unknown' | 'superseded';
 
 export type DeletedBranchView = { floor: string; branch: string; sha: string; at: number; restorable: boolean; reason: DeletedBranchBlock | null };
 
+// An order branch no live order owns; ahead and behind are against the floor's base, null when git could not count them.
+export type OrphanBranchView = {
+  branch: string;
+  sha: string;
+  committedAt: number;
+  ahead: number | null;
+  behind: number | null;
+  order: { slug: string; status: OrderStatus } | null;
+};
+
 // What the popup of the end of an order or plan shows; it is a snapshot of the facts when the alert was made.
 export type FinishedView = {
   id: number;
