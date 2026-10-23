@@ -4,12 +4,14 @@ import { realPath } from './floors';
 import type { GitRunner } from './git';
 import type { OrderRow, OrderStore } from './order-store';
 import type { TextLang } from './render-text';
-import { RepoOpError, gitOps, numstatPath, parseNumstat, repoPath, run, validSha, type NumstatEntry } from './repo-ops';
+import { RepoOpError, gitOps, numstatPath, parseNumstat, pathspecPath, run, validSha, type NumstatEntry } from './repo-ops';
 import type { CheckRunView, HubText, OfficeConfig, OrderDiff, OrderDiffFile } from './types';
 
 const GIT_TIMEOUT_MS = 30_000;
 export const MAX_DIFF_FILES = 300;
 export const MAX_PATCH_BYTES = 400 * 1024;
+const PATCH_READ_BYTES = MAX_PATCH_BYTES + 64 * 1024;
+export const COMPARE_TTL_MS = 15_000;
 const MAX_PR_COMMITS = 500;
 
 export type DeliveryDeskOpts = {
@@ -17,6 +19,7 @@ export type DeliveryDeskOpts = {
   git: GitRunner;
   config: () => OfficeConfig;
   latestChecks: (orderId: number) => CheckRunView | null;
+  now: () => number;
   timeoutMs?: number;
 };
 
@@ -29,6 +32,8 @@ export type PrDraftResult = { ok: true; draft: { title: string; body: string } }
 export type DiffFileResult = { ok: true; file: OrderDiffFile } | DeliveryFailure;
 
 type Compared = { ok: true; cwd: string; base: string; head: string; entries: NumstatEntry[] };
+
+type CompareMemo = { key: string; at: number; base: string; entries: NumstatEntry[] };
 
 const failure = (status: DeliveryFailure['status'], error: HubText): DeliveryFailure => ({ ok: false, status, error });
 
@@ -50,6 +55,8 @@ export function capPatch(patch: string, max = MAX_PATCH_BYTES): { patch: string;
 
 // What the commits of an order's branch changed since it left its base, read only.
 export class DeliveryDesk {
+  private readonly memo = new Map<number, CompareMemo>();
+
   constructor(private readonly opts: DeliveryDeskOpts) {}
 
   async diff(orderId: number): Promise<DiffResult> {
@@ -89,15 +96,16 @@ export class DeliveryDesk {
     if (!entry) return failure(400, { key: 'hub.api.diffPath' });
     try {
       numstatPath(entry.path, new Set(entries.map((item) => item.path)));
-      if (entry.oldPath !== null) repoPath(entry.oldPath);
+      if (entry.oldPath !== null) pathspecPath(entry.oldPath);
     } catch (error) {
       if (error instanceof RepoOpError) return failure(400, { key: 'hub.api.diffPath' });
       throw error;
     }
-    const result = await run(this.opts.git, cwd, () => gitOps.diffFile(base, head, entry.path, entry.oldPath), this.timeout());
+    const limits = { maxStdoutBytes: PATCH_READ_BYTES };
+    const result = await run(this.opts.git, cwd, () => gitOps.diffFile(base, head, entry.path, entry.oldPath), this.timeout(), undefined, limits);
     if (result.code !== 0) return failure(500, { key: 'hub.api.diffFailed' });
     const capped = capPatch(result.stdout);
-    return { ok: true, file: { path: entry.path, patch: capped.patch, truncated: capped.truncated, binary: entry.binary } };
+    return { ok: true, file: { path: entry.path, patch: capped.patch, truncated: capped.truncated || result.cut === true, binary: entry.binary } };
   }
 
   private async compare(orderId: number): Promise<Compared | DeliveryFailure> {
@@ -106,11 +114,24 @@ export class DeliveryDesk {
     const cwd = this.cwdOf(row);
     if (!row.branch || !row.worktree_path || !cwd) return failure(409, { key: 'hub.api.orderNoBranch' });
     const head = await this.resolve(cwd, row.branch);
-    const base = head ? await this.baseOf(cwd, row, head) : null;
-    if (!head || !base) return failure(409, { key: 'hub.api.orderNoBranch' });
+    if (!head) return failure(409, { key: 'hub.api.orderNoBranch' });
+    const key = [head, row.base_ref ?? '', row.base_sha ?? ''].join('\0');
+    const now = this.opts.now();
+    const kept = this.memo.get(orderId);
+    if (kept && kept.key === key && now - kept.at < COMPARE_TTL_MS) return { ok: true, cwd, base: kept.base, head, entries: kept.entries };
+    const base = await this.baseOf(cwd, row, head);
+    if (!base) return failure(409, { key: 'hub.api.orderNoBranch' });
     const numstat = await run(this.opts.git, cwd, () => gitOps.diffNumstat(base, head), this.timeout());
     if (numstat.code !== 0) return failure(500, { key: 'hub.api.diffFailed' });
-    return { ok: true, cwd, base, head, entries: parseNumstat(numstat.stdout) };
+    const entries = parseNumstat(numstat.stdout);
+    this.remember(orderId, { key, at: now, base, entries });
+    return { ok: true, cwd, base, head, entries };
+  }
+
+  // The last comparison of each order, so clicking through its files does not rerun the numstat; stale ones are dropped.
+  private remember(orderId: number, memo: CompareMemo): void {
+    for (const [id, kept] of this.memo) if (memo.at - kept.at >= COMPARE_TTL_MS) this.memo.delete(id);
+    this.memo.set(orderId, memo);
   }
 
   // The base the folder list counts ahead and behind against: the tip of the base branch, or the commit the

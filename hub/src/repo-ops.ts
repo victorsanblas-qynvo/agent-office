@@ -1,5 +1,5 @@
 import { validBranch } from './config';
-import type { GitResult, GitRunner } from './git';
+import type { GitLimits, GitResult, GitRunner } from './git';
 
 // The delivery cycle runs git and gh with values that come from the database, the panel or an agent. Nothing
 // here builds a shell line: every function returns a fixed argv after checking each value, so a value can
@@ -51,7 +51,13 @@ function writable(branch: string): string {
 
 // A path inside the repository: relative, no .. and not an option.
 export function repoPath(value: string): string {
-  if (!value || value.length > MAX_PATH || value.startsWith('-') || value.startsWith('/') || value.includes('\0') || value.split('/').includes('..')) {
+  if (value.startsWith('-')) throw new RepoOpError(`ruta no válida: ${value}`);
+  return pathspecPath(value);
+}
+
+// A path that only ever goes after -- as :(literal)<path>: git cannot read it as an option, so it may start with -.
+export function pathspecPath(value: string): string {
+  if (!value || value.length > MAX_PATH || value.startsWith('/') || value.includes('\0') || value.split('/').includes('..')) {
     throw new RepoOpError(`ruta no válida: ${value}`);
   }
   return value;
@@ -68,8 +74,12 @@ export function absolutePath(value: string): string {
 // Paths that appear in the numstat of the order: the diff of a file is only asked for one the order changed.
 export function numstatPath(value: string, inNumstat: ReadonlySet<string>): string {
   if (!inNumstat.has(value)) throw new RepoOpError(`la ruta no está en el diff: ${value}`);
-  return repoPath(value);
+  return pathspecPath(value);
 }
+
+// The output of a diff the hub parses or shows, whatever the user's config says about colour, external
+// drivers, textconv filters or prefixes.
+const PINNED_DIFF = ['--no-color', '--no-ext-diff', '--no-textconv', '--src-prefix=a/', '--dst-prefix=b/'];
 
 export const gitOps = {
   fetch: (base: string): string[] => ['fetch', '--quiet', 'origin', ref(base, 'rama')],
@@ -93,16 +103,15 @@ export const gitOps = {
   aheadBehind: (base: string, branch: string): string[] => ['rev-list', '--left-right', '--count', `${sha(base)}...${writable(branch)}`],
   isAncestor: (ancestor: string, descendant: string): string[] => ['merge-base', '--is-ancestor', sha(ancestor), ref(descendant, 'rama')],
   diffNames: (baseSha: string, head: string): string[] => ['diff', '--name-only', '-z', sha(baseSha), sha(head), '--'],
-  diffNumstat: (base: string, head: string): string[] => ['diff', '--no-color', '--no-ext-diff', '-z', '--numstat', '--find-renames', `${sha(base)}...${sha(head)}`, '--'],
+  diffNumstat: (base: string, head: string): string[] => ['diff', ...PINNED_DIFF, '-z', '--numstat', '--find-renames', `${sha(base)}...${sha(head)}`, '--'],
   diffFile: (base: string, head: string, path: string, oldPath: string | null = null): string[] => [
     'diff',
-    '--no-color',
-    '--no-ext-diff',
+    ...PINNED_DIFF,
     '--find-renames',
     `${sha(base)}...${sha(head)}`,
     '--',
-    ...(oldPath !== null && oldPath !== path ? [`:(literal)${repoPath(oldPath)}`] : []),
-    `:(literal)${repoPath(path)}`,
+    ...(oldPath !== null && oldPath !== path ? [`:(literal)${pathspecPath(oldPath)}`] : []),
+    `:(literal)${pathspecPath(path)}`,
   ],
   logSubjects: (base: string, head: string, max: number): string[] => [
     'log',
@@ -159,7 +168,7 @@ export const runGh: GhRunner = async (cwd, args, timeoutMs = 60_000, input) => {
 };
 
 // Runs a constructor from this module; a value the constructor refuses comes back as a failed result.
-export async function run(runner: GitRunner, cwd: string, build: () => string[], timeoutMs?: number, input?: string): Promise<GitResult> {
+export async function run(runner: GitRunner, cwd: string, build: () => string[], timeoutMs?: number, input?: string, limits?: GitLimits): Promise<GitResult> {
   let argv: string[];
   try {
     argv = build();
@@ -167,7 +176,7 @@ export async function run(runner: GitRunner, cwd: string, build: () => string[],
     if (error instanceof RepoOpError) return { code: -1, stdout: '', stderr: error.message };
     throw error;
   }
-  return runner(cwd, argv, timeoutMs, input);
+  return runner(cwd, argv, timeoutMs, input, limits);
 }
 
 // NUL-separated names of git -z, without the empty tail.

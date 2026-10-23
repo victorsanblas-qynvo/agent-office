@@ -10,6 +10,7 @@ import {
   numstatPath,
   orderBranch,
   parseNumstat,
+  pathspecPath,
   repoPath,
   run,
   runGh,
@@ -59,6 +60,14 @@ describe('validators', () => {
     const listed = new Set(['lib/a.dart']);
     expect(numstatPath('lib/a.dart', listed)).toBe('lib/a.dart');
     expect(() => numstatPath('lib/b.dart', listed)).toThrow(RepoOpError);
+  });
+
+  test('a path read as :(literal) after -- may start with a dash and keeps the other rules', () => {
+    expect(pathspecPath('-dash.txt')).toBe('-dash.txt');
+    expect(pathspecPath('lib/-x/a b.dart')).toBe('lib/-x/a b.dart');
+    for (const bad of ['', '/etc/passwd', '../x', 'a/../../b', 'a\0b', 'x'.repeat(1001)]) expect(() => pathspecPath(bad)).toThrow(RepoOpError);
+    expect(() => repoPath('-dash.txt')).toThrow(RepoOpError);
+    expect(numstatPath('-dash.txt', new Set(['-dash.txt']))).toBe('-dash.txt');
   });
 });
 
@@ -110,10 +119,12 @@ describe('git argv constructors', () => {
   test('the diff of an order compares from the merge base and reads every path literally', () => {
     const base = 'a'.repeat(40);
     const head = 'b'.repeat(40);
-    expect(gitOps.diffNumstat(base, head)).toEqual(['diff', '--no-color', '--no-ext-diff', '-z', '--numstat', '--find-renames', `${base}...${head}`, '--']);
-    expect(gitOps.diffFile(base, head, 'lib/a.dart')).toEqual(['diff', '--no-color', '--no-ext-diff', '--find-renames', `${base}...${head}`, '--', ':(literal)lib/a.dart']);
+    const pinned = ['--no-color', '--no-ext-diff', '--no-textconv', '--src-prefix=a/', '--dst-prefix=b/'];
+    expect(gitOps.diffNumstat(base, head)).toEqual(['diff', ...pinned, '-z', '--numstat', '--find-renames', `${base}...${head}`, '--']);
+    expect(gitOps.diffFile(base, head, 'lib/a.dart')).toEqual(['diff', ...pinned, '--find-renames', `${base}...${head}`, '--', ':(literal)lib/a.dart']);
     expect(gitOps.diffFile(base, head, 'lib/b.dart', 'lib/a.dart').slice(-2)).toEqual([':(literal)lib/a.dart', ':(literal)lib/b.dart']);
     expect(gitOps.diffFile(base, head, ':!x').at(-1)).toBe(':(literal):!x');
+    expect(gitOps.diffFile(base, head, '-dash.txt', '--old').slice(-2)).toEqual([':(literal)--old', ':(literal)-dash.txt']);
     expect(() => gitOps.diffNumstat('develop', head)).toThrow(RepoOpError);
     expect(() => gitOps.diffNumstat(base, '--output=x')).toThrow(RepoOpError);
     expect(() => gitOps.diffFile(base, head, '../x')).toThrow(RepoOpError);
@@ -177,6 +188,63 @@ describe('git argv constructors', () => {
     const created = await run(runGit, repo, () => gitOps.worktreeAdd('encargo/x', wt, sha));
     expect(created.code).toBe(0);
     expect(git(wt, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe('encargo/x');
+  });
+
+  test('runGit with a cap stops reading a large output, kills git and says it cut it', async () => {
+    const root = temp();
+    const repo = makeRepo(root, 'repo', { 'big.txt': `${'x'.repeat(99)}\n`.repeat(50_000) });
+    git(repo, 'init', '-q', '-b', 'develop');
+    git(repo, 'add', '.');
+    git(repo, 'commit', '-q', '-m', 'inicio');
+    const whole = await runGit(repo, ['show', 'HEAD:big.txt']);
+    expect(whole).toMatchObject({ code: 0 });
+    expect(whole.stdout.length).toBe(5_000_000);
+    expect(whole.cut).toBeUndefined();
+    const cut = await runGit(repo, ['show', 'HEAD:big.txt'], 10_000, undefined, { maxStdoutBytes: 100_000 });
+    expect(cut).toMatchObject({ code: 0, cut: true });
+    expect(Buffer.byteLength(cut.stdout)).toBeLessThanOrEqual(100_000);
+    expect(Buffer.byteLength(cut.stdout)).toBeGreaterThan(90_000);
+    const small = await runGit(repo, ['rev-parse', 'HEAD'], 10_000, undefined, { maxStdoutBytes: 100_000 });
+    expect(small).toMatchObject({ code: 0, stdout: `${git(repo, 'rev-parse', 'HEAD')}\n` });
+    expect(small.cut).toBeUndefined();
+  });
+
+  test('a cap cuts a multibyte character out instead of breaking it', async () => {
+    const root = temp();
+    const repo = makeRepo(root, 'repo', { 'n.txt': 'ñ'.repeat(10_000) });
+    git(repo, 'init', '-q', '-b', 'develop');
+    git(repo, 'add', '.');
+    git(repo, 'commit', '-q', '-m', 'inicio');
+    const cut = await runGit(repo, ['show', 'HEAD:n.txt'], 10_000, undefined, { maxStdoutBytes: 1001 });
+    expect(cut).toMatchObject({ code: 0, cut: true, stdout: 'ñ'.repeat(500) });
+  });
+
+  test('runGit ignores a GIT_DIR or GIT_INDEX_FILE of the environment and reads the repository of cwd', async () => {
+    const root = temp();
+    const repo = makeRepo(root, 'repo', { 'a.txt': 'a\n' });
+    git(repo, 'init', '-q', '-b', 'develop');
+    git(repo, 'add', '.');
+    git(repo, 'commit', '-q', '-m', 'inicio');
+    const other = makeRepo(root, 'other', { 'b.txt': 'b\n' });
+    git(other, 'init', '-q', '-b', 'main');
+    const names = ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_OBJECT_DIRECTORY'] as const;
+    const previous = names.map((name) => process.env[name]);
+    Object.assign(process.env, {
+      GIT_DIR: join(other, '.git'),
+      GIT_WORK_TREE: other,
+      GIT_INDEX_FILE: join(other, '.git', 'index'),
+      GIT_OBJECT_DIRECTORY: join(other, '.git', 'objects'),
+    });
+    try {
+      expect(await runGit(repo, ['rev-parse', '--abbrev-ref', 'HEAD'])).toMatchObject({ code: 0, stdout: 'develop\n' });
+      expect(await runGit(repo, ['ls-files'])).toMatchObject({ code: 0, stdout: 'a.txt\n' });
+    } finally {
+      names.forEach((name, i) => {
+        const value = previous[i];
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      });
+    }
   });
 });
 
