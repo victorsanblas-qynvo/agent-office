@@ -40,6 +40,8 @@ const SAME_KEYS: MessageKey[] = [
   'hub.detail.tests',
   'hub.pr.commits',
   'hub.pr.diff',
+  'hub.review.line',
+  'hub.review.file',
   'hub.act.tests',
   'hub.act.ok',
   'hub.report.counts',

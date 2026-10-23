@@ -3136,6 +3136,143 @@ button.diff-file.active {
   font-style: italic;
 }
 
+.diff-gutter {
+  flex: none;
+  width: 2.5ch;
+  text-align: center;
+}
+
+.diff-comment {
+  padding: 0 2px;
+  border: none;
+  border-radius: 4px;
+  background: var(--accent);
+  color: var(--accent-text);
+  font: inherit;
+  line-height: 1.2;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.diff-line:hover .diff-comment,
+.diff-comment:focus-visible {
+  opacity: 1;
+}
+
+.review-file {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.review-thread {
+  position: sticky;
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  max-width: 640px;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  font-family: system-ui, sans-serif;
+  font-size: 12px;
+  white-space: normal;
+}
+
+.review-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.review-note-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  width: 100%;
+  color: var(--muted);
+}
+
+.review-body {
+  flex: 1;
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.review-draft {
+  padding: 4px 6px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+}
+
+.review-unsent {
+  color: var(--danger);
+}
+
+.review-remove {
+  flex: none;
+  font-size: 11px;
+}
+
+.review-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.review-input {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  resize: vertical;
+}
+
+.review-count {
+  flex: none;
+  font-size: 11px;
+}
+
+.review-dialog-label {
+  font-size: 12px;
+}
+
+.review-drafts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 40vh;
+  overflow: auto;
+}
+
+.review-draft-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.review-preview {
+  max-height: 30vh;
+  margin: 6px 0 0;
+  overflow: auto;
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .activity-list {
   list-style: none;
   margin: 8px 0 0;

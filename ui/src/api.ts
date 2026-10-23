@@ -8,6 +8,8 @@ import type {
   CheckpointView,
   DeletedBranchView,
   DiagnosticsView,
+  HubText,
+  OrderCommentView,
   OrderDiff,
   OrderDiffFile,
   DocumentContent,
@@ -36,6 +38,10 @@ import type {
   UsageSummary,
   WorktreeView,
 } from './types';
+
+export type ReviewRequest = { comments: { path: string; line: number | null; side: 'new' | 'old'; body: string }[]; summary: string; lang: Lang };
+
+export type ReviewSent = { delivered: true; count: number } | { delivered: false; count: number; reason: HubText };
 
 export type NewOrderRequest = { floor: string; title: string; description?: string; base?: string; via: 'lead' | 'director' };
 
@@ -226,6 +232,14 @@ export class OfficeApi {
 
   orderPrDraft(id: number, lang: Lang): Promise<ApiData<{ title: string; body: string }>> {
     return this.get(`/api/board/orders/${id}/pr-draft?lang=${lang}`);
+  }
+
+  orderComments(id: number): Promise<ApiData<{ comments: OrderCommentView[] }>> {
+    return this.get(`/api/board/orders/${id}/comments`);
+  }
+
+  sendReview(id: number, review: ReviewRequest): Promise<ApiData<ReviewSent>> {
+    return this.send('POST', `/api/board/orders/${id}/comments`, review);
   }
 
   markFinishedSeen(id: number): Promise<ApiData<{ ok: true }>> {

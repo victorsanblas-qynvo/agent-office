@@ -130,6 +130,8 @@ export type HubTextParams = {
   'hub.act.planFinished': { title: string; floors: string; cycle: number };
   'hub.act.worktreeFailed': { slug: string; reason: string };
   'hub.act.folderUnsent': { slug: string };
+  'hub.act.reviewSent': { floor: string; title: string; n: number };
+  'hub.act.reviewUnsent': { slug: string };
   'hub.act.editOutsideWorktree': { who: string; slug: string };
   'hub.act.checkpointSkipped': { slug: string; files: string };
   'hub.act.checkpointFailed': { slug: string };
@@ -278,6 +280,8 @@ export type HubTextParams = {
   'hub.api.branchRestoreFailed': undefined;
   'hub.api.orderNoBranch': undefined;
   'hub.api.diffPath': undefined;
+  'hub.api.reviewFields': undefined;
+  'hub.api.reviewUnsent': undefined;
   'hub.api.diffFailed': undefined;
   'hub.api.logFailed': undefined;
 
@@ -330,6 +334,12 @@ export type HubTextParams = {
   'hub.pr.status.failed': undefined;
   'hub.pr.status.timeout': undefined;
   'hub.pr.status.cancelled': undefined;
+  'hub.review.header': { slug: string };
+  'hub.review.intro': undefined;
+  'hub.review.summary': { text: string };
+  'hub.review.line': { path: string; line: number; body: string };
+  'hub.review.oldLine': { path: string; line: number; body: string };
+  'hub.review.file': { path: string; body: string };
 };
 
 export type HubTextKey = keyof HubTextParams;
@@ -811,6 +821,20 @@ export type DiffFileStat = { path: string; oldPath: string | null; adds: number 
 export type OrderDiff = { base: string; head: string; files: DiffFileStat[]; totals: { files: number; adds: number; dels: number }; truncated: boolean };
 
 export type OrderDiffFile = { path: string; patch: string; truncated: boolean; binary: boolean };
+
+// A review comment on the diff of an order: line null is about the whole file; cycle and sha are those of the
+// order when it was written, sentAt null when the lead did not get it.
+export type OrderCommentView = {
+  id: number;
+  path: string;
+  line: number | null;
+  side: 'new' | 'old';
+  body: string;
+  cycle: number | null;
+  sha: string | null;
+  createdAt: number;
+  sentAt: number | null;
+};
 
 export type WorktreeView = {
   orderId: number;

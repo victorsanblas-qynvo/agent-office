@@ -1,10 +1,11 @@
 import type { OfficeApi } from '../api';
 import { button, el } from '../dom';
-import { currentLang, t } from '../i18n';
+import { currentLang, plural, t } from '../i18n';
+import { renderHubText } from '../i18n/hub';
 import { agentName, floorLabel } from '../labels';
 import type { Store } from '../store';
 import { clockTime, relativeTime } from '../time';
-import type { CheckRunView, CheckView, CheckpointView, OrderDiff, OrderDiffFile, OrderView, SearchHit, SkippedFile } from '../types';
+import type { CheckRunView, CheckView, CheckpointView, OrderCommentView, OrderDiff, OrderDiffFile, OrderView, SearchHit, SkippedFile } from '../types';
 import { activityPath, activityTerms, orderTimeline } from './activity-model';
 import { checksBadgeNode, folderBadgeNode } from './badges';
 import { flakyChecks } from './flaky';
@@ -13,7 +14,26 @@ import type { RunMark } from './diff-model';
 import { parseDiff } from './diff-parse';
 import { editorLink } from './editor-link';
 import { readEditor } from '../prefs';
+import { REVIEW_MAX_BODY } from '../../../shared/review-message';
 import { openPrDraft } from './pr-draft';
+import { openReviewDialog } from './review-dialog';
+import {
+  addDraft,
+  commentsAt,
+  draftsAt,
+  draftsFull,
+  draftsIn,
+  fileComments,
+  fileTarget,
+  removeDraft,
+  reviewRequest,
+  rowTarget,
+  sameTarget,
+  targetKey,
+  targetLabel,
+  type ReviewDraft,
+  type ReviewTarget,
+} from './review-model';
 
 export type OrderDetail = { destroy(): void };
 
@@ -119,7 +139,13 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
   let diffFile: OrderDiffFile | null = null;
   let diffFileError = '';
   let diffFileLoading = false;
-  let patchCache: { file: OrderDiffFile; lang: string; root: string; node: HTMLElement } | null = null;
+  let patchCache: { file: OrderDiffFile; lang: string; root: string; review: number; node: HTMLElement } | null = null;
+  let drafts: ReviewDraft[] = [];
+  let comments: OrderCommentView[] = [];
+  let editing: ReviewTarget | null = null;
+  let editText = '';
+  let focusEditor = false;
+  let reviewStamp = 0;
   let activityHits: SearchHit[] = [];
   let activityLoaded = false;
   let activityLoading = false;
@@ -175,7 +201,38 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
     if (result.ok) diff = result.data;
     else diffError = result.message;
     render();
+    if (result.ok) void loadComments();
     if (result.ok && diffPath !== null) void loadDiffFile(diffPath);
+  };
+
+  const loadComments = async (): Promise<void> => {
+    if (!api) return;
+    const result = await api.orderComments(orderId);
+    if (gone || !result.ok) return;
+    comments = result.data.comments;
+    reviewStamp += 1;
+    render();
+  };
+
+  const reviewChanged = (): void => {
+    reviewStamp += 1;
+    render();
+  };
+
+  const sendReview = async (summary: string): Promise<boolean> => {
+    if (!api) return false;
+    const result = await api.sendReview(orderId, reviewRequest(drafts, summary, currentLang()));
+    if (gone) return true;
+    if (!result.ok) {
+      store.toast(result.message, 'error');
+      return false;
+    }
+    drafts = [];
+    if (result.data.delivered) store.toast(plural('board.review.sent', result.data.count), 'ok');
+    else store.toast(renderHubText(t, result.data.reason), 'error');
+    reviewChanged();
+    await loadComments();
+    return true;
   };
 
   const loadDiffFile = async (path: string): Promise<void> => {
@@ -341,28 +398,130 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
     return link;
   };
 
+  const startComment = (target: ReviewTarget): void => {
+    if (draftsFull(drafts)) {
+      store.toast(t('board.review.full', { n: drafts.length }), 'error');
+      return;
+    }
+    editing = target;
+    editText = '';
+    focusEditor = true;
+    reviewChanged();
+  };
+
+  const commentButton = (target: ReviewTarget): HTMLButtonElement => {
+    const label = t('board.review.commentLine', { line: target.line ?? '' });
+    const node = button('+', 'diff-comment', label);
+    node.setAttribute('aria-label', label);
+    node.addEventListener('click', () => startComment(target));
+    return node;
+  };
+
+  const editor = (target: ReviewTarget): HTMLElement => {
+    const area = el('textarea', 'review-input');
+    area.rows = 3;
+    area.maxLength = REVIEW_MAX_BODY;
+    area.value = editText;
+    area.placeholder = t('board.review.placeholder');
+    area.setAttribute('aria-label', targetLabel(target));
+    area.addEventListener('input', () => {
+      editText = area.value;
+    });
+    const add = button(t('board.review.add'), 'primary');
+    add.addEventListener('click', () => {
+      if (area.value.trim() === '') return;
+      drafts = addDraft(drafts, target, area.value);
+      editing = null;
+      editText = '';
+      reviewChanged();
+    });
+    const cancel = button(t('board.review.cancel'));
+    cancel.addEventListener('click', () => {
+      editing = null;
+      editText = '';
+      reviewChanged();
+    });
+    return el('div', 'review-editor', area, el('div', 'new-order-actions', cancel, add));
+  };
+
+  const pastNote = (comment: OrderCommentView, now: number, located: boolean): HTMLElement =>
+    el(
+      'div',
+      'review-note review-past',
+      el(
+        'div',
+        'review-note-head',
+        located ? el('code', '', targetLabel(comment)) : null,
+        comment.cycle !== null ? el('span', 'chip', t('board.review.cycle', { cycle: comment.cycle })) : null,
+        comment.sentAt === null ? el('span', 'chip review-unsent', t('board.review.unsent')) : null,
+        ageNode(comment.createdAt, now),
+      ),
+      el('span', 'review-body', comment.body),
+    );
+
+  const draftNote = (draft: ReviewDraft): HTMLElement => {
+    const remove = button(t('board.review.remove'), 'review-remove');
+    remove.addEventListener('click', () => {
+      drafts = removeDraft(drafts, draft.id);
+      reviewChanged();
+    });
+    return el('div', 'review-note review-draft', el('span', 'chip', t('board.review.draft')), el('span', 'review-body', draft.body), remove);
+  };
+
+  const thread = (target: ReviewTarget, now: number): HTMLElement | null => {
+    const parts = [
+      ...commentsAt(comments, target).map((comment) => pastNote(comment, now, false)),
+      ...draftsAt(drafts, target).map(draftNote),
+      editing && sameTarget(editing, target) ? editor(target) : null,
+    ].filter((part): part is HTMLElement => part !== null);
+    return parts.length > 0 ? el('div', 'review-thread', ...parts) : null;
+  };
+
+  const fileReview = (path: string, shown: ReadonlySet<string>, now: number): HTMLElement | null => {
+    if (!api) return null;
+    const target = fileTarget(path);
+    const start = button(t('board.review.commentFile'), 'review-file-button');
+    start.addEventListener('click', () => startComment(target));
+    const others = fileComments(comments, path, shown).filter((comment) => comment.line !== null);
+    return el(
+      'div',
+      'review-file',
+      start,
+      thread(target, now),
+      others.length > 0 ? el('div', 'review-thread', ...others.map((comment) => pastNote(comment, now, true))) : null,
+    );
+  };
+
   const patchView = (root: string | null): HTMLElement | null => {
     if (diffPath === null) return el('p', 'muted', t('board.diff.pick'));
     if (diffFileLoading) return el('p', 'muted', t('board.loading'));
     if (diffFileError !== '') return el('p', 'order-warning', t('board.diff.loadFailed', { error: diffFileError }));
     if (!diffFile) return null;
-    if (diffFile.binary) return el('p', 'muted', t('board.diff.patchBinary'));
+    const now = store.now();
+    if (diffFile.binary) return el('div', 'diff-patch-wrap', fileReview(diffFile.path, new Set(), now), el('p', 'muted', t('board.diff.patchBinary')));
     const linkKey = `${root ?? ''}|${readEditor()}`;
-    if (patchCache && patchCache.file === diffFile && patchCache.lang === currentLang() && patchCache.root === linkKey) return patchCache.node;
+    if (patchCache && patchCache.file === diffFile && patchCache.lang === currentLang() && patchCache.root === linkKey && patchCache.review === reviewStamp) return patchCache.node;
     const rows = parseDiff(diffFile.patch).flatMap(patchRows);
     const filePath = diffFile.path;
-    const lines = rows.map((row) => {
+    const shown = new Set<string>();
+    const lines = rows.flatMap((row) => {
       const link = row.newLine === null ? null : openLink(root, filePath, row.newLine, row.newNo);
       const newNo = el('span', 'diff-no', link ?? row.newNo);
-      return el('div', row.className, el('span', 'diff-no', row.oldNo), newNo, el('span', 'diff-marker', row.marker), el('span', 'diff-text', row.text));
+      const target = rowTarget(filePath, row);
+      if (target) shown.add(targetKey(target));
+      const comment = target && api ? commentButton(target) : null;
+      const line = el('div', row.className, el('span', 'diff-no', row.oldNo), newNo, el('span', 'diff-gutter', comment), el('span', 'diff-marker', row.marker), el('span', 'diff-text', row.text));
+      const notes = target ? thread(target, now) : null;
+      return notes ? [line, notes] : [line];
     });
     const node = el(
       'div',
       'diff-patch-wrap',
+      fileReview(filePath, shown, now),
       diffFile.truncated ? el('p', 'order-warning', t('board.diff.patchTruncated')) : null,
       lines.length === 0 ? el('p', 'muted', t('board.diff.patchEmpty')) : el('div', 'diff-patch', ...lines),
     );
-    patchCache = { file: diffFile, lang: currentLang(), root: linkKey, node };
+    patchCache = { file: diffFile, lang: currentLang(), root: linkKey, review: reviewStamp, node };
     return node;
   };
 
@@ -380,8 +539,10 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
     const root = current.worktree?.path ?? null;
     const rows = statRows(diff).map((row) => {
       const pick = button('', `${row.className}${row.path === diffPath ? ' active' : ''}`);
+      const pending = draftsIn(drafts, row.path);
+      pick.append(el('span', 'diff-file-path', row.label));
+      if (pending > 0) pick.append(el('span', 'chip review-count', plural('board.review.drafts', pending)));
       pick.append(
-        el('span', 'diff-file-path', row.label),
         row.binary ? el('span', 'muted', t('board.diff.binary')) : el('span', 'diff-file-stat', el('span', 'diff-add-count', row.adds), ' ', el('span', 'diff-del-count', row.dels)),
       );
       pick.addEventListener('click', () => void loadDiffFile(row.path));
@@ -390,10 +551,25 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
     });
     const stale = diffStale(diff, current, newestSha(current)) ? button(t('board.diff.stale'), 'order-warning') : null;
     stale?.addEventListener('click', () => void loadDiff());
+    const send = api ? button(t('board.review.send', { n: drafts.length }), 'primary') : null;
+    if (send) {
+      send.disabled = drafts.length === 0;
+      send.addEventListener('click', () =>
+        openReviewDialog(host, {
+          slug: current.slug,
+          drafts: () => drafts,
+          remove: (id) => {
+            drafts = removeDraft(drafts, id);
+            reviewChanged();
+          },
+          send: sendReview,
+        }),
+      );
+    }
     return el(
       'div',
       'order-tab',
-      el('div', 'diff-head', el('b', '', diffSummary(diff)), reload),
+      el('div', 'diff-head', el('b', '', diffSummary(diff)), send, reload),
       stale,
       diff.truncated ? el('p', 'order-warning', t('board.diff.truncated')) : null,
       rows.length === 0 ? el('p', 'muted', t('board.diff.none')) : el('ul', 'diff-files', ...rows),
@@ -423,6 +599,7 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
       diffPath,
       diffFileLoading,
       diffFileError,
+      reviewStamp,
     ]);
   };
 
@@ -474,7 +651,12 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
       tabs,
       tab === 'checks' ? checksTab(current, now) : tab === 'points' ? pointsTab(now) : tab === 'activity' ? activityTab(current, now) : diffTab(current),
     ];
+    const typing = document.activeElement instanceof HTMLTextAreaElement && panel.contains(document.activeElement) ? document.activeElement : null;
     panel.replaceChildren(...parts.filter((part): part is Node => part !== null));
+    const input = panel.querySelector<HTMLTextAreaElement>('.review-input');
+    if (focusEditor && input) input.focus();
+    else if (typing?.isConnected) typing.focus();
+    focusEditor = false;
   }
 
   const noteRun = (): void => {

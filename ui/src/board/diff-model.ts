@@ -3,7 +3,7 @@ import type { CheckRunView, CheckpointView, DiffFileStat, OrderDiff, OrderView }
 import type { FileDiff } from './diff-parse';
 
 export type StatRow = { path: string; label: string; adds: string; dels: string; binary: boolean; className: string };
-export type PatchRow = { className: string; oldNo: string; newNo: string; newLine: number | null; marker: string; text: string };
+export type PatchRow = { className: string; oldNo: string; newNo: string; newLine: number | null; oldLine: number | null; marker: string; text: string };
 
 const MARKERS = { add: '+', del: '-', context: ' ', note: '\\' } as const;
 
@@ -26,13 +26,14 @@ export function statRows(diff: OrderDiff): StatRow[] {
 export function patchRows(file: FileDiff): PatchRow[] {
   const rows: PatchRow[] = [];
   for (const hunk of file.hunks) {
-    rows.push({ className: 'diff-line diff-hunk', oldNo: '', newNo: '', newLine: null, marker: '', text: hunk.header });
+    rows.push({ className: 'diff-line diff-hunk', oldNo: '', newNo: '', newLine: null, oldLine: null, marker: '', text: hunk.header });
     for (const line of hunk.lines) {
       rows.push({
         className: `diff-line diff-${line.kind}`,
         oldNo: line.oldNo === null ? '' : String(line.oldNo),
         newNo: line.newNo === null ? '' : String(line.newNo),
         newLine: line.kind === 'add' || line.kind === 'context' ? line.newNo : null,
+        oldLine: line.kind === 'del' ? line.oldNo : null,
         marker: MARKERS[line.kind],
         text: line.text,
       });
