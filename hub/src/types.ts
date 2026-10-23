@@ -1029,6 +1029,14 @@ export type TokenTotals = { turns: number; input: number; cacheRead: number; cac
 
 export type TokenRow = { key: string; tokens: TokenTotals; agents: number };
 
+export type OrderSpend = {
+  tokens: number;
+  byModel: { model: string; tokens: number }[];
+  byRole: { role: string; tokens: number }[];
+  sessions: number;
+  basis: 'plan+folder';
+};
+
 export type UsageRange = 'today' | 'week';
 
 export type UsageDay = { day: string; tokens: number };

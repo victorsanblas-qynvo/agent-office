@@ -708,3 +708,58 @@ describe('GET /api/usage/summary', () => {
     expect((await fetch(`${base}/api/usage/summary?range=today`)).status).toBe(401);
   });
 });
+
+describe('TokenMeter.orderSpend', () => {
+  const FOLDER = '/work/mobile--login';
+  const when = Date.parse('2026-10-16T12:00:00.000Z');
+
+  function rig() {
+    const db = openDb(':memory:');
+    const session = (id: string, cwd: string): void => {
+      db.query('INSERT INTO sessions (session_id, cwd, floor, role, name, started_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(id, cwd, 'mobile', null, null, when, when);
+    };
+    const usage = (agent: string, sessionId: string, role: string, model: string, plan: string, output: number): void => {
+      db.query(
+        `INSERT INTO token_usage (day, agent_key, session_id, floor, role_id, name, model, plan_slug, turns, input, cache_read, cache_create, output, updated_at)
+         VALUES ('2026-10-16', ?, ?, 'mobile', ?, NULL, ?, ?, 1, 1, 10, 4, ?, ?)`,
+      ).run(agent, sessionId, role, model, plan, output, when);
+    };
+    const meter = new TokenMeter({ db, claudeHome: '/nowhere', now: () => when, onRead: () => {} });
+    return { session, usage, meter };
+  }
+
+  test('adds the rows of the order plan and of the sessions inside its folder, and nothing else', () => {
+    const { session, usage, meter } = rig();
+    session('lead', '/work/mobile');
+    session('dev', `${FOLDER}/lib`);
+    session('other', '/work/mobile--login-2');
+    session('stray', '/work/mobile--pagos');
+    usage('lead', 'lead', 'lead', OPUS, 'encargo/login', 100);
+    usage('dev', 'dev', 'dev', SONNET, '', 200);
+    usage('other', 'other', 'dev', SONNET, '', 300);
+    usage('stray', 'stray', 'dev', SONNET, 'encargo/pagos', 400);
+    usage('lead2', 'lead', 'lead', OPUS, 'encargo/pagos', 500);
+
+    const spend = meter.orderSpend({ slug: 'login', worktreePath: FOLDER });
+    expect(spend).toEqual({
+      tokens: 115 + 215,
+      byModel: [
+        { model: SONNET, tokens: 215 },
+        { model: OPUS, tokens: 115 },
+      ],
+      byRole: [
+        { role: 'dev', tokens: 215 },
+        { role: 'lead', tokens: 115 },
+      ],
+      sessions: 2,
+      basis: 'plan+folder',
+    });
+  });
+
+  test('an order without a folder counts only its plan, and one without rows costs nothing', () => {
+    const { usage, meter } = rig();
+    usage('lead', 'lead', 'lead', OPUS, 'encargo/login', 100);
+    expect(meter.orderSpend({ slug: 'login', worktreePath: null }).tokens).toBe(115);
+    expect(meter.orderSpend({ slug: 'nada', worktreePath: null })).toEqual({ tokens: 0, byModel: [], byRole: [], sessions: 0, basis: 'plan+folder' });
+  });
+});

@@ -5,7 +5,7 @@ import { renderHubText } from '../i18n/hub';
 import { agentName, floorLabel } from '../labels';
 import type { Store } from '../store';
 import { clockTime, relativeTime } from '../time';
-import type { CheckRunView, CheckView, CheckpointView, OrderCommentView, OrderDiff, OrderDiffFile, OrderView, SearchHit, SkippedFile } from '../types';
+import type { OrderSpend, CheckRunView, CheckView, CheckpointView, OrderCommentView, OrderDiff, OrderDiffFile, OrderView, SearchHit, SkippedFile } from '../types';
 import { activityPath, activityTerms, orderTimeline } from './activity-model';
 import { checksBadgeNode, folderBadgeNode } from './badges';
 import { flakyChecks } from './flaky';
@@ -15,6 +15,7 @@ import { parseDiff } from './diff-parse';
 import { editorLink } from './editor-link';
 import { readEditor } from '../prefs';
 import { REVIEW_MAX_BODY } from '../../../shared/review-message';
+import { spendLine, spendTitle } from './spend';
 import { openPrDraft } from './pr-draft';
 import { canRestore, pointNumbers } from './points-model';
 import { openReviewDialog } from './review-dialog';
@@ -136,6 +137,7 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
   let skipped: SkippedFile[] = [];
   let restored: { safetyRef: string; n: number } | null = null;
   let loaded = false;
+  let spend: OrderSpend | null = null;
   let error = '';
   let gone = false;
   let diff: OrderDiff | null = null;
@@ -165,9 +167,10 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
 
   const reload = async (): Promise<void> => {
     if (!api) return;
-    const [checks, checkpoints] = await Promise.all([api.orderChecks(orderId), api.orderCheckpoints(orderId)]);
+    const [checks, checkpoints, spent] = await Promise.all([api.orderChecks(orderId), api.orderCheckpoints(orderId), api.orderSpend(orderId)]);
     if (gone) return;
     loaded = true;
+    if (spent.ok) spend = spent.data;
     if (checks.ok) {
       runs = checks.data.runs;
       error = '';
@@ -338,6 +341,14 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
 
   const metaRow = (label: string, value: Node | string | null): HTMLElement | null =>
     value === null || value === '' ? null : el('div', 'order-meta-row', el('span', 'muted', label), typeof value === 'string' ? el('span', '', value) : value);
+
+  const spendNode = (current: OrderView): HTMLElement | null => {
+    const line = spend ? spendLine(spend) : null;
+    if (!spend || !line) return null;
+    const node = el('span', '', line);
+    node.title = spendTitle(spend, current.slug);
+    return node;
+  };
 
   const checksTab = (current: OrderView, now: number): HTMLElement => {
     const touched = current.checks && current.checks.touched.length > 0 ? current.checks.touched : [];
@@ -724,6 +735,7 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
         metaRow(t('board.drawer.state'), folderBadgeNode(current)),
         metaRow(t('board.drawer.checks'), checksBadgeNode(current)),
         metaRow(t('board.drawer.plan'), current.planSlug),
+        metaRow(t('board.drawer.spend'), spendNode(current)),
       ),
       current.worktree?.error ? el('pre', 'order-error', current.worktree.error) : null,
       current.description ? el('p', 'order-description', current.description) : null,

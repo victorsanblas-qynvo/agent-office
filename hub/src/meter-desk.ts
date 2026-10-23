@@ -59,6 +59,10 @@ export class MeterDesk {
     return this.meter.planTotals();
   }
 
+  orderSpend(order: Parameters<TokenMeter['orderSpend']>[0]): ReturnType<TokenMeter['orderSpend']> {
+    return this.meter.orderSpend(order);
+  }
+
   summary(range: UsageRange): UsageSummary {
     return this.meter.summary(range);
   }
