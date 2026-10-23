@@ -1,5 +1,6 @@
 import type { OfficeApi } from './api';
 import type { BoardHandle } from './board/board';
+import type { ChatHandle } from './chat/chat';
 import { t } from './i18n';
 import { agentName } from './labels';
 import { needsOf, needToast, type Need, type NeedCursor, type NeedKind } from './needs';
@@ -27,6 +28,7 @@ export type Nav = {
   showTab(tab: Tab): void;
   office(): OfficeHandle | null;
   board(): BoardHandle;
+  chat(): ChatHandle | null;
   table(): TableHandle;
 };
 
@@ -36,6 +38,7 @@ const SECTION_OF: Record<NeedKind, SectionId | null> = {
   blocked: 'orders',
   hung: 'floors',
   stalled: 'floors',
+  claim: null,
   plan: null,
   checks: null,
   limit: null,
@@ -54,6 +57,11 @@ export function goToAgent(nav: Nav, key: string, section: SectionId | null = nul
 export function goToNeed(nav: Nav, need: Need): void {
   if (need.kind === 'limit') {
     nav.showTab('table');
+    return;
+  }
+  if (need.kind === 'claim') {
+    nav.showTab('chat');
+    if (need.channel !== undefined) nav.chat()?.show(need.channel);
     return;
   }
   if (need.agentKey !== null) {

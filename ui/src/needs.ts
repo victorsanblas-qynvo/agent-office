@@ -1,15 +1,16 @@
 import { t } from './i18n';
 import { hubText } from './i18n/hub';
+import { collisions, heldClaims, type Collision } from './chat/claims';
 import { agentName, isAway } from './labels';
 import { readHungMinutes } from './prefs';
 import type { Store } from './store';
 import { clockMinutes } from './time';
 import type { AgentState, AgentView, DocumentView, OrderView, QuestionView, UsageView, UsageWindow } from './types';
 
-export type NeedKind = 'permission' | 'question' | 'blocked' | 'hung' | 'stalled' | 'plan' | 'checks' | 'limit';
+export type NeedKind = 'permission' | 'question' | 'blocked' | 'hung' | 'stalled' | 'claim' | 'plan' | 'checks' | 'limit';
 
 // Most urgent first: this is also the order of the queue.
-export const NEED_KINDS: readonly NeedKind[] = ['permission', 'question', 'blocked', 'hung', 'stalled', 'plan', 'checks', 'limit'];
+export const NEED_KINDS: readonly NeedKind[] = ['permission', 'question', 'blocked', 'hung', 'stalled', 'claim', 'plan', 'checks', 'limit'];
 
 export type Need = {
   id: string;
@@ -20,6 +21,8 @@ export type Need = {
   floor: string | null;
   docPath: string | null;
   orderSlug: string | null;
+  // The chat channel where a file claim collides.
+  channel?: string;
   // A usage limit that runs out within the half hour goes right after the permissions.
   imminent?: true;
 };
@@ -30,6 +33,7 @@ export type NeedSources = {
   documents: readonly DocumentView[];
   orders: readonly OrderView[];
   usage: UsageView | null;
+  claims: readonly Collision[];
   now: number;
   // Minutes a tool may run before it is hung; 0 is off.
   hungAfterMinutes: number;
@@ -148,6 +152,15 @@ export function collectNeeds(sources: NeedSources): Need[] {
       orderSlug: order.slug,
     });
   }
+  for (const collision of sources.claims) {
+    const [first, second] = collision.holders;
+    const rest = collision.holders.length - 2;
+    const name =
+      rest > 0
+        ? t('needs.claim.many', { path: collision.path, a: first.name, b: second.name, n: rest })
+        : t('needs.claim.two', { path: collision.path, a: first.name, b: second.name });
+    needs.push({ id: `claim:${collision.channel}:${collision.path}`, kind: 'claim', since: collision.since, name, agentKey: null, floor: first.floor, docPath: null, orderSlug: null, channel: collision.channel });
+  }
   const usage = sources.usage;
   if (usage) {
     for (const need of [limitNeed('five', usage.fiveHour, sources.now, usage.at ?? sources.now), limitNeed('seven', usage.sevenDay, sources.now, usage.at ?? sources.now)]) {
@@ -165,6 +178,7 @@ export function needsOf(store: Store): Need[] {
     documents: store.documents,
     orders: store.orders,
     usage: store.usage,
+    claims: collisions(heldClaims(store.chat, store.now())),
     now: store.now(),
     hungAfterMinutes: readHungMinutes(),
     stateOf: (agent) => store.shownState(agent),

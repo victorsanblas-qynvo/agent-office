@@ -138,6 +138,7 @@ async function boot(): Promise<void> {
     showTab,
     office: () => office,
     board: () => board,
+    chat: () => chat,
     table: () => table,
   };
   const palette = mountPalette(overlayHost, { context: () => paletteContext(nav), run: (target) => runTarget(nav, target) });
