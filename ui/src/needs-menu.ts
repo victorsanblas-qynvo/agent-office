@@ -1,6 +1,6 @@
 import { button, el } from './dom';
 import { t } from './i18n';
-import { needLabel, needsOf, type Need } from './needs';
+import { NEEDS_TOPICS, needLabel, needsOf, type Need } from './needs';
 import type { Store } from './store';
 import { relativeTime } from './time';
 
@@ -91,7 +91,7 @@ export function mountNeedsMenu(store: Store, onPick: (need: Need) => void): Need
     }
   });
 
-  store.watch(['agents', 'questions', 'documents', 'orders', 'lang'], render);
+  store.watch(NEEDS_TOPICS, render);
   store.watch(['tick'], () => {
     if (isOpen()) paintAges();
   });

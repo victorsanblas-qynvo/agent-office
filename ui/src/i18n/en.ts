@@ -872,6 +872,7 @@ export const en: Messages = {
   'needs.kind.limit': 'Usage limit: {name}',
   'needs.limit.exhausts': '{window}, runs out ~{time}',
   'needs.limit.high': '{window} at {pct} %',
+  'needs.limit.out': '{window} exhausted',
   'keys.title': 'Keyboard shortcuts',
   'keys.tab': 'Go to {tab}',
   'keys.palette': 'Open the command palette',
