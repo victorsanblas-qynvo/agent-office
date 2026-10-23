@@ -237,11 +237,32 @@ textarea {
   border-color: var(--accent);
 }
 
-.replay-progress {
+.replay-seek {
+  position: relative;
   flex: 1;
   max-width: 260px;
-  height: 6px;
   margin: 0 8px;
+}
+
+.replay-hover {
+  position: absolute;
+  top: 100%;
+  margin-top: 6px;
+  transform: translateX(-50%);
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.replay-progress {
+  height: 6px;
+  cursor: pointer;
+  touch-action: none;
   border-radius: 3px;
   background: var(--surface-2);
   border: 1px solid var(--border);
