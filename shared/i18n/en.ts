@@ -258,6 +258,7 @@ export const hubEn = {
   'hub.api.usageRange': 'The range must be today or week',
   'hub.api.digestDay': 'The day must be YYYY-MM-DD and not in the future',
   'hub.api.digestRange': 'The range must be YYYY-MM-DD to YYYY-MM-DD, at most 7 days, not past today and not mixed with day',
+  'hub.api.metricsDays': 'The days must be 7, 14 or 30',
   'hub.api.timelineHours': 'The hours must be an integer from 1 to 24',
   'hub.api.flakyDays': 'The days must be a whole number from 1 to 60',
   'hub.api.flakyFloor': 'That floor does not exist',

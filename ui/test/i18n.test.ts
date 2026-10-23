@@ -13,6 +13,8 @@ const SAME_KEYS: MessageKey[] = [
   'board.spend.line',
   'digest.range',
   'digest.tokens',
+  'metrics.days.option',
+  'metrics.p90',
   'digest.totals',
   'needs.kind.hung',
   'needs.kind.context',

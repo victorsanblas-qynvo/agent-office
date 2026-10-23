@@ -4,6 +4,7 @@ import { currentLang, t } from '../i18n';
 import { floorLabel, formatTokens } from '../labels';
 import type { Store } from '../store';
 import type { DigestCounts, DigestFloor, OfficeDigest, WeekDigest } from '../types';
+import { mountMetrics } from './metrics';
 import { digestText, weekDigestText } from './digest-text';
 
 const pad = (value: number): string => String(value).padStart(2, '0');
@@ -57,7 +58,8 @@ export function mountDigest(store: Store, api: OfficeApi): { root: HTMLElement; 
   const label = el('strong', 'digest-day');
   const copy = button('', 'digest-copy');
   const body = el('div', 'digest-body');
-  const root = el('section', 'digest', el('header', 'digest-head', modes, prev, label, next, copy), body);
+  const metrics = mountMetrics(store, api);
+  const root = el('section', 'digest', el('header', 'digest-head', modes, prev, label, next, copy), body, metrics.root);
 
   const floorName = (slug: string): string => {
     const known = store.floorBySlug(slug);
@@ -114,6 +116,7 @@ export function mountDigest(store: Store, api: OfficeApi): { root: HTMLElement; 
     next.disabled = day >= today;
     copy.textContent = t('digest.copy');
     copy.disabled = !ready;
+    metrics.root.hidden = !weekly;
     if (digest && !weekly) body.replaceChildren(...paintDay(digest));
     else if (week && weekly) body.replaceChildren(...paintWeek(week));
     else body.replaceChildren(el('p', 'muted', failure ?? t('digest.loading')));
@@ -126,6 +129,7 @@ export function mountDigest(store: Store, api: OfficeApi): { root: HTMLElement; 
     failure = null;
     render();
     if (mode === 'week') {
+      metrics.activate();
       const range = weekOf(dayOf(new Date(store.now())));
       const result = await api.weekDigest(range.from, range.to);
       if (mine !== seq) return;

@@ -251,6 +251,7 @@ export type HubTextParams = {
   'hub.api.usageRange': undefined;
   'hub.api.digestDay': undefined;
   'hub.api.digestRange': undefined;
+  'hub.api.metricsDays': undefined;
   'hub.api.timelineHours': undefined;
   'hub.api.flakyDays': undefined;
   'hub.api.flakyFloor': undefined;
@@ -1082,6 +1083,16 @@ export type DigestFloor = DigestCounts & { floor: string; delivered: { slug: str
 
 export type OfficeDigest = { day: string; floors: DigestFloor[]; totals: DigestCounts & { delivered: number } };
 
+export type DeliveryStats = {
+  delivered: number;
+  medianLeadMs: number | null;
+  p90LeadMs: number | null;
+  reopenRate: number;
+  firstPassGreen: number | null;
+  avgRunsPerOrder: number;
+};
+export type FloorDeliveryMetrics = DeliveryStats & { floor: string };
+export type DeliveryMetrics = { days: number; floors: FloorDeliveryMetrics[]; totals: DeliveryStats };
 export type WeekDigest = { from: string; to: string; days: OfficeDigest[]; floors: DigestFloor[]; totals: DigestCounts & { delivered: number } };
 
 export type TimelineSegment = { from: number; to: number; state: string };
