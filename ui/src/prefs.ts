@@ -1,3 +1,4 @@
+import type { Editor } from './board/editor-link';
 import type { QuestionView } from './types';
 
 export const HUNG_KEY = 'agent-office.hung';
@@ -40,6 +41,20 @@ export function readBoardStaleHours(): number {
 
 export function writeBoardStaleHours(hours: number): void {
   writeJson(BOARD_STALE_KEY, hours);
+}
+
+export const EDITOR_KEY = 'agent-office.editor';
+export const EDITOR_OPTIONS: readonly Editor[] = ['vscode', 'cursor', 'zed', 'none'];
+export const EDITOR_DEFAULT: Editor = 'vscode';
+
+// Editor the Diff tab links its files to; 'none' hides the links.
+export function readEditor(): Editor {
+  const stored = readJson(EDITOR_KEY);
+  return EDITOR_OPTIONS.find((editor) => editor === stored) ?? EDITOR_DEFAULT;
+}
+
+export function writeEditor(editor: Editor): void {
+  writeJson(EDITOR_KEY, editor);
 }
 
 export const REMIND_KEY = 'agent-office.remind';

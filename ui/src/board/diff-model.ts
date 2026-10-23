@@ -3,7 +3,7 @@ import type { CheckRunView, CheckpointView, DiffFileStat, OrderDiff, OrderView }
 import type { FileDiff } from './diff-parse';
 
 export type StatRow = { path: string; label: string; adds: string; dels: string; binary: boolean; className: string };
-export type PatchRow = { className: string; oldNo: string; newNo: string; marker: string; text: string };
+export type PatchRow = { className: string; oldNo: string; newNo: string; newLine: number | null; marker: string; text: string };
 
 const MARKERS = { add: '+', del: '-', context: ' ', note: '\\' } as const;
 
@@ -26,18 +26,27 @@ export function statRows(diff: OrderDiff): StatRow[] {
 export function patchRows(file: FileDiff): PatchRow[] {
   const rows: PatchRow[] = [];
   for (const hunk of file.hunks) {
-    rows.push({ className: 'diff-line diff-hunk', oldNo: '', newNo: '', marker: '', text: hunk.header });
+    rows.push({ className: 'diff-line diff-hunk', oldNo: '', newNo: '', newLine: null, marker: '', text: hunk.header });
     for (const line of hunk.lines) {
       rows.push({
         className: `diff-line diff-${line.kind}`,
         oldNo: line.oldNo === null ? '' : String(line.oldNo),
         newNo: line.newNo === null ? '' : String(line.newNo),
+        newLine: line.kind === 'add' || line.kind === 'context' ? line.newNo : null,
         marker: MARKERS[line.kind],
         text: line.text,
       });
     }
   }
   return rows;
+}
+
+// The first changed line of the new side, or where the first hunk starts when it only removes lines.
+export function firstChangedLine(files: readonly FileDiff[]): number {
+  const hunk = files[0]?.hunks[0];
+  if (!hunk) return 1;
+  const added = hunk.lines.find((line) => line.kind === 'add' && line.newNo !== null);
+  return added?.newNo ?? Math.max(hunk.newStart, 1);
 }
 
 export function latestSha(order: OrderView, runs: CheckRunView[], points: CheckpointView[]): string | null {
