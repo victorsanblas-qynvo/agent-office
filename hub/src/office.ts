@@ -138,6 +138,8 @@ export {
 } from './office-texts';
 export { chatFreeCommand, isChatCommand } from './chat-commands';
 
+export type OfficeDiagnostics = { dbFile: string; fts: boolean; activeCheckRuns: number; worktrees: number; sessions: number };
+
 export type OfficeOptions = {
   db: Database;
   config: OfficeConfig;
@@ -683,6 +685,16 @@ export class Office {
 
   chatHistory(channel: string, beforeId: number | null): ChatMessageView[] | 'no-channel' {
     return this.room.chatHistory(channel, beforeId);
+  }
+
+  diagnostics(): OfficeDiagnostics {
+    return {
+      dbFile: this.opts.db.filename,
+      fts: this.searches.indexed,
+      activeCheckRuns: this.checks.activeRuns,
+      worktrees: this.store.withWorktree().length,
+      sessions: [...this.book.sessions.values()].filter((s) => s.endedAt === null).length,
+    };
   }
 
   tokenSummary(range: UsageRange): UsageSummary {

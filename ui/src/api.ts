@@ -6,6 +6,7 @@ import type {
   ChatUserResult,
   CheckRunView,
   CheckpointView,
+  DiagnosticsView,
   OrderDiff,
   OrderDiffFile,
   DocumentContent,
@@ -126,6 +127,10 @@ export class OfficeApi {
 
   report(agentKey: string): Promise<ApiData<ReportView>> {
     return this.get(`/api/reports/${encodeURIComponent(agentKey)}`);
+  }
+
+  diagnostics(): Promise<ApiData<DiagnosticsView>> {
+    return this.get('/api/diagnostics');
   }
 
   usageSummary(range: UsageRange): Promise<ApiData<UsageSummary>> {

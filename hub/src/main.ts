@@ -84,6 +84,7 @@ export function main(argv: string[]): void {
     settings,
     floors,
     log: logLine,
+    logFile: join(p.home, 'hub.log'),
   });
   const stopWatching = watchTargets(configTargets(p.home, PROFILES_DIR), reload);
   office.start();

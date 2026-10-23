@@ -91,6 +91,10 @@ export class ChecksDesk {
     this.slots = new Semaphore(() => opts.config().checksConfig.maxParallel);
   }
 
+  get activeRuns(): number {
+    return this.active.size;
+  }
+
   private sync(cwd: string, args: string[]): GitResult {
     return (this.opts.gitSync ?? realGitSync)(cwd, args);
   }

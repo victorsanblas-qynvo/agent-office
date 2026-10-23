@@ -1056,3 +1056,16 @@ export type AnswerRequest = { answers: Record<string, string> } | { release: tru
 export type OrderRequest = { sessionId: string; text: string };
 
 export type PlanDecisionRequest = { path: string; decision: PlanDecision };
+
+export type DiagnosticsView = {
+  version: string | null;
+  schema: number;
+  uptimeMs: number;
+  dbBytes: number | null;
+  fts: boolean;
+  hook: { count: number; p50: number | null; p95: number | null; p99: number | null };
+  activeCheckRuns: number;
+  worktrees: number;
+  sessions: number;
+  logTail: string[];
+};
