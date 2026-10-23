@@ -3182,6 +3182,10 @@ button.order-tab-button.active {
   --c: var(--accent);
 }
 
+.needs-limit {
+  --c: var(--danger);
+}
+
 .needs-age {
   flex: none;
   font-size: 12px;

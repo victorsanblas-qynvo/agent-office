@@ -1,12 +1,13 @@
 import { t } from './i18n';
 import { agentName, isAway } from './labels';
 import type { Store } from './store';
-import type { AgentState, AgentView, DocumentView, OrderView, QuestionView } from './types';
+import { clockMinutes } from './time';
+import type { AgentState, AgentView, DocumentView, OrderView, QuestionView, UsageView, UsageWindow } from './types';
 
-export type NeedKind = 'permission' | 'question' | 'blocked' | 'stalled' | 'plan' | 'checks';
+export type NeedKind = 'permission' | 'question' | 'blocked' | 'stalled' | 'plan' | 'checks' | 'limit';
 
 // Most urgent first: this is also the order of the queue.
-export const NEED_KINDS: readonly NeedKind[] = ['permission', 'question', 'blocked', 'stalled', 'plan', 'checks'];
+export const NEED_KINDS: readonly NeedKind[] = ['permission', 'question', 'blocked', 'stalled', 'plan', 'checks', 'limit'];
 
 export type Need = {
   id: string;
@@ -17,6 +18,8 @@ export type Need = {
   floor: string | null;
   docPath: string | null;
   orderSlug: string | null;
+  // A usage limit that runs out within the half hour goes right after the permissions.
+  imminent?: true;
 };
 
 export type NeedSources = {
@@ -24,10 +27,31 @@ export type NeedSources = {
   questions: readonly QuestionView[];
   documents: readonly DocumentView[];
   orders: readonly OrderView[];
+  usage: UsageView | null;
+  now: number;
   stateOf(agent: AgentView): AgentState;
 };
 
 const RANK = new Map<NeedKind, number>(NEED_KINDS.map((kind, index) => [kind, index]));
+const LIMIT_PCT = 90;
+const LIMIT_SOON_MS = 30 * 60_000;
+
+function rankOf(need: Need): number {
+  return need.imminent ? (RANK.get('permission') ?? 0) + 0.5 : (RANK.get(need.kind) ?? 0);
+}
+
+// A window that runs dry before it resets at the pace of the last minutes, or is already past 90 %.
+function limitNeed(id: 'five' | 'seven', sample: UsageWindow | null, now: number, since: number): Need | null {
+  if (!sample || sample.resetsAt <= now) return null;
+  const forecast = sample.forecast;
+  const exhaustsAt = forecast && forecast.basis !== 'thin' && !forecast.safe && forecast.exhaustsAt !== null && forecast.exhaustsAt < sample.resetsAt ? forecast.exhaustsAt : null;
+  if (exhaustsAt === null && sample.usedPct < LIMIT_PCT) return null;
+  const window = id === 'five' ? '5 h' : t('usage.week');
+  const name = exhaustsAt !== null ? t('needs.limit.exhausts', { window, time: clockMinutes(exhaustsAt) }) : t('needs.limit.high', { window, pct: Math.round(sample.usedPct) });
+  const need: Need = { id: `limit:${id}`, kind: 'limit', since, name, agentKey: null, floor: null, docPath: null, orderSlug: null };
+  if (exhaustsAt !== null && exhaustsAt - now <= LIMIT_SOON_MS) need.imminent = true;
+  return need;
+}
 
 function agentNeed(kind: NeedKind, agent: AgentView | undefined, key: string, since: number, floor: string | null): Need {
   return {
@@ -43,7 +67,7 @@ function agentNeed(kind: NeedKind, agent: AgentView | undefined, key: string, si
 }
 
 function moreUrgent(a: Need, b: Need): boolean {
-  const byKind = (RANK.get(a.kind) ?? 0) - (RANK.get(b.kind) ?? 0);
+  const byKind = rankOf(a) - rankOf(b);
   return byKind !== 0 ? byKind < 0 : a.since < b.since;
 }
 
@@ -97,8 +121,14 @@ export function collectNeeds(sources: NeedSources): Need[] {
       orderSlug: order.slug,
     });
   }
+  const usage = sources.usage;
+  if (usage) {
+    for (const need of [limitNeed('five', usage.fiveHour, sources.now, usage.at ?? sources.now), limitNeed('seven', usage.sevenDay, sources.now, usage.at ?? sources.now)]) {
+      if (need) needs.push(need);
+    }
+  }
 
-  return needs.sort((a, b) => (RANK.get(a.kind) ?? 0) - (RANK.get(b.kind) ?? 0) || a.since - b.since || a.id.localeCompare(b.id));
+  return needs.sort((a, b) => rankOf(a) - rankOf(b) || a.since - b.since || a.id.localeCompare(b.id));
 }
 
 export function needsOf(store: Store): Need[] {
@@ -107,6 +137,8 @@ export function needsOf(store: Store): Need[] {
     questions: store.questions,
     documents: store.documents,
     orders: store.orders,
+    usage: store.usage,
+    now: store.now(),
     stateOf: (agent) => store.shownState(agent),
   });
 }
