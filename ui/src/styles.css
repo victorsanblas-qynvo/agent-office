@@ -4069,8 +4069,27 @@ button.diff-file.active {
   margin: 0 0 12px;
 }
 
+.digest-mode {
+  margin: 0 8px 0 0;
+}
+
 .digest-copy {
   margin-left: auto;
+}
+
+.digest-days {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.digest-day-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  align-items: baseline;
+  padding: 2px 0;
+  font-size: 0.9em;
 }
 
 .digest-floor {

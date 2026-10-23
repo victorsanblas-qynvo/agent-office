@@ -554,7 +554,12 @@ export function createApp(opts: ServerOptions, holdRequest: (req: Request) => vo
   });
 
   app.get('/api/digest', requirePanel, (c) => {
-    const result = office.dayDigest(c.req.query('day') ?? null);
+    const [day, from, to] = [c.req.query('day'), c.req.query('from'), c.req.query('to')];
+    if (from !== undefined || to !== undefined) {
+      const week = day === undefined && from !== undefined && to !== undefined ? office.rangeDigest(from, to) : 'bad-range';
+      return typeof week === 'string' ? c.json({ error: { key: 'hub.api.digestRange' } }, 400) : c.json(week);
+    }
+    const result = office.dayDigest(day ?? null);
     return typeof result === 'string' ? c.json({ error: { key: 'hub.api.digestDay' } }, 400) : c.json(result);
   });
 

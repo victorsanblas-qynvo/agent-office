@@ -37,6 +37,7 @@ import type {
   TranscriptTail,
   UsageRange,
   OfficeDigest,
+  WeekDigest,
   UsageSummary,
   WorktreeView,
 } from './types';
@@ -154,6 +155,10 @@ export class OfficeApi {
 
   digest(day: string): Promise<ApiData<OfficeDigest>> {
     return this.get(`/api/digest?day=${encodeURIComponent(day)}`);
+  }
+
+  weekDigest(from: string, to: string): Promise<ApiData<WeekDigest>> {
+    return this.get(`/api/digest?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
   }
 
   documentContent(path: string): Promise<ApiData<DocumentContent>> {
