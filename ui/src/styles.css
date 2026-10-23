@@ -916,6 +916,26 @@ textarea {
   margin-top: 0;
 }
 
+.orders-composer {
+  margin-top: 10px;
+}
+
+.orders-brief {
+  margin-top: 6px;
+}
+
+.orders-brief-input {
+  width: 100%;
+}
+
+.orders-brief-preview {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  color: var(--muted);
+}
+
 .toasts {
   position: fixed;
   left: 16px;
