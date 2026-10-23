@@ -1,7 +1,7 @@
 import type { Database } from 'bun:sqlite';
 import { CHAT_SCRIPT } from './agents';
 import { GLOBAL_CHANNEL, type ChatDesk, type ChatUnread } from './chat';
-import { captureLesson, cleanLesson, deleteLesson, isRoleId, listLessons, memoryContext } from './memory';
+import { captureLesson, cleanLesson, deleteLesson, isRoleId, listLessons, memoryContext, updateLesson } from './memory';
 import type { OfficeBus } from './office-bus';
 import type { AgentRuntime, LessonResult, SessionRuntime } from './office-state';
 import { ROLE_LABELS, floorLabel, isoDate } from './office-texts';
@@ -171,6 +171,19 @@ export class ContextDesk {
     }
     if (result.status === 'duplicate') return { ok: false, status: 409, error: { key: 'hub.api.lessonDuplicate' } };
     return { ok: false, status: 400, error: { key: 'hub.api.lessonSaveFailed' } };
+  }
+
+  editLesson(id: number, raw: unknown): LessonResult | null {
+    const lessonText = text(record(raw).text);
+    if (!lessonText) return { ok: false, status: 400, error: { key: 'hub.api.lessonEmpty' } };
+    const result = updateLesson(this.opts.db, id, lessonText);
+    if (result.status === 'notFound') return null;
+    if (result.status === 'updated') {
+      this.opts.bus.emit({ type: 'memory', floor: result.lesson.floor, role: result.lesson.role });
+      return { ok: true, lesson: result.lesson };
+    }
+    if (result.status === 'duplicate') return { ok: false, status: 409, error: { key: 'hub.api.lessonDuplicate' } };
+    return { ok: false, status: 400, error: { key: 'hub.api.lessonEmpty' } };
   }
 
   removeLesson(id: number): boolean {

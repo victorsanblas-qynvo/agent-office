@@ -1650,12 +1650,18 @@ details[open] > .floors-summary::before {
   overflow-wrap: anywhere;
 }
 
+.lesson-edit,
 .lesson-delete {
   padding: 0 6px;
   border-color: transparent;
   background: transparent;
   color: var(--muted);
   line-height: 1.5;
+}
+
+.lesson-edit:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .lesson-delete:hover:not(:disabled) {

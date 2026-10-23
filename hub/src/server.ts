@@ -429,6 +429,15 @@ export function createApp(opts: ServerOptions, holdRequest: (req: Request) => vo
     return c.json({ error: result.error }, result.status === 409 ? 409 : 400);
   });
 
+  app.put('/api/memory/:id', requirePanel, async (c) => {
+    const id = idOf(c.req.param('id'));
+    if (id === null) return c.json({ error: { key: 'hub.api.badId' } }, 400);
+    const result = office.editLesson(id, await readJson(c));
+    if (result === null) return c.json({ error: { key: 'hub.api.lessonNotFound' } }, 404);
+    if (result.ok) return c.json({ lesson: result.lesson });
+    return c.json({ error: result.error }, result.status === 409 ? 409 : 400);
+  });
+
   app.delete('/api/memory/:id', requirePanel, (c) => {
     const id = idOf(c.req.param('id'));
     if (id === null) return c.json({ error: { key: 'hub.api.badId' } }, 400);

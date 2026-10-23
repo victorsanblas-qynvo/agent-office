@@ -108,6 +108,24 @@ export function deleteLesson(db: Database, id: number): { floor: string; role: R
   return { floor: row.floor, role: row.role as RoleId };
 }
 
+export type UpdateResult = { status: 'updated'; lesson: LessonView } | { status: 'notFound' | 'duplicate' | 'invalid' };
+
+export function updateLesson(db: Database, id: number, raw: string): UpdateResult {
+  return db.transaction((): UpdateResult => {
+    const row = db.query<LessonRow, [number]>('SELECT * FROM lessons WHERE id = ?').get(id);
+    if (!row) return { status: 'notFound' };
+    const text = cleanLesson(raw);
+    if (!text) return { status: 'invalid' };
+    const norm = normalizeLesson(text);
+    const clash = db
+      .query<{ id: number }, [string, string, string, number]>('SELECT id FROM lessons WHERE floor = ? AND role = ? AND norm = ? AND id <> ?')
+      .get(row.floor, row.role, norm, id);
+    if (clash) return { status: 'duplicate' };
+    db.query('UPDATE lessons SET text = ?, norm = ? WHERE id = ?').run(text, norm, id);
+    return { status: 'updated', lesson: toView({ ...row, text }) };
+  })();
+}
+
 export type ContextInput = {
   roleLabel: string;
   floorLabel: string;

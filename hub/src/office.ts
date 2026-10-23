@@ -647,6 +647,10 @@ export class Office {
     return this.context.addLesson(raw);
   }
 
+  editLesson(id: number, raw: unknown): LessonResult | null {
+    return this.context.editLesson(id, raw);
+  }
+
   removeLesson(id: number): boolean {
     return this.context.removeLesson(id);
   }

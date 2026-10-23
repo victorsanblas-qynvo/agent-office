@@ -115,6 +115,10 @@ export class OfficeApi {
     return this.send('POST', '/api/memory', lesson);
   }
 
+  editLesson(id: number, text: string): Promise<ApiData<{ lesson: LessonView }>> {
+    return this.send('PUT', `/api/memory/${id}`, { text });
+  }
+
   deleteLesson(id: number): Promise<ApiData<{ ok: true }>> {
     return this.send('DELETE', `/api/memory/${id}`, undefined);
   }

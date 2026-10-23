@@ -261,6 +261,32 @@ describe('hub server v2 routes', () => {
     }
   });
 
+  test('memory: edit a lesson', async () => {
+    const add = async (text: string) =>
+      ((await (await call('POST', '/api/memory', { floor: 'mobile', role: 'tester', text })).json()) as { lesson: { id: number } }).lesson.id;
+    const one = await add('Primera');
+    const two = await add('Segunda');
+    const edited = await call('PUT', `/api/memory/${one}`, { text: '  Primera corregida ' });
+    expect(edited.status).toBe(200);
+    const { lesson } = (await edited.json()) as { lesson: { id: number; text: string; origin: string } };
+    expect(lesson).toMatchObject({ id: one, text: 'Primera corregida', origin: 'user' });
+    expect((await call('PUT', `/api/memory/${one}`, { text: 'primera corregida' })).status).toBe(200);
+    const clash = await call('PUT', `/api/memory/${one}`, { text: 'segunda' });
+    expect(clash.status).toBe(409);
+    expect(await clash.json()).toEqual({ error: { key: 'hub.api.lessonDuplicate' } });
+    for (const body of [{}, { text: '   ' }, { text: 7 }, null]) {
+      const bad = await call('PUT', `/api/memory/${two}`, body);
+      expect(bad.status).toBe(400);
+      expect(await bad.json()).toEqual({ error: { key: 'hub.api.lessonEmpty' } });
+    }
+    const long = await call('PUT', `/api/memory/${two}`, { text: 'x'.repeat(900) });
+    expect(((await long.json()) as { lesson: { text: string } }).lesson.text.length).toBe(500);
+    const missing = await call('PUT', '/api/memory/99999', { text: 'nada' });
+    expect(missing.status).toBe(404);
+    expect(await missing.json()).toEqual({ error: { key: 'hub.api.lessonNotFound' } });
+    for (const bad of ['abc', '1e2', '-3']) expect((await call('PUT', `/api/memory/${bad}`, { text: 'a' })).status).toBe(400);
+  });
+
   test('reports, documents and sources answer with clear errors', async () => {
     const missing = await call('GET', '/api/reports/nadie');
     expect(missing.status).toBe(404);
