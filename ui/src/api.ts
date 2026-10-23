@@ -11,6 +11,8 @@ import type {
   OrderDiff,
   OrderDiffFile,
   DocumentContent,
+  DocumentRound,
+  DocumentRoundDiff,
   FloorAddRequest,
   FloorAddResult,
   FloorRemoveResult,
@@ -144,6 +146,14 @@ export class OfficeApi {
 
   documentContent(path: string): Promise<ApiData<DocumentContent>> {
     return this.get(`/api/documents/content?path=${encodeURIComponent(path)}`);
+  }
+
+  documentRounds(path: string): Promise<ApiData<DocumentRound[]>> {
+    return this.get(`/api/documents/rounds?path=${encodeURIComponent(path)}`);
+  }
+
+  documentRoundDiff(path: string, from: string, to: string): Promise<ApiData<DocumentRoundDiff>> {
+    return this.get(`/api/documents/rounds/diff?path=${encodeURIComponent(path)}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
   }
 
   discardDocument(path: string): Promise<ApiData<{ ok: true }>> {

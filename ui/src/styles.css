@@ -1845,6 +1845,11 @@ button.doc-download {
   font-size: 12px;
 }
 
+button.doc-rounds {
+  padding: 3px 10px;
+  font-size: 12px;
+}
+
 button.doc-discard {
   padding: 3px 10px;
   border-color: color-mix(in srgb, var(--danger) 55%, var(--border));
@@ -3056,6 +3061,27 @@ button.diff-file.active {
 
 .diff-del-count {
   color: var(--danger);
+}
+
+.rounds-pick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.rounds-pick label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1 1 240px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.rounds-select {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .diff-patch {

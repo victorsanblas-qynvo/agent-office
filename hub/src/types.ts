@@ -220,6 +220,8 @@ export type HubTextParams = {
   'hub.api.noRecording': undefined;
   'hub.api.recordingTooLarge': { max: number };
   'hub.api.documentNotFound': undefined;
+  'hub.api.roundSha': undefined;
+  'hub.api.roundsFailed': undefined;
   'hub.api.pathRequired': undefined;
   'hub.api.planClosed': undefined;
   'hub.api.planNotFound': undefined;
@@ -945,6 +947,10 @@ export type FloorRemoveResult = { ok: true; slug: string; removed: { files: numb
 export type MemoryView = { floor: string; role: RoleId; lessons: LessonView[]; reports: ReportView[] };
 
 export type LessonCreate = { floor: string; role: RoleId; text: string };
+
+export type DocumentRound = { sha: string; at: number; subject: string; round?: number };
+
+export type DocumentRoundDiff = { path: string; from: string; to: string; patch: string; truncated: boolean };
 
 export type DocumentContent = { path: string; kind: DocumentKind; markdown: string; notice?: HubText };
 

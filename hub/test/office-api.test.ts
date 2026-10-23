@@ -26,6 +26,8 @@ const PUBLIC_METHODS = [
   'discardDocument',
   'discardOrder',
   'documentContent',
+  'documentRoundDiff',
+  'documentRounds',
   'documents',
   'expireSources',
   'expireWorktrees',

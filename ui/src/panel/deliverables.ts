@@ -7,6 +7,7 @@ import { DOCUMENT_STATUS_COLORS, documentKindFor, documentStatusText } from '../
 import type { Store } from '../store';
 import type { DocumentAhead, DocumentBase, DocumentKind, DocumentStatus, DocumentView, HubText } from '../types';
 import { renderMarkdown } from './markdown';
+import { roundsView } from './rounds-view';
 import { panelSection } from './section';
 
 const SHORT_SHA = 7;
@@ -150,6 +151,7 @@ class DocumentViewer {
   private readonly badge = el('span', 'modal-badge');
   private readonly meta = el('div', 'modal-meta');
   private readonly body = el('div', 'modal-body');
+  private readonly rounds = button('', 'doc-rounds');
   private readonly discard = button('', 'doc-discard');
   private readonly close = button('');
   private readonly previousFocus: Element | null = document.activeElement;
@@ -157,6 +159,7 @@ class DocumentViewer {
   private stopRelabel: () => void = () => {};
   private notice: { key: MessageKey } | { hub: HubText } | null = null;
   private ticket = 0;
+  private showRounds = false;
 
   constructor(
     private readonly store: Store,
@@ -170,7 +173,7 @@ class DocumentViewer {
         'header',
         'modal-head',
         el('div', 'modal-heading', this.title, this.badge),
-        el('div', 'modal-actions', this.discard, this.close),
+        el('div', 'modal-actions', this.rounds, this.discard, this.close),
       ),
       this.meta,
       this.body,
@@ -181,6 +184,7 @@ class DocumentViewer {
     this.backdrop = el('div', 'modal-backdrop', dialog);
 
     trackAhead(this.meta);
+    this.rounds.addEventListener('click', () => this.toggleRounds());
     this.discard.addEventListener('click', () => void this.discardCurrent());
     this.close.addEventListener('click', () => this.dispose());
     this.backdrop.addEventListener('click', (event) => {
@@ -220,6 +224,7 @@ class DocumentViewer {
   }
 
   private relabel(): void {
+    this.rounds.textContent = t(this.showRounds ? 'deliverables.rounds.back' : 'deliverables.rounds');
     this.discard.textContent = t('deliverables.discard');
     this.close.textContent = t('deliverables.close');
     if (this.notice !== null) this.showNotice(this.notice);
@@ -240,6 +245,22 @@ class DocumentViewer {
     this.badge.replaceChildren(documentMarks(doc));
     this.meta.replaceChildren(el('code', 'doc-path muted', doc.path), ...metaLines(doc));
     this.discard.hidden = viewerApi === null || !canDiscard(doc);
+    this.rounds.hidden = viewerApi === null;
+    this.rounds.textContent = t(this.showRounds ? 'deliverables.rounds.back' : 'deliverables.rounds');
+  }
+
+  private toggleRounds(): void {
+    this.showRounds = !this.showRounds;
+    this.renderHead();
+    void this.loadContent();
+  }
+
+  private async loadRounds(api: OfficeApi, mine: number): Promise<void> {
+    this.showNotice({ key: 'deliverables.loading' });
+    const view = await roundsView(api, this.doc.path, Date.now());
+    if (mine !== this.ticket) return;
+    this.notice = null;
+    this.body.replaceChildren(view);
   }
 
   private async loadContent(): Promise<void> {
@@ -247,6 +268,10 @@ class DocumentViewer {
     const mine = ++this.ticket;
     if (api === null) {
       this.showNotice({ key: 'deliverables.noHub' });
+      return;
+    }
+    if (this.showRounds) {
+      await this.loadRounds(api, mine);
       return;
     }
     if (this.body.childElementCount === 0) this.showNotice({ key: 'deliverables.loading' });
