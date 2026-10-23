@@ -1,12 +1,17 @@
 import { describe, expect, test } from 'bun:test';
 import { applyLang } from '../src/i18n/index';
+import { clockMinutes } from '../src/time';
 import { collectNeeds, NeedCursor, needLabel, needToast, type Need, type NeedSources } from '../src/needs';
+import type { UsageForecast, UsageView, UsageWindow } from '../src/types';
 import { agent, doc, order, question } from './fixtures';
 
 applyLang('es');
 
+const NOW = 1_000_000_000;
+const HOUR = 3_600_000;
+
 function sources(extra: Partial<NeedSources> & { agents?: ReturnType<typeof agent>[] } = {}): NeedSources {
-  return { agents: [], questions: [], documents: [], orders: [], stateOf: (a) => a.state, ...extra };
+  return { agents: [], questions: [], documents: [], orders: [], usage: null, now: NOW, stateOf: (a) => a.state, ...extra };
 }
 
 const kinds = (needs: Need[]): string[] => needs.map((need) => `${need.kind}:${need.agentKey ?? need.docPath ?? need.orderSlug}`);
@@ -93,6 +98,53 @@ describe('collectNeeds', () => {
     const [need] = collectNeeds(sources({ agents: [agent('lead-mobile')], questions: [question('q', 'lead-mobile', 1, { kind: 'permission' })] }));
     expect(needLabel(need)).toBe('Permiso de lead-mobile');
     expect(needToast(2, 5, need)).toBe('2/5 · Permiso de lead-mobile');
+  });
+});
+
+describe('usage limits', () => {
+  const unsafe = (exhaustsAt: number): UsageForecast => ({ rate: 12, exhaustsAt, safe: false, basis: 'fit' });
+  const win = (usedPct: number, resetsAt: number, forecast?: UsageForecast): UsageWindow => ({ usedPct, resetsAt, ...(forecast ? { forecast } : {}) });
+  const usage = (fiveHour: UsageWindow | null, sevenDay: UsageWindow | null = null): UsageView => ({ fiveHour, sevenDay, at: NOW });
+  const limits = (view: UsageView, extra: Parameters<typeof sources>[0] = {}): Need[] => collectNeeds(sources({ usage: view, ...extra }));
+
+  test('a safe or thin forecast below 90 % adds nothing', () => {
+    expect(limits(usage(win(50, NOW + 2 * HOUR, { rate: 1, exhaustsAt: null, safe: true, basis: 'fit' })))).toEqual([]);
+    expect(limits(usage(win(50, NOW + 2 * HOUR, { ...unsafe(NOW + HOUR), basis: 'thin' })))).toEqual([]);
+    expect(limits(usage(win(50, NOW + 2 * HOUR)))).toEqual([]);
+  });
+
+  test('an unsafe forecast that runs out before the reset adds one, naming the window and the time', () => {
+    const needs = limits(usage(win(60, NOW + 3 * HOUR, unsafe(NOW + HOUR))));
+    expect(needs.map((need) => need.id)).toEqual(['limit:five']);
+    expect(needLabel(needs[0])).toBe(`Límite de uso: 5 h, se agota ~${clockMinutes(NOW + HOUR)}`);
+  });
+
+  test('90 % or more adds one whatever the forecast says', () => {
+    const needs = limits(usage(null, win(93, NOW + 5 * HOUR, { rate: 1, exhaustsAt: null, safe: true, basis: 'fit' })));
+    expect(needs.map((need) => need.id)).toEqual(['limit:seven']);
+    expect(needLabel(needs[0])).toBe('Límite de uso: Semana al 93 %');
+    expect(limits(usage(win(89, NOW + HOUR)))).toEqual([]);
+  });
+
+  test('a run-out at or after the reset adds nothing, and a window already reset is ignored', () => {
+    expect(limits(usage(win(60, NOW + HOUR, unsafe(NOW + HOUR))))).toEqual([]);
+    expect(limits(usage(win(60, NOW + HOUR, unsafe(NOW + 2 * HOUR))))).toEqual([]);
+    expect(limits(usage(win(95, NOW - 1)))).toEqual([]);
+  });
+
+  test('goes last, unless it runs out within 30 minutes: then right after the permissions', () => {
+    const base = {
+      agents: [agent('permit'), agent('asker')],
+      questions: [question('p', 'permit', 40, { kind: 'permission' }), question('q', 'asker', 30)],
+      documents: [doc('plans/a.md')],
+    };
+    expect(kinds(limits(usage(win(60, NOW + 3 * HOUR, unsafe(NOW + HOUR))), base))).toEqual(['permission:permit', 'question:asker', 'plan:plans/a.md', 'limit:null']);
+    expect(kinds(limits(usage(win(60, NOW + 3 * HOUR, unsafe(NOW + 29 * 60_000))), base))).toEqual(['permission:permit', 'limit:null', 'question:asker', 'plan:plans/a.md']);
+  });
+
+  test('both windows at once give two entries', () => {
+    const needs = limits(usage(win(60, NOW + 3 * HOUR, unsafe(NOW + HOUR)), win(91, NOW + 24 * HOUR)));
+    expect(needs.map((need) => need.id).sort()).toEqual(['limit:five', 'limit:seven']);
   });
 });
 
