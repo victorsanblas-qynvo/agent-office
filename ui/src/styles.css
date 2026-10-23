@@ -3897,6 +3897,17 @@ button.diff-file.active {
   margin: 6px 8px;
 }
 
+.notices-filters {
+  display: flex;
+  gap: 6px;
+  padding: 2px 8px 6px;
+  font-size: 12px;
+}
+
+.notices-filter[aria-pressed='true'] {
+  border-color: var(--accent);
+}
+
 .notices-footer {
   display: flex;
   justify-content: flex-end;

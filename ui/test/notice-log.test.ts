@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
 import { applyLang } from '../src/i18n/index';
-import { NOTICE_LIMIT, NoticeLog, outcomeLabel, type NoticeInput, type NoticeOutcome } from '../src/notice-log';
+import { filterNotices, keepNotices, NOTICE_LIMIT, NOTICES_KEY, NoticeLog, outcomeLabel, parseNotices, serializeNotices, type Notice, type NoticeInput, type NoticeOutcome } from '../src/notice-log';
 import { NOTIFY_EVENTS, Notifier, type NotifyPrefs } from '../src/notify';
 import { MUTED_FLOORS_KEY, QUIET_KEY } from '../src/prefs';
 import type { Store } from '../src/store';
-import type { AgentView, QuestionView } from '../src/types';
+import type { AgentView, DocumentView, QuestionView } from '../src/types';
 
 class FakeNotification {
   static permission: NotificationPermission = 'granted';
@@ -47,7 +47,7 @@ Object.assign(globalThis, {
 beforeEach(() => applyLang('es'));
 
 function input(title: string, outcome: NoticeOutcome = 'shown'): NoticeInput {
-  return { at: 1, kind: 'question', title, target: () => {}, outcome };
+  return { at: 1, kind: 'question', title, target: null, outcome };
 }
 
 describe('notice log', () => {
@@ -125,6 +125,7 @@ function ask(id: string, extra: Partial<QuestionView> = {}): QuestionView {
 
 describe('notifier inbox', () => {
   let selected: string[];
+  let opened: unknown[];
 
   const notifierAt = (hour = 12): Notifier => {
     const notifier = new Notifier(fakeStore(selected), () => new Date(2026, 9, 23, hour, 0));
@@ -142,6 +143,7 @@ describe('notifier inbox', () => {
     page.visible = false;
     page.focused = false;
     selected = [];
+    opened = [];
   });
 
   test('a notice that reaches the desktop is recorded as shown, with what a click opens', () => {
@@ -150,8 +152,10 @@ describe('notifier inbox', () => {
     const [entry] = notifier.notices.entries;
     expect(entry).toMatchObject({ kind: 'question', outcome: 'shown', floor: 'mobile' });
     expect(entry?.title).toContain('lead-mobile');
-    entry?.target();
-    expect(selected).toEqual([LEAD]);
+    expect(entry?.target).toEqual({ kind: 'question', id: 'q1' });
+    notifier.openTarget = (target) => opened.push(target);
+    FakeNotification.created[0]?.onclick?.();
+    expect(opened).toEqual([{ kind: 'question', id: 'q1' }]);
   });
 
   test('records a notice that quiet hours dropped', () => {
@@ -196,5 +200,132 @@ describe('notifier inbox', () => {
     notifier.observe({ type: 'question', data: ask('q1') });
     notifier.observe({ type: 'question', data: ask('q1') });
     expect(notifier.notices.entries).toHaveLength(1);
+  });
+});
+
+function entry(id: number, extra: Partial<Notice> = {}): Notice {
+  return { id, at: id * 10, kind: 'question', title: `n${id}`, target: null, outcome: 'shown', ...extra };
+}
+
+describe('stored notices', () => {
+  test('round-trips entries with their targets and the last-read timestamp', () => {
+    const entries = [entry(1, { body: 'b', floor: 'mobile', target: { kind: 'agent', key: 'k' } }), entry(2, { target: { kind: 'order', id: 4, floor: 'mobile', slug: 'x' } }), entry(3, { target: { kind: 'tab', tab: 'table' }, outcome: 'quiet' })];
+    expect(parseNotices(serializeNotices(entries, 25))).toEqual({ entries, readAt: 25 });
+  });
+
+  test('drops malformed entries and bad payloads', () => {
+    const raw = JSON.stringify({
+      readAt: 'x',
+      items: [entry(1), { ...entry(2), kind: 'nope' }, { ...entry(3), outcome: 'x' }, { ...entry(4), at: 'z' }, 7, null, entry(1), { ...entry(5), target: { kind: 'tab', tab: 'zzz' } }],
+    });
+    const parsed = parseNotices(raw);
+    expect(parsed.entries.map((item) => item.id)).toEqual([1, 5]);
+    expect(parsed.entries[1]?.target).toBeNull();
+    expect(parsed.readAt).toBe(0);
+    expect(parseNotices('{broken')).toEqual({ entries: [], readAt: 0 });
+    expect(parseNotices(null).entries).toEqual([]);
+    expect(parseNotices('[]').entries).toEqual([]);
+  });
+
+  test('keeps only the last 100 on write and on read', () => {
+    const many = Array.from({ length: NOTICE_LIMIT + 7 }, (_, n) => entry(n + 1));
+    expect(JSON.parse(serializeNotices(many, 0)).items).toHaveLength(NOTICE_LIMIT);
+    const raw = JSON.stringify({ readAt: 0, items: many });
+    const parsed = parseNotices(raw);
+    expect(parsed.entries).toHaveLength(NOTICE_LIMIT);
+    expect(parsed.entries[0]?.id).toBe(8);
+  });
+
+  test('unread after a restore counts what is newer than the stored last-read', () => {
+    const log = new NoticeLog();
+    log.restore([entry(1), entry(2), entry(3)], 20);
+    expect(log.unread).toBe(1);
+    expect(log.readAt).toBe(20);
+    log.push(input('next'));
+    expect(log.entries.at(-1)?.id).toBe(4);
+    expect(log.unread).toBe(2);
+  });
+
+  test('markRead stamps the clock', () => {
+    const log = new NoticeLog(NOTICE_LIMIT, () => 999);
+    log.push(input('a'));
+    log.markRead();
+    expect(log.readAt).toBe(999);
+  });
+
+  test('filters out what reached the desktop', () => {
+    const entries = [entry(1), entry(2, { outcome: 'muted' }), entry(3, { outcome: 'front' })];
+    expect(filterNotices(entries, 'all').map((item) => item.id)).toEqual([1, 2, 3]);
+    expect(filterNotices(entries, 'hidden').map((item) => item.id)).toEqual([2, 3]);
+  });
+
+  test('writes once after a burst and flush writes at once', async () => {
+    storage.clear();
+    const log = new NoticeLog();
+    const keeper = keepNotices(log, 20);
+    log.push(input('a'));
+    log.push(input('b'));
+    expect(storage.has(NOTICES_KEY)).toBe(false);
+    await new Promise((done) => setTimeout(done, 40));
+    expect(parseNotices(storage.get(NOTICES_KEY) ?? null).entries).toHaveLength(2);
+    log.push(input('c'));
+    keeper.flush();
+    expect(parseNotices(storage.get(NOTICES_KEY) ?? null).entries).toHaveLength(3);
+    storage.clear();
+  });
+});
+
+describe('notice targets per event', () => {
+  const doc = (status: DocumentView['status']): DocumentView => ({ path: 'plans/p.md', title: 'P', kind: 'plan', status, round: 1 }) as DocumentView;
+  let notifier: Notifier;
+
+  beforeEach(() => {
+    storage.clear();
+    FakeNotification.permission = 'granted';
+    page.visible = false;
+    page.focused = false;
+    notifier = new Notifier(fakeStore([]), () => new Date(2026, 9, 23, 12, 0));
+    notifier.save(prefs());
+  });
+
+  const last = (): Notice | undefined => notifier.notices.entries.at(-1);
+
+  test('permission and question point at the question', () => {
+    notifier.observe({ type: 'question', data: ask('q1', { kind: 'permission', tool: 'Bash' }) });
+    expect(last()).toMatchObject({ kind: 'permission', target: { kind: 'question', id: 'q1' } });
+    notifier.observe({ type: 'question', data: ask('q2') });
+    expect(last()).toMatchObject({ kind: 'question', target: { kind: 'question', id: 'q2' } });
+  });
+
+  test('blocked and done point at the agent', () => {
+    notifier.observe({ type: 'message', data: { id: 1, ts: 1, fromKey: LEAD, toName: 'x', toKey: 'x', text: 'BLOQUEADO: falta la key — necesito la key', floor: 'mobile' } });
+    expect(last()).toMatchObject({ kind: 'blocked', target: { kind: 'agent', key: LEAD } });
+  });
+
+  test('stalled and alert point at the agent', () => {
+    notifier.observe({ type: 'agent', data: { key: LEAD, name: 'lead-mobile', floor: 'mobile', stalledSince: null } as AgentView });
+    notifier.observe({ type: 'agent', data: { key: LEAD, name: 'lead-mobile', floor: 'mobile', stalledSince: 5 } as AgentView });
+    expect(last()).toMatchObject({ kind: 'stalled', target: { kind: 'agent', key: LEAD } });
+    notifier.observe({ type: 'alert', data: { id: 'a1', level: 'alerta', floor: 'mobile', agentKey: LEAD, files: ['x'] } as never });
+    expect(last()).toMatchObject({ kind: 'alert', target: { kind: 'agent', key: LEAD } });
+  });
+
+  test('a document points at its path', () => {
+    notifier.observe({ type: 'documents', data: [doc('borrador')] });
+    notifier.observe({ type: 'documents', data: [doc('aprobado')] });
+    expect(last()).toMatchObject({ kind: 'document', target: { kind: 'doc', path: 'plans/p.md' } });
+  });
+
+  test('usage points at the Tabla', () => {
+    notifier.observe({ type: 'usage', data: { fiveHour: { usedPct: 85, resetsAt: 9, samples: [] }, sevenDay: null } as never });
+    expect(last()).toMatchObject({ kind: 'usage', target: { kind: 'tab', tab: 'table' } });
+  });
+
+  test('a finished order points at its order, a plan at the Tablero', () => {
+    const view = { id: 3, ts: 1, kind: 'order', slug: 'o-1', title: 'T', floors: ['mobile'], branch: null, summary: '', cycle: 1, manual: false, checks: null, touched: [], prUrl: null, orderSlugs: [] };
+    notifier.observe({ type: 'finished', data: view as never });
+    expect(last()).toMatchObject({ kind: 'done', target: { kind: 'order', id: 3, floor: 'mobile', slug: 'o-1' } });
+    notifier.observe({ type: 'finished', data: { ...view, id: 4, kind: 'plan' } as never });
+    expect(last()).toMatchObject({ kind: 'done', target: { kind: 'tab', tab: 'board' } });
   });
 });

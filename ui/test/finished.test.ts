@@ -130,7 +130,7 @@ describe('the preference', () => {
 describe('the desktop notice of a finished order', () => {
   const orders: OrderView[] = [{ id: 1, floor: 'mobile', worktree: { path: '/x', state: 'listo', error: null, stale: false } } as OrderView];
   let notifier: Notifier;
-  let opened: FinishedView[];
+  let opened: unknown[];
 
   beforeEach(() => {
     storage.clear();
@@ -145,7 +145,7 @@ describe('the desktop notice of a finished order', () => {
     } as unknown as Store;
     notifier = new Notifier(store);
     notifier.save({ enabled: true, events: Object.fromEntries(NOTIFY_EVENTS.map((event) => [event, true])) as NotifyPrefs['events'] });
-    notifier.openFinished = (view) => opened.push(view);
+    notifier.openTarget = (target) => opened.push(target);
   });
 
   const arrives = (view: FinishedView) => notifier.observe({ type: 'finished', data: view } as ServerMessage);
@@ -157,7 +157,7 @@ describe('the desktop notice of a finished order', () => {
     expect(FakeNotification.created[0]?.title).toBe('Encargo terminado: Login con Apple');
     expect(FakeNotification.created[0]?.options.tag).toBe('finished:5');
     FakeNotification.created[0]?.onclick?.();
-    expect(opened.map((v) => v.id)).toEqual([5]);
+    expect(opened).toEqual([{ kind: 'order', id: 5, floor: 'mobile', slug: expect.any(String) }]);
   });
 
   test('only when the user chose desktop or both', () => {
