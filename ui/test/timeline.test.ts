@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 import { applyLang } from '../src/i18n';
 import { readTableView } from '../src/table/history';
+import { timelineAgentName } from '../src/table/timeline';
+import type { Store } from '../src/store';
 import { hourTicks, layoutSegments, readTimelineHours } from '../src/table/timeline-model';
 
 afterEach(() => applyLang('es'));
@@ -66,5 +68,14 @@ describe('timeline helpers', () => {
     expect(readTimelineHours(8)).toBe(8);
     expect(readTimelineHours(5)).toBe(4);
     expect(readTableView('timeline')).toBe('timeline');
+  });
+});
+
+describe('timelineAgentName', () => {
+  const store = { agents: new Map([['abcdef123456', { key: 'abcdef123456', name: 'dev-mobile', role: 'office-dev-mobile' }]]) } as unknown as Store;
+
+  test('shows the name of a known agent and the start of the key of an unknown one', () => {
+    expect(timelineAgentName(store, 'abcdef123456')).toBe('dev-mobile');
+    expect(timelineAgentName(store, 'ffff00001111aaaa')).toBe('ffff0000');
   });
 });

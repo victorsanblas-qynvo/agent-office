@@ -130,6 +130,7 @@ export function weekDigest(db: Database, from: string, to: string, now: number):
   }
   const floors = new Map<string, DigestFloor>();
   const totals = { delivered: 0, ...emptyCounts() };
+  const counted = new Set<string>();
   const add = (into: DigestCounts, from: DigestCounts): void => {
     into.blocked += from.blocked;
     into.redRuns += from.redRuns;
@@ -141,14 +142,18 @@ export function weekDigest(db: Database, from: string, to: string, now: number):
   };
   for (const one of days) {
     add(totals, one.totals);
-    totals.delivered += one.totals.delivered;
     for (const f of one.floors) {
       let row = floors.get(f.floor);
       if (!row) {
         row = { floor: f.floor, delivered: [], ...emptyCounts() };
         floors.set(f.floor, row);
       }
-      row.delivered.push(...f.delivered);
+      for (const order of f.delivered) {
+        if (counted.has(`${f.floor}\u0000${order.slug}`)) continue;
+        counted.add(`${f.floor}\u0000${order.slug}`);
+        row.delivered.push(order);
+        totals.delivered += 1;
+      }
       add(row, f);
     }
   }

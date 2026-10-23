@@ -181,6 +181,17 @@ describe('weekly digest', () => {
     expect(week.floors.reduce((n, f) => n + f.delivered.length, 0)).toBe(week.totals.delivered);
   });
 
+  test('an order delivered on two days counts once in the totals and the floor rows, and stays on both days', () => {
+    const { office: o, db } = office();
+    order(db, 'twice', 'mobile', 'hecho', D1);
+    fin(db, 'mobile', 'twice', D1 + HOUR);
+    db.run("INSERT INTO alerts (ts, level, floor, agent_key, files, ref, cycle) VALUES (?, 'fin', 'mobile', 'a', '[]', 'order:twice', 2)", [D2 + HOUR]);
+    const week = o.rangeDigest('2026-10-21', '2026-10-22') as WeekDigest;
+    expect(week.days.map((d) => d.floors.flatMap((f) => f.delivered.map((x) => x.slug)))).toEqual([['twice'], ['twice']]);
+    expect(week.totals.delivered).toBe(1);
+    expect(week.floors.find((f) => f.floor === 'mobile')!.delivered.map((d) => d.slug)).toEqual(['twice']);
+  });
+
   test('rejects future ends, long and inverted ranges', () => {
     const { office: o } = office();
     expect(o.rangeDigest('2026-10-23', '2026-10-24')).toBe('bad-range');

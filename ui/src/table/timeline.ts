@@ -1,11 +1,17 @@
 import type { OfficeApi } from '../api';
 import { el } from '../dom';
 import { t } from '../i18n';
-import { floorLabel } from '../labels';
+import { agentName, floorLabel } from '../labels';
 import type { Store } from '../store';
 import type { AgentTimeline } from '../types';
 import { readJson, writeJson } from '../prefs';
 import { hourTicks, layoutSegments, PX_PER_HOUR, readTimelineHours, segmentColor, TIMELINE_HOURS } from './timeline-model';
+
+// Pure over the store: the agent's name when the office knows it, else the start of its key.
+export function timelineAgentName(store: Pick<Store, 'agents'>, key: string): string {
+  const agent = store.agents.get(key);
+  return agent ? agentName(agent) : key.slice(0, 8);
+}
 
 const HOURS_KEY = 'agent-office.table.timeline.hours';
 
@@ -55,7 +61,7 @@ export function mountTimeline(store: Store, api: OfficeApi): { root: HTMLElement
         bar.title = placed.title;
         lane.append(bar);
       }
-      rows.push(el('div', 'timeline-row', el('div', 'timeline-name', agent.agent), lane));
+      rows.push(el('div', 'timeline-row', el('div', 'timeline-name', timelineAgentName(store, agent.agent)), lane));
     }
     return el('div', 'timeline-strip', ...rows);
   }
