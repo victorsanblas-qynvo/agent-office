@@ -38,6 +38,7 @@ import type {
   TranscriptTail,
   UsageRange,
   OfficeDigest,
+  TimelineView,
   WeekDigest,
   UsageSummary,
   WorktreeView,
@@ -156,6 +157,10 @@ export class OfficeApi {
 
   digest(day: string): Promise<ApiData<OfficeDigest>> {
     return this.get(`/api/digest?day=${encodeURIComponent(day)}`);
+  }
+
+  timeline(hours: number): Promise<ApiData<TimelineView>> {
+    return this.get(`/api/timeline?hours=${hours}`);
   }
 
   weekDigest(from: string, to: string): Promise<ApiData<WeekDigest>> {

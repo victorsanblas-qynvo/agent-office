@@ -3919,6 +3919,7 @@ button.diff-file.active {
 }
 
 .table-digest[hidden],
+.table-timeline[hidden],
 .table-history[hidden],
 .table-now[hidden] {
   display: none;
@@ -4200,4 +4201,76 @@ button.diff-file.active {
   overflow-wrap: anywhere;
   line-height: 1.35;
   white-space: pre-wrap;
+}
+
+.timeline-head {
+  margin: 0 0 8px;
+}
+
+.timeline-body {
+  max-width: 100%;
+}
+
+.timeline-strip {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 4px 0;
+}
+
+.timeline-row {
+  display: flex;
+  align-items: center;
+  min-width: max-content;
+  height: 24px;
+}
+
+.timeline-name {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  flex: 0 0 140px;
+  padding: 0 8px;
+  background: var(--surface);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.85em;
+}
+
+.timeline-floor {
+  position: sticky;
+  left: 0;
+  padding: 6px 8px 2px;
+  color: var(--muted);
+  font-size: 0.8em;
+  font-weight: 600;
+}
+
+.timeline-axis,
+.timeline-lane {
+  position: relative;
+  flex: 0 0 auto;
+  height: 16px;
+  margin-right: 12px;
+}
+
+.timeline-lane {
+  background: var(--surface-2);
+  border-radius: 3px;
+}
+
+.timeline-tick {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  color: var(--muted);
+  font-size: 0.7em;
+}
+
+.timeline-bar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
 }

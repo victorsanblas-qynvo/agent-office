@@ -251,6 +251,7 @@ export type HubTextParams = {
   'hub.api.usageRange': undefined;
   'hub.api.digestDay': undefined;
   'hub.api.digestRange': undefined;
+  'hub.api.timelineHours': undefined;
   'hub.api.flakyDays': undefined;
   'hub.api.flakyFloor': undefined;
   'hub.api.chatAuthorUnknown': undefined;
@@ -1058,6 +1059,12 @@ export type DigestFloor = DigestCounts & { floor: string; delivered: { slug: str
 export type OfficeDigest = { day: string; floors: DigestFloor[]; totals: DigestCounts & { delivered: number } };
 
 export type WeekDigest = { from: string; to: string; days: OfficeDigest[]; floors: DigestFloor[]; totals: DigestCounts & { delivered: number } };
+
+export type TimelineSegment = { from: number; to: number; state: string };
+
+export type AgentTimeline = { agent: string; floor: string; segments: TimelineSegment[] };
+
+export type TimelineView = { hours: number; agents: AgentTimeline[] };
 
 export type TokensEvent = {
   agentKey: string;

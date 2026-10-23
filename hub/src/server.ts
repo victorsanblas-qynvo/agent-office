@@ -22,6 +22,7 @@ import { parseSearchParams } from './search';
 import type { SettingsService } from './settings';
 import { record, text } from './state-machine';
 import { parseFlakyDays } from './flaky-report';
+import { parseTimelineHours } from './timeline';
 import type { ChatKind, ChatPostRequest, ClientMessage, HookMeta, HubText, HubTextKey, OrderStatus, PlanDecision, ServerMessage } from './types';
 import type { RemoveResult } from './worktrees';
 
@@ -566,6 +567,12 @@ export function createApp(opts: ServerOptions, holdRequest: (req: Request) => vo
     }
     const result = office.dayDigest(day ?? null);
     return typeof result === 'string' ? c.json({ error: { key: 'hub.api.digestDay' } }, 400) : c.json(result);
+  });
+
+  app.get('/api/timeline', requirePanel, (c) => {
+    const hours = parseTimelineHours(c.req.query('hours'));
+    if (hours === null) return c.json({ error: { key: 'hub.api.timelineHours' } }, 400);
+    return c.json({ hours, agents: office.agentTimeline(hours) });
   });
 
   app.get('/api/checks/flaky', requirePanel, (c) => {

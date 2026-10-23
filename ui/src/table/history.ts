@@ -13,10 +13,10 @@ export const VIEW_KEY = 'agent-office.table.view';
 export const PAGE_SIZE = 40;
 export const SEARCH_DELAY_MS = 250;
 
-export type TableView = 'now' | 'history' | 'digest';
+export type TableView = 'now' | 'history' | 'digest' | 'timeline';
 
 export function readTableView(raw: unknown): TableView {
-  return raw === 'history' || raw === 'digest' ? raw : 'now';
+  return raw === 'history' || raw === 'digest' || raw === 'timeline' ? raw : 'now';
 }
 
 export const HISTORY_KINDS: readonly SearchKind[] = ['activity', 'message', 'chat', 'agent'];

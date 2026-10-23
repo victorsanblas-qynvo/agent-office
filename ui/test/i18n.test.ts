@@ -53,6 +53,7 @@ const SAME_KEYS: MessageKey[] = [
   'chat.title',
   'chat.global',
   'usage.spend.total',
+  'timeline.hours',
   'tokens.row',
   'tokens.unit.k',
   'tokens.unit.m',
