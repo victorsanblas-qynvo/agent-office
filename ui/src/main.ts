@@ -9,7 +9,7 @@ import { applyLang, readStoredLang, t, type MessageKey, type Params } from './i1
 import { boardKeysReady, mountKeys } from './keys';
 import { LiveConnection } from './live';
 import type { NoticeTarget } from './notice-log';
-import { focusFloor, goToAgent, goToNeed, restoreFocus, openNoticeTarget, paletteContext, runKey, runTarget, type Nav } from './navigate';
+import { focusFloor, goToAgent, goToNeed, restoreFocus, openNoticeTarget, paletteContext, runEntry, runKey, type Nav } from './navigate';
 import { NeedCursor } from './needs';
 import { Notifier } from './notify';
 import { SoundDesk } from './sound';
@@ -158,7 +158,7 @@ async function boot(): Promise<void> {
     window.addEventListener('pagehide', () => notifier.flushNotices());
   }
   restoreFocus(nav);
-  const palette = mountPalette(overlayHost, { context: () => paletteContext(nav), run: (target) => runTarget(nav, target) });
+  const palette = mountPalette(overlayHost, { context: () => paletteContext(nav), run: (entry) => runEntry(nav, entry) });
   const help = mountHelp(overlayHost);
   const cursor = new NeedCursor();
   mountKeys({

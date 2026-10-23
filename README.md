@@ -93,7 +93,7 @@ La paleta también enfoca el panel en una planta («Enfocar planta X» y «Quita
 
 Desde la paleta puedes **fijar hasta 4 agentes** («Fijar agente X» / «Soltar agente X», o el botón «Fijar» del panel): sus chips en la cabecera muestran estado, herramienta abierta y contexto, y un clic selecciona al agente. Se guardan en este navegador y no salen en un replay.
 
-La paleta busca por letras sueltas, sin importar tildes, entre agentes, plantas, pestañas, planes, encargos del Tablero (por título, slug, rama o planta; abre el cajón del encargo) y acciones (Responder, Pedir estado, Relanzar, Nuevo encargo, Cambiar idioma, Ver historial, Pedir estado a todos los jefes, Mensaje a todos los jefes, Silenciar notificaciones, Silenciar sonidos). En el replay no salen las acciones que escriben.
+La paleta busca por letras sueltas, sin importar tildes, entre agentes, plantas, pestañas, planes, encargos del Tablero (por título, slug, rama o planta; abre el cajón del encargo) y acciones (Responder, Pedir estado, Relanzar, Nuevo encargo, Cambiar idioma, Ver historial, Pedir estado a todos los jefes, Mensaje a todos los jefes, Silenciar notificaciones, Silenciar sonidos). En el replay no salen las acciones que escriben. Con la caja vacía la paleta muestra primero los últimos 8 elementos que ejecutaste (**Recientes**, hasta 15 guardados en `agent-office.paletteRecent` de este navegador), al buscar los desempata a su favor sin pasar por delante de una coincidencia mejor, y la acción **Borrar recientes** los olvida.
 
 ### Historial y búsqueda
 

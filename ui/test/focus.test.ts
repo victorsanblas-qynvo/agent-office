@@ -68,6 +68,7 @@ describe('palette focus entries', () => {
   const context = (extra: Partial<PaletteContext> = {}): PaletteContext => ({
     agents: [agent('lead-mobile')],
     floors,
+    recent: [],
     documents: [],
     orders: [],
     tabs: [],

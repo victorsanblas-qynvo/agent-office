@@ -1,10 +1,10 @@
 import { el } from '../dom';
 import { t } from '../i18n';
-import { buildEntries, searchEntries, type PaletteContext, type PaletteEntry, type PaletteResult, type PaletteTarget } from './entries';
+import { buildEntries, searchEntries, type PaletteContext, type PaletteEntry, type PaletteResult } from './entries';
 
 export type PaletteDeps = {
   context(): PaletteContext;
-  run(target: PaletteTarget): void;
+  run(entry: PaletteEntry): void;
 };
 
 export type Palette = {
@@ -43,7 +43,8 @@ export function mountPalette(host: HTMLElement, deps: PaletteDeps): Palette {
       return;
     }
     previous = document.activeElement;
-    const entries = buildEntries(deps.context());
+    const context = deps.context();
+    const entries = buildEntries(context);
     const input = el('input', 'palette-input');
     input.type = 'text';
     input.placeholder = t('palette.placeholder');
@@ -83,11 +84,17 @@ export function mountPalette(host: HTMLElement, deps: PaletteDeps): Palette {
 
     const run = (entry: PaletteEntry): void => {
       closePalette();
-      deps.run(entry.target);
+      deps.run(entry);
+    };
+
+    const heading = (): HTMLElement => {
+      const item = el('li', 'palette-heading muted', t('palette.recent'));
+      item.setAttribute('role', 'presentation');
+      return item;
     };
 
     const paint = (): void => {
-      results = searchEntries(entries, input.value);
+      results = searchEntries(entries, input.value, context.recent);
       active = 0;
       rows.length = 0;
       if (results.length === 0) {
@@ -95,7 +102,8 @@ export function mountPalette(host: HTMLElement, deps: PaletteDeps): Palette {
         mark();
         return;
       }
-      results.forEach(({ entry, indices }, index) => {
+      const children: HTMLElement[] = [];
+      results.forEach(({ entry, indices, recent }, index) => {
         const row = el(
           'li',
           'palette-row',
@@ -112,8 +120,10 @@ export function mountPalette(host: HTMLElement, deps: PaletteDeps): Palette {
         });
         row.addEventListener('click', () => run(entry));
         rows.push(row);
+        if (index === 0 && recent) children.push(heading());
+        children.push(row);
       });
-      list.replaceChildren(...rows);
+      list.replaceChildren(...children);
       mark();
     };
 

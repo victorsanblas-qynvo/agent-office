@@ -31,7 +31,8 @@ export type PaletteTarget =
   | { type: 'mute' }
   | { type: 'muteSound' }
   | { type: 'theme'; theme: ThemePref }
-  | { type: 'search'; name: string };
+  | { type: 'search'; name: string }
+  | { type: 'clearRecent' };
 
 export type PaletteEntry = { id: string; group: PaletteGroup; label: string; hint: string; keywords?: string; target: PaletteTarget; write: boolean };
 
@@ -58,10 +59,13 @@ export type PaletteContext = {
   mute: boolean;
   muteSound: boolean;
   searches: readonly SavedSearch[];
+  // The ids of the entries run lately, newest first.
+  recent: readonly string[];
 };
 
 export const EMPTY_LIMIT = 30;
 export const RESULT_LIMIT = 50;
+export const RECENT_SHOWN = 8;
 
 function actions(context: PaletteContext): PaletteEntry[] {
   const out: PaletteEntry[] = [];
@@ -86,6 +90,7 @@ function actions(context: PaletteContext): PaletteEntry[] {
   add('history', t('palette.action.history'), '/', { type: 'history' }, false);
   if (context.mute) add('mute', t('palette.action.mute'), t('palette.hint.notifications'), { type: 'mute' }, false);
   if (context.muteSound) add('muteSound', t('palette.action.muteSound'), t('palette.hint.sound'), { type: 'muteSound' }, false);
+  if (context.recent.length > 0) add('clearRecent', t('palette.action.clearRecent'), t('palette.hint.recent'), { type: 'clearRecent' }, false);
   for (const option of THEME_OPTIONS) add(`theme:${option}`, t(`palette.action.theme.${option}`), t('palette.hint.theme'), { type: 'theme', theme: option }, false);
   return out;
 }
@@ -161,13 +166,38 @@ export function buildEntries(context: PaletteContext): PaletteEntry[] {
   return context.live ? entries : entries.filter((entry) => !entry.write);
 }
 
-export type PaletteResult = { entry: PaletteEntry; indices: number[] };
+export type PaletteResult = { entry: PaletteEntry; indices: number[]; recent?: true };
 
-// With no query, the actions and the tabs first; with one, the best matches over name and hint, whose
-// highlighted letters are the ones of the name.
-export function searchEntries(entries: readonly PaletteEntry[], query: string): PaletteResult[] {
-  if (query.trim() === '') return entries.slice(0, EMPTY_LIMIT).map((entry) => ({ entry, indices: [] }));
-  return fuzzyFilter(entries, query, (entry) => `${entry.label} ${entry.hint} ${entry.keywords ?? ''}`)
+// The entries run lately that still exist, newest first.
+export function recentEntries(entries: readonly PaletteEntry[], recent: readonly string[]): PaletteEntry[] {
+  const byId = new Map(entries.map((entry) => [entry.id, entry]));
+  const out: PaletteEntry[] = [];
+  for (const id of recent) {
+    const entry = byId.get(id);
+    if (entry && !out.includes(entry)) out.push(entry);
+  }
+  return out;
+}
+
+// The entries with the recent ones first, newest first, and the others as they were. With no query the first
+// RECENT_SHOWN lead the list; with one they only break ties, because the fuzzy ranking keeps the order of
+// equal scores, so a recent entry never outranks a better match.
+export function withRecent(entries: readonly PaletteEntry[], recent: readonly string[], query: string): PaletteEntry[] {
+  const lately = recentEntries(entries, recent);
+  const head = query.trim() === '' ? lately.slice(0, RECENT_SHOWN) : lately;
+  const first = new Set(head);
+  return [...head, ...entries.filter((entry) => !first.has(entry))];
+}
+
+// With no query, the recent entries, then the actions and the tabs; with one, the best matches over name and
+// hint, whose highlighted letters are the ones of the name.
+export function searchEntries(entries: readonly PaletteEntry[], query: string, recent: readonly string[] = []): PaletteResult[] {
+  const ordered = withRecent(entries, recent, query);
+  if (query.trim() === '') {
+    const shown = recentEntries(entries, recent).slice(0, RECENT_SHOWN).length;
+    return ordered.slice(0, shown + EMPTY_LIMIT).map((entry, index): PaletteResult => (index < shown ? { entry, indices: [], recent: true } : { entry, indices: [] }));
+  }
+  return fuzzyFilter(ordered, query, (entry) => `${entry.label} ${entry.hint} ${entry.keywords ?? ''}`)
     .slice(0, RESULT_LIMIT)
     .map(({ item, match }) => ({ entry: item, indices: match.indices.filter((index) => index < item.label.length) }));
 }
