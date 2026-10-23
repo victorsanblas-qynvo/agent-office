@@ -1,4 +1,5 @@
 import type { OfficeApi } from '../api';
+import { saveFile } from '../download';
 import { button, el } from '../dom';
 import { t, type MessageKey } from '../i18n';
 import { floorLabel, roleLabel } from '../labels';
@@ -358,15 +359,7 @@ export class LayoutEditor {
   }
 
   private download(): void {
-    const blob = new Blob([`${JSON.stringify(this.store.layouts, null, 2)}\n`], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = el('a');
-    link.href = url;
-    link.download = 'layouts.json';
-    document.body.append(link);
-    link.click();
-    link.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    saveFile('layouts.json', `${JSON.stringify(this.store.layouts, null, 2)}\n`, 'application/json');
   }
 
   private async upload(): Promise<void> {

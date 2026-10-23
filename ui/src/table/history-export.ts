@@ -1,3 +1,4 @@
+import { fileStamp } from '../download';
 import { hubText } from '../i18n/hub';
 import type { SearchHit } from '../types';
 
@@ -60,17 +61,5 @@ export function historyToJson(rows: readonly HistoryRow[]): string {
 
 // Pure: agent-office-historial-YYYYMMDD-HHMM.csv|json in local time.
 export function historyFilename(ext: 'csv' | 'json', now: Date): string {
-  const stamp = `${pad(now.getFullYear(), 4)}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}`;
-  return `agent-office-historial-${stamp}.${ext}`;
-}
-
-export function saveFile(name: string, content: string, type: string): void {
-  const url = URL.createObjectURL(new Blob([content], { type }));
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = name;
-  document.body.append(link);
-  link.click();
-  link.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  return `agent-office-historial-${fileStamp(now)}.${ext}`;
 }

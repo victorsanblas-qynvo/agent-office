@@ -427,6 +427,13 @@ export const es = {
   'report.counts': 'Preguntas: {questions} · Bloqueos: {blocked}',
   'report.lessons': 'Lecciones enviadas ({n})',
   'report.closing': 'Mensaje de cierre',
+  'report.download': 'Descargar .md',
+  'report.downloadTitle': 'Descargar el informe como Markdown',
+  'report.md.summary': 'Resumen',
+  'report.md.session': 'Sesión',
+  'report.md.activity': 'Última actividad',
+  'report.md.tokens': 'Tokens totales',
+  'report.md.context': 'Contexto',
 
   'timeline.messages': 'Mensajes',
   'timeline.activity': 'Actividad',

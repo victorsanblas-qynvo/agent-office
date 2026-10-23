@@ -1,11 +1,13 @@
 import type { OfficeApi } from '../api';
-import { el, type Child } from '../dom';
+import { saveFile } from '../download';
+import { button, el, type Child } from '../dom';
 import { t } from '../i18n';
 import { hubText } from '../i18n/hub';
 import { scoreText, verdictLabel } from '../labels';
 import type { Store } from '../store';
 import { clockTime, relativeTime } from '../time';
 import type { ReportView } from '../types';
+import { reportFilename, reportMarkdown } from './report-markdown';
 import { panelSection } from './section';
 
 const REFRESH_MS = 10_000;
@@ -32,7 +34,7 @@ function more(count: number): HTMLElement | null {
   return count > 0 ? el('li', 'report-more muted', t('panel.more', { n: count })) : null;
 }
 
-function renderReport(report: ReportView, now: number, times: TimeNode[]): HTMLElement[] {
+function renderReport(report: ReportView, now: number, times: TimeNode[], onDownload: () => void): HTMLElement[] {
   const time = (ts: number): HTMLElement => {
     const node = el('time', 'report-time muted', relativeTime(ts, now));
     node.title = clockTime(ts);
@@ -58,7 +60,10 @@ function renderReport(report: ReportView, now: number, times: TimeNode[]): HTMLE
   if (report.endedAt === null) span.append(t('report.running'));
   else span.append(`${t('report.end')} `, time(report.endedAt));
 
-  const parts: HTMLElement[] = [el('p', 'report-text', (report.summaryText ? hubText(report.summaryText) : report.summary) || t('report.noSummary')), span];
+  const download = button(t('report.download'), 'doc-download', t('report.downloadTitle'));
+  download.addEventListener('click', onDownload);
+
+  const parts: HTMLElement[] = [el('p', 'report-text', (report.summaryText ? hubText(report.summaryText) : report.summary) || t('report.noSummary')), span, el('p', 'report-actions', download)];
 
   if (report.files.length > 0) {
     const shown = report.files.slice(0, FILE_LIMIT);
@@ -201,7 +206,10 @@ export function mountReport(host: HTMLElement, store: Store, api: OfficeApi | nu
     }
     chip.textContent = report.live ? t('report.live') : t('report.closed');
     const stale = failure === null ? [] : [el('p', 'report-error hint', t('panel.updateFailed', { error: failure }))];
-    body.replaceChildren(...renderReport(report, store.now(), times), ...stale);
+    body.replaceChildren(...renderReport(report, store.now(), times, () => {
+      if (report === null) return;
+      saveFile(reportFilename(report, new Date()), reportMarkdown(report, store.agents.get(report.agentKey)), 'text/markdown');
+    }), ...stale);
   };
 
   const load = async (key: string): Promise<void> => {
