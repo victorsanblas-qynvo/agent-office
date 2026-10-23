@@ -2,7 +2,7 @@ import { t } from './i18n';
 import { hubText } from './i18n/hub';
 import { collisions, heldClaims, type Collision } from './chat/claims';
 import { agentName, isAway } from './labels';
-import { readHungMinutes } from './prefs';
+import { readHungMinutes, readSnoozes, type Snoozes } from './prefs';
 import type { Store, Topic } from './store';
 import { clockMinutes } from './time';
 import type { AgentState, AgentView, DocumentView, OrderView, QuestionView, UsageView, UsageWindow } from './types';
@@ -197,6 +197,57 @@ export function needsOf(store: Store): Need[] {
 
 export function needLabel(need: Pick<Need, 'kind' | 'name'>): string {
   return t(`needs.kind.${need.kind}`, { name: need.name });
+}
+
+// A short fingerprint of what the entry says: when it changes, a snooze "until it changes" ends.
+export function needSignature(need: Pick<Need, 'kind' | 'name'>): string {
+  const text = `${need.kind}|${need.name}`;
+  let hash = 5381;
+  for (let i = 0; i < text.length; i += 1) hash = (Math.imul(hash, 33) + text.charCodeAt(i)) | 0;
+  return `${need.kind}:${(hash >>> 0).toString(36)}`;
+}
+
+// A permission blocks an agent, so it can never be postponed.
+export function canSnooze(need: Pick<Need, 'kind'>): boolean {
+  return need.kind !== 'permission';
+}
+
+function isSnoozed(need: Need, snoozes: Snoozes, now: number): boolean {
+  const entry = snoozes[need.id];
+  if (!entry || !canSnooze(need) || entry.sig !== needSignature(need)) return false;
+  return entry.until === null || now < entry.until;
+}
+
+export function activeNeeds(needs: readonly Need[], snoozes: Snoozes, now: number): Need[] {
+  return needs.filter((need) => !isSnoozed(need, snoozes, now));
+}
+
+export function snoozedNeeds(needs: readonly Need[], snoozes: Snoozes, now: number): Need[] {
+  return needs.filter((need) => isSnoozed(need, snoozes, now));
+}
+
+// Drops what no longer postpones anything: expired, woken by a change, or gone from the queue.
+export function pruneSnoozes(snoozes: Snoozes, needs: readonly Need[], now: number): Snoozes {
+  const kept: Snoozes = {};
+  for (const need of needs) {
+    const entry = snoozes[need.id];
+    if (entry && isSnoozed(need, snoozes, now)) kept[need.id] = entry;
+  }
+  return kept;
+}
+
+export function snoozeNeed(snoozes: Snoozes, need: Need, until: number | null): Snoozes {
+  return canSnooze(need) ? { ...snoozes, [need.id]: { until, sig: needSignature(need) } } : snoozes;
+}
+
+export function wakeNeed(snoozes: Snoozes, id: string): Snoozes {
+  const { [id]: _gone, ...rest } = snoozes;
+  return rest;
+}
+
+// What N and Shift+N walk: the queue without the postponed entries.
+export function activeNeedsOf(store: Store): Need[] {
+  return activeNeeds(needsOf(store), readSnoozes(), store.now());
 }
 
 export function needToast(position: number, total: number, need: Need): string {

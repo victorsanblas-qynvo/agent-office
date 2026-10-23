@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { QUIET_DEFAULT, inQuietHours, quietSilences, type QuietHours } from '../src/prefs';
+import { SNOOZE_KEY, readSnoozes, writeSnoozes, QUIET_DEFAULT, inQuietHours, quietSilences, type QuietHours } from '../src/prefs';
 
 const at = (hour: number, minute = 0): Date => new Date(2026, 9, 23, hour, minute);
 const window = (from: string, to: string, extra: Partial<QuietHours> = {}): QuietHours => ({ ...QUIET_DEFAULT, enabled: true, from, to, ...extra });
@@ -48,5 +48,26 @@ describe('quietSilences', () => {
     expect(quietSilences(window('22:00', '08:00', { allowPermissions: false }), true, at(23))).toBe(true);
     expect(quietSilences(window('22:00', '08:00'), false, at(23))).toBe(true);
     expect(quietSilences(window('22:00', '08:00'), false, at(12))).toBe(false);
+  });
+});
+
+describe('snoozes', () => {
+  const store = new Map<string, string>();
+  const original = globalThis.localStorage;
+  const fake = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v) };
+
+  test('round-trips and skips malformed entries', () => {
+    Object.defineProperty(globalThis, 'localStorage', { value: fake, configurable: true });
+    try {
+      store.clear();
+      writeSnoozes({ a: { until: 5, sig: 'x' }, b: { until: null, sig: 'y' } });
+      expect(readSnoozes()).toEqual({ a: { until: 5, sig: 'x' }, b: { until: null, sig: 'y' } });
+      store.set(SNOOZE_KEY, JSON.stringify({ a: { until: 'soon', sig: 'x' }, b: 3, c: { until: 1, sig: 'z' } }));
+      expect(readSnoozes()).toEqual({ c: { until: 1, sig: 'z' } });
+      store.set(SNOOZE_KEY, '[1]');
+      expect(readSnoozes()).toEqual({});
+    } finally {
+      Object.defineProperty(globalThis, 'localStorage', { value: original, configurable: true });
+    }
   });
 });

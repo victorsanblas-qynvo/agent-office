@@ -3,7 +3,7 @@ import type { BoardHandle } from './board/board';
 import type { ChatHandle } from './chat/chat';
 import { t } from './i18n';
 import { agentName } from './labels';
-import { needsOf, needToast, type Need, type NeedCursor, type NeedKind } from './needs';
+import { activeNeedsOf, needToast, type Need, type NeedCursor, type NeedKind } from './needs';
 import type { Notifier } from './notify';
 import type { SoundDesk } from './sound';
 import type { OfficeHandle } from './office/office';
@@ -82,7 +82,7 @@ export function goToNeed(nav: Nav, need: Need): void {
 
 // N and Shift+N: the next or the previous thing that waits for the user, with a toast that says which.
 export function stepNeed(nav: Nav, cursor: NeedCursor, direction: 1 | -1): void {
-  const step = cursor.step(needsOf(nav.store), direction);
+  const step = cursor.step(activeNeedsOf(nav.store), direction);
   if (!step) {
     nav.store.toast(t('needs.none'), 'info');
     return;

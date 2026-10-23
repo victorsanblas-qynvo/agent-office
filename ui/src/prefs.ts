@@ -29,6 +29,28 @@ export function writeJson(key: string, value: unknown): void {
   }
 }
 
+export const SNOOZE_KEY = 'agent-office.snooze';
+
+// Postponed entries of the needs queue by need id; a null `until` lasts until the entry's signature changes.
+export type Snoozes = Record<string, { until: number | null; sig: string }>;
+
+export function readSnoozes(): Snoozes {
+  const raw = readJson(SNOOZE_KEY);
+  const snoozes: Snoozes = {};
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return snoozes;
+  for (const [id, value] of Object.entries(raw)) {
+    if (typeof value !== 'object' || value === null) continue;
+    const { until, sig } = value as { until?: unknown; sig?: unknown };
+    if (typeof sig !== 'string' || (until !== null && typeof until !== 'number')) continue;
+    snoozes[id] = { until, sig };
+  }
+  return snoozes;
+}
+
+export function writeSnoozes(snoozes: Snoozes): void {
+  writeJson(SNOOZE_KEY, snoozes);
+}
+
 export const QUIET_KEY = 'agent-office.quiet';
 
 export type QuietHours = { enabled: boolean; from: string; to: string; allowPermissions: boolean };
