@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'bun:test';
 import { applyLang } from '../src/i18n/index';
 import { clockMinutes } from '../src/time';
-import { activeNeeds, canSnooze, collectNeeds, NEEDS_TOPICS, needSignature, pruneSnoozes, snoozedNeeds, snoozeNeed, wakeNeed, NeedCursor, needLabel, needToast, type Need, type NeedSources } from '../src/needs';
-import type { Snoozes } from '../src/prefs';
+import { activeNeeds, canSnooze, collectNeeds, loadSnoozes, menuStart, menuStep, NEEDS_TOPICS, needSignature, pruneSnoozes, saveSnoozes, shouldPersistSnoozes, shouldPruneSnoozes, snoozedNeeds, snoozeNeed, triggerSignature, wakeNeed, NeedCursor, needLabel, needToast, type Need, type NeedSources } from '../src/needs';
+import { SNOOZE_KEY, type Snoozes } from '../src/prefs';
 import type { Collision } from '../src/chat/claims';
 import type { UsageForecast, UsageView, UsageWindow } from '../src/types';
 import { agent, doc, order, question } from './fixtures';
@@ -183,21 +183,21 @@ describe('hung tools', () => {
     expect(collectNeeds(sources({ agents: [busy({ updatedAt: NOW - 9 * MIN })] }))).toEqual([]);
   });
 
-  test('above it, one need with the minutes, the tool and the detail', () => {
+  test('above it, one need with the tool and the detail', () => {
     const needs = collectNeeds(sources({ agents: [busy()] }));
     expect(needs.map((need) => need.id)).toEqual(['hung:lead']);
-    expect(needLabel(needs[0])).toBe('lead lleva 12 min en Bash: bun test');
+    expect(needLabel(needs[0])).toBe('lead lleva rato en Bash: bun test');
     expect(needs[0].agentKey).toBe('lead');
   });
 
   test('without detail the label names only the tool', () => {
     const needs = collectNeeds(sources({ agents: [busy({ detail: '' })] }));
-    expect(needLabel(needs[0])).toBe('lead lleva 12 min en Bash');
+    expect(needLabel(needs[0])).toBe('lead lleva rato en Bash');
   });
 
   test('a long detail is cut to 60 characters', () => {
     const needs = collectNeeds(sources({ agents: [busy({ detail: 'x'.repeat(100) })] }));
-    expect(needLabel(needs[0])).toBe(`lead lleva 12 min en Bash: ${'x'.repeat(59)}…`);
+    expect(needLabel(needs[0])).toBe(`lead lleva rato en Bash: ${'x'.repeat(59)}…`);
   });
 
   test('off, nothing is flagged', () => {
@@ -219,6 +219,19 @@ describe('hung tools', () => {
     expect(kinds(needs)).toEqual(['question:question']);
   });
 
+  test('the label does not change with the minutes, so neither does the signature', () => {
+    const at = (now: number): Need => collectNeeds(sources({ agents: [busy()], now }))[0];
+    expect(needLabel(at(NOW))).toBe(needLabel(at(NOW + 7 * MIN)));
+    expect(needSignature(at(NOW))).toBe(needSignature(at(NOW + 7 * MIN)));
+    const snoozes = snoozeNeed({}, at(NOW), NOW + 15 * MIN);
+    expect(activeNeeds([at(NOW + 5 * MIN)], snoozes, NOW + 5 * MIN)).toEqual([]);
+  });
+
+  test('a stalled agent with a hung tool appears once, as hung', () => {
+    const needs = collectNeeds(sources({ agents: [busy({ stalledSince: 5 })] }));
+    expect(kinds(needs)).toEqual(['hung:lead']);
+  });
+
   test('ranks after blocked and before stalled', () => {
     const agents = [agent('stalled', { stalledSince: 10 }), busy({ key: 'hung' }), agent('blocked', { state: 'blocked' })];
     expect(kinds(collectNeeds(sources({ agents })))).toEqual(['blocked:blocked', 'hung:hung', 'stalled:stalled']);
@@ -227,7 +240,7 @@ describe('hung tools', () => {
 
 describe('NeedCursor', () => {
   const list = (...ids: string[]): Need[] =>
-    ids.map((id) => ({ id, kind: 'question', since: 0, name: id, agentKey: id, floor: null, docPath: null, orderSlug: null }));
+    ids.map((id) => ({ id, kind: 'question', since: 0, name: id, instance: id, agentKey: id, floor: null, docPath: null, orderSlug: null }));
 
   test('walks forward and wraps around', () => {
     const cursor = new NeedCursor();
@@ -297,8 +310,8 @@ describe('file claim collisions', () => {
 });
 
 describe('snoozing', () => {
-  const plan = (name: string, id = 'plan:a'): Need => ({ id, kind: 'plan', since: 1, name, agentKey: null, floor: null, docPath: id, orderSlug: null });
-  const permit: Need = { id: 'agent:p', kind: 'permission', since: 1, name: 'p', agentKey: 'p', floor: null, docPath: null, orderSlug: null };
+  const plan = (name: string, id = 'plan:a', instance = '1'): Need => ({ id, kind: 'plan', since: 1, name, instance, agentKey: null, floor: null, docPath: id, orderSlug: null });
+  const permit: Need = { id: 'agent:p', kind: 'permission', since: 1, name: 'p', instance: 'q', agentKey: 'p', floor: null, docPath: null, orderSlug: null };
   const ids = (needs: Need[]): string[] => needs.map((need) => need.id);
 
   test('a timed snooze hides the entry until `until` and wakes it after', () => {
@@ -352,5 +365,114 @@ describe('snoozing', () => {
     expect(cursor.step(active, 1)?.need.id).toBe('plan:a');
     expect(cursor.step(active, 1)?.need.id).toBe('plan:c');
     expect(cursor.step(active, 1)).toMatchObject({ position: 1, total: 2 });
+  });
+});
+
+describe('snoozes and new occurrences', () => {
+  const MIN = 60_000;
+  const ask = (id: string, createdAt: number): Need => collectNeeds(sources({ agents: [agent('a')], questions: [question(id, 'a', createdAt)] }))[0];
+  const limit = (usedPct: number, resetsAt: number): Need =>
+    collectNeeds(sources({ usage: { fiveHour: { usedPct, resetsAt }, sevenDay: null, at: NOW } }))[0];
+
+  test('a second question of the same agent is not hidden by a snooze of the first', () => {
+    const first = ask('q1', 10);
+    const second = ask('q2', 20);
+    expect(second.id).toBe(first.id);
+    expect(activeNeeds([second], snoozeNeed({}, first, null), NOW)).toEqual([second]);
+    expect(activeNeeds([second], snoozeNeed({}, first, NOW + HOUR), NOW)).toEqual([second]);
+    expect(activeNeeds([ask('q1', 10)], snoozeNeed({}, first, null), NOW)).toEqual([]);
+  });
+
+  test('a new limit window is not hidden by a snooze of the last one', () => {
+    const out = limit(100, NOW + 2 * HOUR);
+    const snoozes = snoozeNeed({}, out, null);
+    expect(activeNeeds([limit(100, NOW + 2 * HOUR + MIN)], snoozes, NOW)).toEqual([]);
+    const next = limit(100, NOW + 7 * HOUR);
+    expect(activeNeeds([next], snoozes, NOW)).toEqual([next]);
+  });
+
+  test('a timed snooze survives a label change; "until it changes" does not', () => {
+    const before = limit(91, NOW + 2 * HOUR);
+    const after = limit(95, NOW + 2 * HOUR);
+    expect(needLabel(before)).not.toBe(needLabel(after));
+    expect(activeNeeds([after], snoozeNeed({}, before, NOW + 15 * MIN), NOW)).toEqual([]);
+    expect(activeNeeds([after], snoozeNeed({}, before, null), NOW)).toEqual([after]);
+  });
+
+  test('a new blocking, stall, claim, delivery or check run is a new occurrence', () => {
+    const blocked = (since: number): Need => collectNeeds(sources({ agents: [agent('b', { state: 'blocked', stateSince: since })] }))[0];
+    const stalled = (since: number): Need => collectNeeds(sources({ agents: [agent('s', { stalledSince: since })] }))[0];
+    const claim = (holders: string[]): Need =>
+      collectNeeds(sources({ claims: [{ path: 'a.dart', channel: 'mobile', since: 1, holders: holders.map((key) => ({ key, name: 'x', floor: 'mobile', since: 1 })) }] }))[0];
+    const plan = (deliveredAt: number): Need => collectNeeds(sources({ documents: [doc('p.md', { deliveredAt })] }))[0];
+    const checks = (sha: string): Need =>
+      collectNeeds(sources({ orders: [order('o', { checks: { status: 'passed', passed: 1, total: 1, sha, touched: ['x'], forced: false } })] }))[0];
+    expect(needSignature(blocked(1))).not.toBe(needSignature(blocked(2)));
+    expect(needSignature(stalled(1))).not.toBe(needSignature(stalled(2)));
+    expect(needSignature(claim(['a', 'b']))).toBe(needSignature(claim(['b', 'a'])));
+    expect(needSignature(claim(['a', 'b']))).not.toBe(needSignature(claim(['a', 'c'])));
+    expect(needSignature(plan(1))).not.toBe(needSignature(plan(2)));
+    expect(needSignature(checks('abc'))).not.toBe(needSignature(checks('def')));
+  });
+});
+
+describe('where snoozes are kept', () => {
+  test('a replay never persists them, and only a live snapshot prunes them', () => {
+    expect(shouldPersistSnoozes({ replay: true, connection: 'replay' })).toBe(false);
+    expect(shouldPersistSnoozes({ replay: false, connection: 'replay' })).toBe(false);
+    expect(shouldPersistSnoozes({ replay: false, connection: 'offline' })).toBe(true);
+    expect(shouldPruneSnoozes({ replay: false, connection: 'online' })).toBe(true);
+    expect(shouldPruneSnoozes({ replay: true, connection: 'online' })).toBe(false);
+    for (const connection of ['connecting', 'offline', 'nokey', 'denied'] as const) expect(shouldPruneSnoozes({ replay: false, connection })).toBe(false);
+  });
+
+  test('a live snapshot with an empty queue drops every snooze', () => {
+    expect(pruneSnoozes({ 'agent:a': { until: null, sig: 'question:x:y' } }, [], NOW)).toEqual({});
+  });
+
+  test('a replay keeps its snoozes in the page and leaves the stored ones alone', () => {
+    const kept = new Map<string, string>();
+    const original = globalThis.localStorage;
+    const fake = { getItem: (k: string) => kept.get(k) ?? null, setItem: (k: string, v: string) => void kept.set(k, v) };
+    Object.defineProperty(globalThis, 'localStorage', { value: fake, configurable: true });
+    try {
+      const stored: Snoozes = { 'plan:a': { until: null, sig: 'plan:1:2' } };
+      kept.set(SNOOZE_KEY, JSON.stringify(stored));
+      const replay = { replay: true, connection: 'replay' } as const;
+      expect(loadSnoozes(replay)).toEqual(stored);
+      saveSnoozes(replay, {});
+      expect(loadSnoozes(replay)).toEqual({});
+      expect(JSON.parse(kept.get(SNOOZE_KEY) ?? 'null')).toEqual(stored);
+      const live = { replay: false, connection: 'online' } as const;
+      kept.set(SNOOZE_KEY, JSON.stringify({}));
+      expect(loadSnoozes(live)).toEqual({});
+      saveSnoozes(live, stored);
+      expect(JSON.parse(kept.get(SNOOZE_KEY) ?? 'null')).toEqual(stored);
+    } finally {
+      Object.defineProperty(globalThis, 'localStorage', { value: original, configurable: true });
+    }
+  });
+});
+
+describe('the menu', () => {
+  test('opens on the first entry, on the postponed ones when all are, and not at all when empty', () => {
+    expect(menuStart(2, 1)).toBe('entry');
+    expect(menuStart(0, 3)).toBe('snoozed');
+    expect(menuStart(0, 0)).toBeNull();
+  });
+
+  test('the arrows wrap around and do nothing without stops', () => {
+    expect(menuStep(-1, 1, 0)).toBeNull();
+    expect(menuStep(-1, 1, 3)).toBe(0);
+    expect(menuStep(-1, -1, 3)).toBe(2);
+    expect(menuStep(2, 1, 3)).toBe(0);
+    expect(menuStep(0, -1, 3)).toBe(2);
+  });
+
+  test('the trigger signature changes only with the count, the language or an empty queue', () => {
+    expect(triggerSignature('es', 2, 3)).toBe(triggerSignature('es', 2, 5));
+    expect(triggerSignature('es', 2, 3)).not.toBe(triggerSignature('es', 1, 3));
+    expect(triggerSignature('es', 0, 1)).not.toBe(triggerSignature('es', 0, 0));
+    expect(triggerSignature('es', 2, 3)).not.toBe(triggerSignature('en', 2, 3));
   });
 });

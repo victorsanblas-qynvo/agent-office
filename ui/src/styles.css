@@ -3350,7 +3350,7 @@ button.diff-file.active {
   flex-direction: column;
   gap: 2px;
   min-width: 300px;
-  max-width: 420px;
+  max-width: min(520px, calc(100vw - 32px));
   max-height: min(420px, 70vh);
   padding: 6px;
   overflow: auto;
@@ -3430,6 +3430,16 @@ button.diff-file.active {
 .needs-snoozed-toggle {
   flex: none;
   font-size: 12px;
+}
+
+.needs-snooze {
+  display: flex;
+  gap: 2px;
+}
+
+.needs-snooze-choice {
+  padding: 2px 6px;
+  white-space: nowrap;
 }
 
 .needs-snoozed-toggle {
