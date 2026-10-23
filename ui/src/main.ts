@@ -9,7 +9,7 @@ import { applyLang, readStoredLang, t, type MessageKey, type Params } from './i1
 import { boardKeysReady, mountKeys } from './keys';
 import { LiveConnection } from './live';
 import type { NoticeTarget } from './notice-log';
-import { goToAgent, goToNeed, openNoticeTarget, paletteContext, runKey, runTarget, type Nav } from './navigate';
+import { focusFloor, goToAgent, goToNeed, restoreFocus, openNoticeTarget, paletteContext, runKey, runTarget, type Nav } from './navigate';
 import { NeedCursor } from './needs';
 import { Notifier } from './notify';
 import { SoundDesk } from './sound';
@@ -91,7 +91,7 @@ async function boot(): Promise<void> {
     usageToday?.setActive(next === 'office');
   };
 
-  const topbar = mountTopbar(store, showTab, (need) => goToNeed(nav, need), (key) => goToAgent(nav, key));
+  const topbar = mountTopbar(store, showTab, (need) => goToNeed(nav, need), (key) => goToAgent(nav, key), (floor) => focusFloor(nav, floor));
   root.replaceChildren(
     topbar.root,
     el('main', 'main', officeHost, tableHost, boardHost, plansHost, chatHost, settingsHost, notice),
@@ -157,6 +157,7 @@ async function boot(): Promise<void> {
     topbar.notices.bind(notifier.notices, open);
     window.addEventListener('pagehide', () => notifier.flushNotices());
   }
+  restoreFocus(nav);
   const palette = mountPalette(overlayHost, { context: () => paletteContext(nav), run: (target) => runTarget(nav, target) });
   const help = mountHelp(overlayHost);
   const cursor = new NeedCursor();
@@ -176,6 +177,7 @@ async function boot(): Promise<void> {
     .then((handle) => {
       office = handle;
       handle.setActive(tab === 'office');
+      restoreFocus(nav);
     })
     .catch((error: unknown) => {
       const failure = el('p', 'placeholder');

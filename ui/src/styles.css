@@ -4304,6 +4304,30 @@ button.diff-file.active {
   border-top: 1px solid var(--border);
 }
 
+.focus-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px 2px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--accent);
+  background: var(--surface-2);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.focus-pill[hidden] {
+  display: none;
+}
+
+.focus-pill-clear {
+  padding: 0 6px;
+  border: 0;
+  background: none;
+  font-size: 14px;
+  line-height: 1.2;
+}
+
 .pinned-strip {
   display: flex;
   align-items: center;

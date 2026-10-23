@@ -1,7 +1,8 @@
 import { StateDebouncer } from './debounce';
 import { deliveryFloors } from './deliveries';
 import { emptyLayouts } from './layouts';
-import { readPins, writePins } from './prefs';
+import { liveFocus } from './focus';
+import { readFocus, readPins, writeFocus, writePins } from './prefs';
 import { applyLang, currentLang, plural, storeLang, t, type Lang, type MessageKey } from './i18n';
 import type {
   ActivityView,
@@ -52,7 +53,8 @@ export type Topic =
   | 'layouts'
   | 'checks'
   | 'worktrees'
-  | 'pins';
+  | 'pins'
+  | 'focus';
 
 export type ConnectionStatus = 'nokey' | 'connecting' | 'online' | 'offline' | 'denied' | 'replay';
 export type ToastKind = 'ok' | 'info' | 'error';
@@ -105,6 +107,8 @@ export class Store {
   toasts: Toast[] = [];
   selectedKey: string | null = null;
   pins: string[] = readPins();
+  // The floor the whole panel is narrowed to, if any; read it through focusedFloor().
+  focus: string | null = readFocus();
   connection: ConnectionStatus = 'connecting';
   replay = false;
 
@@ -143,6 +147,17 @@ export class Store {
     this.pins = [...pins];
     writePins(this.pins);
     this.mark('pins');
+  }
+
+  setFocus(floor: string | null): void {
+    if (floor === this.focus) return;
+    this.focus = floor;
+    writeFocus(floor);
+    this.mark('focus');
+  }
+
+  focusedFloor(): string | null {
+    return liveFocus(this.focus, this.floorList());
   }
 
   setReplay(replay: boolean): void {

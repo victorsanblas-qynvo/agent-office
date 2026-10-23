@@ -51,7 +51,7 @@ export type NeedSources = {
 };
 
 // Every store topic the queue reads; the time-based entries (limit, hung) also need the tick.
-export const NEEDS_TOPICS: readonly Topic[] = ['agents', 'questions', 'documents', 'orders', 'usage', 'chat', 'lang', 'tick'];
+export const NEEDS_TOPICS: readonly Topic[] = ['agents', 'questions', 'documents', 'orders', 'usage', 'chat', 'lang', 'focus', 'tick'];
 
 export const NEEDS_TICK_MS = 5_000;
 
