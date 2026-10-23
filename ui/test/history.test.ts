@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { openHistory, type Nav } from '../src/navigate';
 import { loadRecording, replayFetchUrl } from '../src/replay';
 import { dayBound, EMPTY_FILTERS, hitKey, matchesQuery, mergeHits, normalize, PAGE_SIZE, readTableView, replayHref, searchPath } from '../src/table/history';
+import { HISTORY_COLUMNS, historyFilename, historyRows, historyToCsv, historyToJson, isoLocal, type HistoryRow } from '../src/table/history-export';
 import type { SearchHit } from '../src/types';
 
 const hit = (kind: SearchHit['kind'], id: string, ts = 1): SearchHit => ({ kind, id, ts, floor: 'mobile', agent: 'lead', sessionId: 's1', text: `texto ${id}` });
@@ -146,5 +147,57 @@ describe('loadRecording', () => {
     await expect(loadRecording('/api/replay/s1', 'token-1')).rejects.toThrow(/eventos/);
     stub(new Response('x', { status: 500 }));
     await expect(loadRecording('/api/replay/s1', 'token-1')).rejects.toThrow('HTTP 500');
+  });
+});
+
+describe('history export', () => {
+  const row = (over: Partial<HistoryRow> = {}): HistoryRow => ({ time: '2026-10-23T14:05:09.000+02:00', floor: 'mobile', agent: 'Lead', session: 's1', role: 'jefe', kind: 'chat', text: 'hola', ...over });
+
+  test('csv has a header and one CRLF-terminated line per row', () => {
+    expect(historyToCsv([row()])).toBe('time,floor,agent,session,role,kind,text\r\n2026-10-23T14:05:09.000+02:00,mobile,Lead,s1,jefe,chat,hola\r\n');
+  });
+
+  test('no rows is the header only', () => {
+    expect(historyToCsv([])).toBe('time,floor,agent,session,role,kind,text\r\n');
+  });
+
+  test('fields with a comma, a quote or a line break are quoted and quotes doubled', () => {
+    const csv = historyToCsv([row({ text: 'a, b' }), row({ text: 'dijo "hola"' }), row({ text: 'uno\ndos' }), row({ text: 'uno\r\ndos' })]);
+    expect(csv).toContain(',"a, b"\r\n');
+    expect(csv).toContain(',"dijo ""hola"""\r\n');
+    expect(csv).toContain(',"uno\ndos"\r\n');
+    expect(csv).toContain(',"uno\r\ndos"\r\n');
+  });
+
+  test('cells that start like a formula get a single quote', () => {
+    for (const text of ['=SUM(A1)', '+1', '-1', '@x', '\tx']) expect(historyToCsv([row({ text })])).toContain(`,'${text}\r\n`);
+    expect(historyToCsv([row({ text: '=1,2' })])).toContain(`,"'=1,2"\r\n`);
+    expect(historyToCsv([row({ text: 'a=b' })])).toContain(',a=b\r\n');
+  });
+
+  test('json is pretty and keeps the column order', () => {
+    const json = historyToJson([row({ text: 'x' })]);
+    expect(json).toBe(`${JSON.stringify([{ time: '2026-10-23T14:05:09.000+02:00', floor: 'mobile', agent: 'Lead', session: 's1', role: 'jefe', kind: 'chat', text: 'x' }], null, 2)}\n`);
+    expect(Object.keys(JSON.parse(json)[0])).toEqual([...HISTORY_COLUMNS]);
+    expect(historyToJson([])).toBe('[]\n');
+  });
+
+  test('rows come from the hits shown with the name and role of the agent', () => {
+    const rows = historyRows([hit('chat', '1', Date.UTC(2026, 9, 23, 12)), { ...hit('agent', '2'), agent: 'gone', floor: null, sessionId: null }], (key) => (key === 'lead' ? { name: 'Ada', role: 'jefe' } : undefined));
+    expect(rows[0]).toMatchObject({ floor: 'mobile', agent: 'Ada', role: 'jefe', session: 's1', kind: 'chat', text: 'texto 1' });
+    expect(rows[0].time).toMatch(/^2026-10-2\dT\d\d:00:00\.000[+-]\d\d:\d\d$/);
+    expect(rows[1]).toMatchObject({ floor: '', agent: 'gone', role: '', session: '' });
+  });
+
+  test('isoLocal carries the local offset', () => {
+    const ts = new Date(2026, 9, 23, 14, 5, 9, 7).getTime();
+    expect(isoLocal(ts)).toMatch(/^2026-10-23T14:05:09\.007[+-]\d\d:\d\d$/);
+    expect(new Date(isoLocal(ts)).getTime()).toBe(ts);
+  });
+
+  test('filename is stamped with the local date and minute', () => {
+    const now = new Date(2026, 0, 5, 9, 7, 59);
+    expect(historyFilename('csv', now)).toBe('agent-office-historial-20260105-0907.csv');
+    expect(historyFilename('json', now)).toBe('agent-office-historial-20260105-0907.json');
   });
 });

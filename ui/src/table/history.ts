@@ -6,6 +6,7 @@ import { agentName, floorLabel } from '../labels';
 import type { Store } from '../store';
 import { clockTime } from '../time';
 import type { SearchHit, SearchKind } from '../types';
+import { historyFilename, historyRows, historyToCsv, historyToJson, saveFile } from './history-export';
 
 export const VIEW_KEY = 'agent-office.table.view';
 export const PAGE_SIZE = 40;
@@ -135,6 +136,8 @@ export function mountHistory(host: HTMLElement, store: Store, api: OfficeApi, ho
     to: el('label', 'history-field'),
   };
   const filterBar = el('div', 'history-filters');
+  const exportCsv = button('CSV', 'history-export');
+  const exportJson = button('JSON', 'history-export');
   const status = el('p', 'muted history-status');
   const list = el('ul', 'history-list');
   const more = button('', 'history-more');
@@ -168,7 +171,7 @@ export function mountHistory(host: HTMLElement, store: Store, api: OfficeApi, ho
     labels.kind.replaceChildren(el('span', 'muted', t('history.filter.kind')), kindSelect);
     labels.from.replaceChildren(el('span', 'muted', t('history.filter.from')), fromInput);
     labels.to.replaceChildren(el('span', 'muted', t('history.filter.to')), toInput);
-    filterBar.replaceChildren(labels.floor, labels.agent, labels.kind, labels.from, labels.to);
+    filterBar.replaceChildren(labels.floor, labels.agent, labels.kind, labels.from, labels.to, exportCsv, exportJson);
   };
 
   const hitRow = (hit: SearchHit): HTMLElement => {
@@ -211,6 +214,11 @@ export function mountHistory(host: HTMLElement, store: Store, api: OfficeApi, ho
     more.textContent = t('history.more');
     sentinel.hidden = next === null;
     more.disabled = loading;
+    const hint = t(next === null ? 'history.export.hint' : 'history.export.partial', { n: hits.length });
+    for (const control of [exportCsv, exportJson]) {
+      control.disabled = hits.length === 0;
+      control.title = hint;
+    }
     if (failure !== null) status.textContent = t('history.failed', { error: failure });
     else if (loading && hits.length === 0) status.textContent = t('history.loading');
     else if (hits.length === 0 && loadedOnce) status.textContent = t('history.empty');
@@ -272,6 +280,16 @@ export function mountHistory(host: HTMLElement, store: Store, api: OfficeApi, ho
     filters = { ...filters, to: toInput.value };
     refilter(0);
   });
+  const exportHits = (ext: 'csv' | 'json'): void => {
+    const rows = historyRows(hits, (key) => {
+      const agent = store.agents.get(key);
+      return agent && { name: agentName(agent), role: agent.role ?? '' };
+    });
+    const csv = ext === 'csv';
+    saveFile(historyFilename(ext, new Date()), csv ? historyToCsv(rows) : historyToJson(rows), csv ? 'text/csv' : 'application/json');
+  };
+  exportCsv.addEventListener('click', () => exportHits('csv'));
+  exportJson.addEventListener('click', () => exportHits('json'));
   more.addEventListener('click', () => void load(true));
   agentSelect.addEventListener('mousedown', paintAgents);
 
