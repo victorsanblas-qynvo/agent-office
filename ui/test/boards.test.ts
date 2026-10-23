@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { BOARD_MAX_LINES, boardData, boardSignature, type BoardInput } from '../src/boards';
+import { BOARD_MAX_LINES, boardData, floorScores, boardSignature, type BoardInput } from '../src/boards';
 import { applyLang } from '../src/i18n/index';
 import type { UsageSummary } from '../src/types';
 import { agent, doc, floor, order } from './fixtures';
@@ -26,6 +26,7 @@ const today: UsageSummary = {
 
 const input = (extra: Partial<BoardInput> = {}): BoardInput => ({
   floor: floor('mobile'),
+  floors: [],
   everyone: [],
   orders: [],
   documents: [],
@@ -55,7 +56,7 @@ describe('boardData by floor kind', () => {
     expect(lines.lines[1].text).toContain('93 %');
     expect(lines.lines[2]).toMatchObject({ tone: 'ok', bar: 40 });
     expect(lines.lines[3].text).toBe('1 de 2 trabajando');
-    expect(lines.lines.slice(4).map((line) => line.text)).toEqual(['mobile · 90,0 K', 'backend · 30,0 K']);
+    expect(lines.lines).toHaveLength(4);
   });
 
   test('direction without the spend of today shows a dash, as in a replay', () => {
@@ -170,5 +171,74 @@ describe('boardSignature', () => {
     const es = boardSignature(boardData(input({ everyone: [agent('dev-1')] })));
     applyLang('en');
     expect(boardSignature(boardData(input({ everyone: [agent('dev-1')] })))).not.toBe(es);
+  });
+});
+
+const failing = { status: 'failed' as const, passed: 1, total: 3 };
+const checked = (slug: string, floorSlug: string, extra: Parameters<typeof order>[1] = {}) => order(slug, { floor: floorSlug, ...extra });
+
+describe('floorScores', () => {
+  const floors = [floor('mobile'), floor('backend'), floor('seen', { kind: 'observed' }), floor('direccion', { kind: 'direccion' })];
+
+  test('counts open orders, red checks, blocked and working agents per managed floor', () => {
+    const scores = floorScores(
+      floors,
+      [agent('a', { floor: 'mobile', state: 'working' }), agent('b', { floor: 'mobile', state: 'blocked' }), agent('c', { floor: 'mobile', state: 'idle' }), agent('d', { floor: 'backend', state: 'working' })],
+      [
+        checked('o1', 'mobile', { checks: { ...failing } as never }),
+        checked('o2', 'mobile', { status: 'pendiente' }),
+        checked('o3', 'mobile', { status: 'hecho', checks: { ...failing } as never }),
+        checked('o4', 'mobile', { status: 'descartado' }),
+      ],
+      (a) => a.state,
+    );
+    expect(scores.map(({ slug, open, red, blocked, working }) => ({ slug, open, red, blocked, working }))).toEqual([
+      { slug: 'mobile', open: 2, red: 1, blocked: 1, working: 1 },
+      { slug: 'backend', open: 0, red: 0, blocked: 0, working: 1 },
+    ]);
+  });
+
+  test('skips observed floors', () => {
+    expect(floorScores(floors, [agent('x', { floor: 'seen' })], [checked('o', 'seen')], (a) => a.state).map((s) => s.slug)).not.toContain('seen');
+  });
+
+  test('red or blocked first, then open orders, then name', () => {
+    const list = [floor('a'), floor('b'), floor('c'), floor('d')];
+    const scores = floorScores(
+      list,
+      [agent('x', { floor: 'd', state: 'blocked' })],
+      [checked('1', 'a'), checked('2', 'b'), checked('3', 'b'), checked('4', 'c', { checks: { ...failing } as never })],
+      (a) => a.state,
+    );
+    expect(scores.map((s) => s.slug)).toEqual(['c', 'd', 'b', 'a']);
+  });
+});
+
+describe('direction scoreboard rows', () => {
+  const direction = floor('direccion', { kind: 'direccion', label: 'Dirección' });
+  const rows = (extra: Partial<BoardInput>): string[] => boardData(input({ floor: direction, ...extra })).lines.slice(4).map((line) => line.text);
+
+  test('omits zero parts and says al día when nothing is open', () => {
+    expect(
+      rows({
+        floors: [floor('mobile'), floor('backend')],
+        everyone: [agent('a', { floor: 'mobile', state: 'working' }), agent('b', { floor: 'mobile', state: 'blocked' })],
+        orders: [checked('1', 'mobile', { checks: { ...failing } as never }), checked('2', 'mobile'), checked('3', 'mobile', { status: 'revision' })],
+      }),
+    ).toEqual(['mobile  3 enc · 1 rojo · 1 bloq · 1 trab', 'backend  al día']);
+  });
+
+  test('truncates to the line budget with +N plantas', () => {
+    const many = ['a', 'b', 'c', 'd', 'e', 'f'].map((slug) => floor(slug));
+    const lines = boardData(input({ floor: direction, floors: many })).lines;
+    expect(lines).toHaveLength(BOARD_MAX_LINES);
+    expect(lines.at(-1)?.text).toBe('+3 plantas');
+    expect(lines.slice(4, -1).map((line) => line.text)).toEqual(['a  al día', 'b  al día', 'c  al día']);
+  });
+
+  test('exactly the room left shows every floor without a +N line', () => {
+    const four = ['a', 'b', 'c', 'd'].map((slug) => floor(slug));
+    expect(rows({ floors: four })).toHaveLength(4);
+    expect(rows({ floors: four }).some((text) => text.startsWith('+'))).toBe(false);
   });
 });

@@ -1,4 +1,4 @@
-import { activeOrder } from './board/columns';
+import { activeOrder, checksBadge } from './board/columns';
 import { agentName, compareAgents, documentStatusLabel, floorLabel, formatTokens, isAway, STATE_COLORS, stateLabel, tokensTotal } from './labels';
 import { plural, t } from './i18n';
 import { duration } from './time';
@@ -18,6 +18,8 @@ export type BoardData = { title: string; tab: Tab; lines: BoardLine[] };
 
 export type BoardInput = {
   floor: FloorView;
+  // Every floor of the office: the board of the direction scores the managed ones.
+  floors: readonly FloorView[];
   // The agents in the office, all floors: the board of the direction counts them.
   everyone: readonly AgentView[];
   orders: readonly OrderView[];
@@ -46,6 +48,40 @@ function windowLine(label: string, window: UsageWindow | null, now: number): Boa
   return { text: `${label} ${pct} % · ${duration(window.resetsAt - now)}`, tone: pctTone(window.usedPct), bar: Math.min(100, Math.max(0, window.usedPct)) };
 }
 
+export type FloorScore = { slug: string; label: string; open: number; red: number; blocked: number; working: number };
+
+const CLOSED: ReadonlySet<string> = new Set(['hecho', 'descartado']);
+
+// One score per managed floor, the ones with red checks or blocked agents first, then the most open orders.
+export function floorScores(floors: readonly FloorView[], agents: readonly AgentView[], orders: readonly OrderView[], stateOf: (agent: AgentView) => AgentState): FloorScore[] {
+  const scores = floors
+    .filter((floor) => floor.kind === 'managed')
+    .map((floor): FloorScore => {
+      const open = orders.filter((order) => order.floor === floor.slug && !CLOSED.has(order.status));
+      const states = agents.filter((agent) => agent.floor === floor.slug && !isAway(agent)).map(stateOf);
+      return {
+        slug: floor.slug,
+        label: floorLabel(floor),
+        open: open.length,
+        red: open.filter((order) => checksBadge(order)?.kind === 'failed').length,
+        blocked: states.filter((state) => state === 'blocked').length,
+        working: states.filter((state) => state !== 'idle' && state !== 'done' && state !== 'failed' && state !== 'blocked').length,
+      };
+    });
+  const urgent = (score: FloorScore): boolean => score.red > 0 || score.blocked > 0;
+  return scores.sort((a, b) => Number(urgent(b)) - Number(urgent(a)) || b.open - a.open || a.label.localeCompare(b.label));
+}
+
+function scoreText(score: FloorScore): string {
+  const parts = [
+    score.open > 0 ? t('whiteboard.floor.open', { n: score.open }) : t('whiteboard.floor.clear'),
+    score.red > 0 ? t('whiteboard.floor.red', { n: score.red }) : '',
+    score.blocked > 0 ? t('whiteboard.floor.blocked', { n: score.blocked }) : '',
+    score.working > 0 ? t('whiteboard.floor.working', { n: score.working }) : '',
+  ];
+  return `${score.label}  ${parts.filter(Boolean).join(' · ')}`;
+}
+
 function directionBoard(input: BoardInput): BoardLine[] {
   const { today, everyone, usage, now } = input;
   const working = everyone.filter((agent) => {
@@ -58,10 +94,11 @@ function directionBoard(input: BoardInput): BoardLine[] {
     windowLine(t('usage.week'), usage?.sevenDay ?? null, now),
     { text: t('whiteboard.working', { working, total: everyone.length }), tone: 'plain' },
   ];
-  if (today) {
-    const top = [...today.byFloor].sort((a, b) => tokensTotal(b.tokens) - tokensTotal(a.tokens)).slice(0, 3);
-    for (const row of top) lines.push({ text: `${row.key} · ${formatTokens(tokensTotal(row.tokens))}`, tone: 'muted' });
-  }
+  const scores = floorScores(input.floors, everyone, input.orders, input.stateOf);
+  const room = BOARD_MAX_LINES - lines.length;
+  const shown = scores.length > room ? room - 1 : scores.length;
+  for (const score of scores.slice(0, shown)) lines.push({ text: scoreText(score), tone: score.red > 0 || score.blocked > 0 ? 'danger' : score.open === 0 ? 'muted' : 'plain' });
+  if (scores.length > shown) lines.push({ text: t('whiteboard.floors.more', { n: scores.length - shown }), tone: 'muted' });
   return lines;
 }
 
@@ -157,6 +194,7 @@ export function boardInputFor(store: Store, slug: string, today: UsageSummary | 
   if (!floor) return null;
   return {
     floor,
+    floors: store.floors,
     everyone: store.officeAgents(),
     orders: store.orders,
     documents: store.documents,
