@@ -2,8 +2,10 @@ import type { Actions } from '../actions';
 import { button, el } from '../dom';
 import { t } from '../i18n';
 import { agentName, floorLabel } from '../labels';
+import { readJson } from '../prefs';
 import type { Store } from '../store';
 import type { SessionView } from '../types';
+import { BRIEF_DRAFT_KEY, BRIEF_LIMIT, composeBrief, EMPTY_BRIEF, parseBriefDraft, type BriefFields } from './brief-compose';
 import { orderable, orderableSessions } from './orderable';
 import { openSection, panelSection } from './section';
 
@@ -28,6 +30,96 @@ function defaultSession(sessions: readonly SessionView[]): SessionView | undefin
   return sessions.find((session) => session.role !== null && DIRECTOR_ROLES.has(session.role)) ?? sessions[0];
 }
 
+function mountComposer(insert: (text: string) => void): { node: HTMLElement; relabel: () => void } {
+  const stored = parseBriefDraft(readJson(BRIEF_DRAFT_KEY));
+  const fields: BriefFields = { ...stored };
+  const toggle = button('');
+  const labels = {
+    title: el('span', 'field-label muted'),
+    what: el('span', 'field-label muted'),
+    criteria: el('span', 'field-label muted'),
+    outOfScope: el('span', 'field-label muted'),
+  };
+  const inputs = {
+    title: el('input', 'orders-brief-input'),
+    what: el('textarea', 'orders-brief-input'),
+    criteria: el('textarea', 'orders-brief-input'),
+    outOfScope: el('textarea', 'orders-brief-input'),
+  };
+  inputs.what.rows = 2;
+  inputs.criteria.rows = 2;
+  inputs.outOfScope.rows = 2;
+  const previewLabel = el('span', 'field-label muted');
+  const preview = el('pre', 'orders-brief-preview');
+  const count = el('span', 'orders-status');
+  const insertButton = button('', 'primary');
+  const form = el('div', 'orders-brief');
+  form.hidden = true;
+  const keys = ['title', 'what', 'criteria', 'outOfScope'] as const;
+  form.append(
+    ...keys.map((key) => el('label', 'field', labels[key], inputs[key])),
+    el('div', 'field', previewLabel, preview),
+    el('div', 'orders-actions', insertButton, count),
+  );
+  for (const key of keys) inputs[key].value = fields[key];
+
+  const saveDraft = (): void => {
+    try {
+      if (keys.every((key) => fields[key] === '')) localStorage.removeItem(BRIEF_DRAFT_KEY);
+      else localStorage.setItem(BRIEF_DRAFT_KEY, JSON.stringify(fields));
+    } catch {
+      // Blocked storage: the draft lasts for this session only.
+    }
+  };
+
+  const update = (): void => {
+    const brief = composeBrief(fields);
+    preview.textContent = brief.text;
+    count.textContent = t('orders.brief.count', { n: brief.length, max: BRIEF_LIMIT });
+    count.classList.toggle('error', brief.over);
+    insertButton.disabled = !brief.valid;
+  };
+
+  for (const key of keys) {
+    inputs[key].addEventListener('input', () => {
+      fields[key] = inputs[key].value;
+      saveDraft();
+      update();
+    });
+  }
+  toggle.addEventListener('click', () => {
+    form.hidden = !form.hidden;
+    toggle.setAttribute('aria-expanded', String(!form.hidden));
+  });
+  insertButton.addEventListener('click', () => {
+    const brief = composeBrief(fields);
+    if (!brief.valid) return;
+    insert(brief.text);
+    for (const key of keys) {
+      fields[key] = EMPTY_BRIEF[key];
+      inputs[key].value = '';
+    }
+    saveDraft();
+    form.hidden = true;
+    toggle.setAttribute('aria-expanded', 'false');
+    update();
+  });
+
+  const relabel = (): void => {
+    toggle.textContent = t('orders.brief.toggle');
+    labels.title.textContent = t('orders.brief.title');
+    labels.what.textContent = t('orders.brief.what');
+    labels.criteria.textContent = t('orders.brief.criteria');
+    labels.outOfScope.textContent = t('orders.brief.outOfScope');
+    previewLabel.textContent = t('orders.brief.preview');
+    insertButton.textContent = t('orders.brief.insert');
+    update();
+  };
+  toggle.setAttribute('aria-expanded', 'false');
+  relabel();
+  return { node: el('div', 'orders-composer', toggle, form), relabel };
+}
+
 export function mountOrders(host: HTMLElement, store: Store, actions: Actions): void {
   const select = el('select', 'orders-select');
   const textarea = el('textarea', 'orders-text');
@@ -37,7 +129,12 @@ export function mountOrders(host: HTMLElement, store: Store, actions: Actions): 
   const targetLabel = el('span', 'field-label muted');
 
   const section = panelSection({ id: 'orders', title: () => t('orders.title'), host });
-  section.body.append(el('label', 'field', targetLabel, select), textarea, el('div', 'orders-actions', send, status));
+  const composer = mountComposer((text) => {
+    textarea.value = text;
+    textarea.focus();
+    refresh();
+  });
+  section.body.append(el('label', 'field', targetLabel, select), textarea, el('div', 'orders-actions', send, status), composer.node);
 
   focusText = () => textarea.focus();
 
@@ -155,6 +252,7 @@ export function mountOrders(host: HTMLElement, store: Store, actions: Actions): 
   const relabel = (): void => {
     section.setTitle();
     targetLabel.textContent = t('orders.target');
+    composer.relabel();
     textarea.placeholder = actions.ordersEnabled ? t('orders.placeholder') : t('orders.disabled');
     if (sent) status.textContent = t('toast.orderSent');
   };
