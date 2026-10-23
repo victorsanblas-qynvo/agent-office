@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { applyLang } from '../src/i18n/index';
 import { clockMinutes } from '../src/time';
-import { collectNeeds, NeedCursor, needLabel, needToast, type Need, type NeedSources } from '../src/needs';
+import { collectNeeds, NEEDS_TOPICS, NeedCursor, needLabel, needToast, type Need, type NeedSources } from '../src/needs';
 import type { Collision } from '../src/chat/claims';
 import type { UsageForecast, UsageView, UsageWindow } from '../src/types';
 import { agent, doc, order, question } from './fixtures';
@@ -131,6 +131,31 @@ describe('usage limits', () => {
     expect(limits(usage(win(60, NOW + HOUR, unsafe(NOW + HOUR))))).toEqual([]);
     expect(limits(usage(win(60, NOW + HOUR, unsafe(NOW + 2 * HOUR))))).toEqual([]);
     expect(limits(usage(win(95, NOW - 1)))).toEqual([]);
+  });
+
+  test('the queue watches usage, chat and the tick', () => {
+    for (const topic of ['agents', 'questions', 'documents', 'orders', 'usage', 'chat', 'lang', 'tick'] as const) expect(NEEDS_TOPICS).toContain(topic);
+  });
+
+  test('a forecast already in the past reads as out, with no clock time', () => {
+    const needs = limits(usage(win(60, NOW + 3 * HOUR, unsafe(NOW - 20 * 60_000))));
+    expect(needLabel(needs[0])).toBe('Límite de uso: 5 h agotado');
+    expect(needLabel(needs[0])).not.toContain(clockMinutes(NOW - 20 * 60_000));
+    expect(needs[0].imminent).toBe(true);
+  });
+
+  test('a window at 100 % is out and imminent', () => {
+    const needs = limits(usage(win(100, NOW + 3 * HOUR)));
+    expect(needLabel(needs[0])).toBe('Límite de uso: 5 h agotado');
+    expect(needs[0].imminent).toBe(true);
+  });
+
+  test('a sample over ten minutes old keeps only the 90 % rule', () => {
+    const old = (window: UsageWindow): UsageView => ({ fiveHour: window, sevenDay: null, at: NOW - 2 * HOUR });
+    expect(limits(old(win(60, NOW + 3 * HOUR, unsafe(NOW + HOUR))))).toEqual([]);
+    const needs = limits(old(win(95, NOW + 3 * HOUR, unsafe(NOW + HOUR))));
+    expect(needLabel(needs[0])).toBe('Límite de uso: 5 h al 95 %');
+    expect(needs[0].imminent).toBeUndefined();
   });
 
   test('goes last, unless it runs out within 30 minutes: then right after the permissions', () => {

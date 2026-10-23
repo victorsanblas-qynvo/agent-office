@@ -873,6 +873,7 @@ export const es = {
   'needs.kind.limit': 'Límite de uso: {name}',
   'needs.limit.exhausts': '{window}, se agota ~{time}',
   'needs.limit.high': '{window} al {pct} %',
+  'needs.limit.out': '{window} agotado',
   'keys.title': 'Atajos de teclado',
   'keys.tab': 'Ir a {tab}',
   'keys.palette': 'Abrir la paleta de comandos',

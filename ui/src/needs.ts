@@ -3,7 +3,7 @@ import { hubText } from './i18n/hub';
 import { collisions, heldClaims, type Collision } from './chat/claims';
 import { agentName, isAway } from './labels';
 import { readHungMinutes } from './prefs';
-import type { Store } from './store';
+import type { Store, Topic } from './store';
 import { clockMinutes } from './time';
 import type { AgentState, AgentView, DocumentView, OrderView, QuestionView, UsageView, UsageWindow } from './types';
 
@@ -40,9 +40,13 @@ export type NeedSources = {
   stateOf(agent: AgentView): AgentState;
 };
 
+// Every store topic the queue reads; the time-based entries (limit, hung) also need the tick.
+export const NEEDS_TOPICS: readonly Topic[] = ['agents', 'questions', 'documents', 'orders', 'usage', 'chat', 'lang', 'tick'];
+
 const RANK = new Map<NeedKind, number>(NEED_KINDS.map((kind, index) => [kind, index]));
 const LIMIT_PCT = 90;
 const LIMIT_SOON_MS = 30 * 60_000;
+const LIMIT_FRESH_MS = 10 * 60_000;
 const HUNG_DETAIL_MAX = 60;
 // Tools that wait for somebody by design.
 const PATIENT_TOOLS: ReadonlySet<string> = new Set(['AskUserQuestion', 'ExitPlanMode', 'Agent', 'Task']);
@@ -51,16 +55,22 @@ function rankOf(need: Need): number {
   return need.imminent ? (RANK.get('permission') ?? 0) + 0.5 : (RANK.get(need.kind) ?? 0);
 }
 
-// A window that runs dry before it resets at the pace of the last minutes, or is already past 90 %.
-function limitNeed(id: 'five' | 'seven', sample: UsageWindow | null, now: number, since: number): Need | null {
+// A window that runs dry before it resets at the pace of the last minutes, is already past 90 %, or is out.
+// A sample older than ten minutes no longer vouches for its forecast.
+function limitNeed(id: 'five' | 'seven', sample: UsageWindow | null, now: number, at: number): Need | null {
   if (!sample || sample.resetsAt <= now) return null;
   const forecast = sample.forecast;
-  const exhaustsAt = forecast && forecast.basis !== 'thin' && !forecast.safe && forecast.exhaustsAt !== null && forecast.exhaustsAt < sample.resetsAt ? forecast.exhaustsAt : null;
+  const fresh = now - at <= LIMIT_FRESH_MS;
+  const exhaustsAt = fresh && forecast && forecast.basis !== 'thin' && !forecast.safe && forecast.exhaustsAt !== null && forecast.exhaustsAt < sample.resetsAt ? forecast.exhaustsAt : null;
   if (exhaustsAt === null && sample.usedPct < LIMIT_PCT) return null;
+  const out = sample.usedPct >= 100 || (exhaustsAt !== null && exhaustsAt <= now);
   const window = id === 'five' ? '5 h' : t('usage.week');
-  const name = exhaustsAt !== null ? t('needs.limit.exhausts', { window, time: clockMinutes(exhaustsAt) }) : t('needs.limit.high', { window, pct: Math.round(sample.usedPct) });
-  const need: Need = { id: `limit:${id}`, kind: 'limit', since, name, agentKey: null, floor: null, docPath: null, orderSlug: null };
-  if (exhaustsAt !== null && exhaustsAt - now <= LIMIT_SOON_MS) need.imminent = true;
+  let name: string;
+  if (out) name = t('needs.limit.out', { window });
+  else if (exhaustsAt !== null) name = t('needs.limit.exhausts', { window, time: clockMinutes(exhaustsAt) });
+  else name = t('needs.limit.high', { window, pct: Math.round(sample.usedPct) });
+  const need: Need = { id: `limit:${id}`, kind: 'limit', since: at, name, agentKey: null, floor: null, docPath: null, orderSlug: null };
+  if (out || (exhaustsAt !== null && exhaustsAt - now < LIMIT_SOON_MS)) need.imminent = true;
   return need;
 }
 
