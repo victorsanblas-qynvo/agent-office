@@ -462,6 +462,8 @@ export const es = {
   'deliverables.download': 'Descargar',
   'deliverables.downloadTitle': 'Descargar {file}',
   'deliverables.delivered': 'Plan entregado: decide en Planes · {title}',
+  'markdown.image': '[imagen: {alt}]',
+  'markdown.imageNoAlt': '[imagen]',
   'plans.title': 'Planes',
   'plans.intro': 'Redacción deja aquí cada plan aprobado. Ejecutar lo manda al director, que lo reparte entre las plantas; Cerrar, cuando te confirme que terminaron.',
   'plans.group.pending': 'Pendientes de decisión',

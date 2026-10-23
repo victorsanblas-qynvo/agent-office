@@ -1,6 +1,6 @@
 import DOMPurify from 'dompurify';
-import { Marked } from 'marked';
 import { el } from '../dom';
+import { isSafeHref, markdownToHtml } from './markdown-safe';
 
 const ALLOWED_TAGS = [
   'a',
@@ -54,37 +54,6 @@ const ALLOWED_ATTR = ['href', 'title', 'align', 'start', 'colspan', 'rowspan', '
 
 const ALLOWED_URI = /^(?:(?:https?|mailto):|[^a-z]|[a-z0-9+.\-]+(?:[^a-z0-9+.\-:]|$))/i;
 
-const SAFE_PROTOCOLS: ReadonlySet<string> = new Set(['http:', 'https:', 'mailto:']);
-
-const ESCAPES: Readonly<Record<string, string>> = {
-  '&': '&amp;',
-  '<': '&lt;',
-  '>': '&gt;',
-  '"': '&quot;',
-  "'": '&#39;',
-};
-
-const parser = new Marked({
-  gfm: true,
-  breaks: false,
-  renderer: {
-    image: ({ text }) => escapeHtml(text ? `[imagen: ${text}]` : '[imagen]'),
-    checkbox: ({ checked }) => (checked ? '☑ ' : '☐ '),
-  },
-});
-
-function escapeHtml(value: string): string {
-  return value.replace(/[&<>"']/g, (char) => ESCAPES[char]);
-}
-
-function isSafeHref(href: string): boolean {
-  try {
-    return SAFE_PROTOCOLS.has(new URL(href, 'http://relative.invalid').protocol);
-  } catch {
-    return false;
-  }
-}
-
 function plain(markdown: string): HTMLElement {
   return el('div', 'markdown', el('pre', 'markdown-plain', markdown));
 }
@@ -94,7 +63,7 @@ export function renderMarkdown(markdown: string): HTMLElement {
 
   let html: string;
   try {
-    html = parser.parse(markdown, { async: false });
+    html = markdownToHtml(markdown);
   } catch {
     return plain(markdown);
   }
