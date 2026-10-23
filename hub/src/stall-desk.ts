@@ -23,7 +23,7 @@ export class StallDesk {
     const open = session.openTools;
     const id = text(e.tool_use_id) ?? `${c.agentKey}:${c.tool ?? ''}`;
     if (c.event === 'PreToolUse' && c.tool) {
-      open.set(id, { agentKey: c.agentKey, since: now });
+      open.set(id, { agentKey: c.agentKey, tool: c.tool, since: now });
     } else if (c.event === 'PostToolUse' || c.event === 'PostToolUseFailure') {
       open.delete(id);
     } else if (c.event === 'UserPromptSubmit' || c.event === 'Stop' || c.event === 'SessionStart' || c.event === 'SessionEnd') {

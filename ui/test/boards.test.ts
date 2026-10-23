@@ -260,4 +260,10 @@ describe('isWorking', () => {
     const lines = boardData(input({ floor: floor('direccion', { kind: 'direccion' }), floors: [floor('mobile')], everyone }));
     expect(lines.lines.some((line) => line.text === '1 de 2 trabajando')).toBe(true);
   });
+
+  test('the direction header leaves out the agents that went home', () => {
+    const everyone = [agent('a', { floor: 'mobile', state: 'working' }), agent('b', { floor: 'mobile', state: 'working', away: true })];
+    const lines = boardData(input({ floor: floor('direccion', { kind: 'direccion' }), floors: [floor('mobile')], everyone }));
+    expect(lines.lines.some((line) => line.text === '1 de 1 trabajando')).toBe(true);
+  });
 });

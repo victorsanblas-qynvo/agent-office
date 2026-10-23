@@ -234,6 +234,14 @@ describe('quiet hours', () => {
     expect(engine.played).toHaveLength(2);
   });
 
+  test('a question already past due on the first snapshot does not sound a reminder', () => {
+    const pending = question('q3', LEAD, now - 60 * 60_000) as QuestionView;
+    desk.observe(snapshot({ questions: [pending] }));
+    const before = engine.played.length;
+    desk.tick([pending]);
+    expect(engine.played).toHaveLength(before);
+  });
+
   test('a plain question is silent even with the exception on', () => {
     quiet(true);
     now = night;

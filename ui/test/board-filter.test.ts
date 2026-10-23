@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, test } from 'bun:test';
-import { ageBadge, filterOrders } from '../src/board/columns';
+import { ageBadge, agesDue, filterOrders } from '../src/board/columns';
 import { applyLang } from '../src/i18n/index';
 import { order } from './fixtures';
 
@@ -41,6 +41,14 @@ describe('filterOrders', () => {
     expect(slugs('revision')).toEqual(['pagos']);
     expect(slugs('en curso')).toEqual(['login-flow']);
     expect(slugs('pendiente perfil')).toEqual(['perfil']);
+  });
+});
+
+describe('agesDue', () => {
+  test('a minute or a new threshold repaints, nothing else does', () => {
+    expect(agesDue(0, 24, 59_000, 24)).toBe(false);
+    expect(agesDue(0, 24, 60_000, 24)).toBe(true);
+    expect(agesDue(0, 24, 1_000, 48)).toBe(true);
   });
 });
 

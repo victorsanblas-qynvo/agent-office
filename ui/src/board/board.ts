@@ -8,7 +8,7 @@ import type { Store } from '../store';
 import { relativeTime } from '../time';
 import type { OrderStatus, OrderView } from '../types';
 import { checksBadgeNode, folderBadgeNode } from './badges';
-import { ageBadge, columnsOf, deliveryFloors, filterOrders, neighbours, neighbourStatus, nextCard, orderFloors } from './columns';
+import { ageBadge, agesDue, type AgeBadge, columnsOf, deliveryFloors, filterOrders, neighbours, neighbourStatus, nextCard, orderFloors } from './columns';
 import { mountOrderDetail, type OrderDetail } from './order-detail';
 import { openNewOrder } from './new-order';
 
@@ -55,6 +55,8 @@ export function mountBoard(host: HTMLElement, store: Store, api: OfficeApi | nul
   let openId: number | null = null;
   let highlightId: string | null = null;
   let visible: string[][] = [];
+  let agedAt = store.now();
+  let agedStale = readBoardStaleHours();
 
   const closeDetail = (): void => {
     open?.destroy();
@@ -132,7 +134,7 @@ export function mountBoard(host: HTMLElement, store: Store, api: OfficeApi | nul
         order.checks && order.checks.touched.length > 0 ? touchedBadge(order) : null,
         order.review.state !== 'none' ? el('span', 'chip', t('board.card.review', { state: order.review.state })) : null,
         folderBadgeNode(order),
-        age ? el('span', `chip board-age${age.stale ? ' stale' : ''}`, age.text) : null,
+        age ? ageNode(order, age) : null,
         link,
       ),
       el(
@@ -238,6 +240,8 @@ export function mountBoard(host: HTMLElement, store: Store, api: OfficeApi | nul
     add.title = add.disabled ? t('board.new.none') : '';
     relabelFilter();
     const now = store.now();
+    agedAt = now;
+    agedStale = readBoardStaleHours();
     const shown = filterOrders(store.orders, query, (slug) => (store.floorBySlug(slug) ? floorLabel(store.floorBySlug(slug) as never) : slug));
     const grouped = columnsOf(shown, floor);
     const total = grouped.reduce((sum, group) => sum + group.orders.length, 0);
@@ -271,10 +275,20 @@ export function mountBoard(host: HTMLElement, store: Store, api: OfficeApi | nul
   };
   add.addEventListener('click', newOrder);
   store.watch(['orders', 'lang', 'floors', 'mode'], render);
-  // The age of a card moves on its own.
-  let ticks = 0;
-  store.subscribe((topics) => {
-    if (topics.has('tick') && ++ticks % 15 === 0) render();
+  // The age of a card moves on its own, and follows the stale threshold of Ajustes.
+  store.watch(['tick'], () => {
+    const now = store.now();
+    const stale = readBoardStaleHours();
+    if (!agesDue(agedAt, agedStale, now, stale)) return;
+    agedAt = now;
+    agedStale = stale;
+    for (const node of columnsHost.querySelectorAll<HTMLElement>('.board-age[data-order]')) {
+      const order = store.orders.find((candidate) => String(candidate.id) === node.dataset.order);
+      const age = order ? ageBadge(order, now, stale) : null;
+      if (!age) continue;
+      node.textContent = age.text;
+      node.classList.toggle('stale', age.stale);
+    }
   });
 
   return {
@@ -297,6 +311,12 @@ export function mountBoard(host: HTMLElement, store: Store, api: OfficeApi | nul
       if (target) openDetail(target);
     },
   };
+}
+
+function ageNode(order: OrderView, age: AgeBadge): HTMLElement {
+  const node = el('span', `chip board-age${age.stale ? ' stale' : ''}`, age.text);
+  node.dataset.order = String(order.id);
+  return node;
 }
 
 function touchedBadge(order: OrderView): HTMLElement {

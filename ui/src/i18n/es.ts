@@ -423,6 +423,9 @@ export const es = {
   'memory.scope': 'Rol: {role} · Planta: {floor}',
 
   'report.title': 'Informe',
+  'report.file.name': 'informe',
+  'report.file.agent': 'agente',
+  'history.file.name': 'historial',
   'report.live': 'en vivo',
   'report.closed': 'cerrado',
   'report.missing': 'Sin informe para este agente.',
@@ -468,6 +471,7 @@ export const es = {
   'orders.brief.preview': 'Vista previa',
   'orders.brief.insert': 'Insertar',
   'orders.brief.count': '{n} / {max}',
+  'orders.brief.replace': 'La orden ya tiene texto. ¿Reemplazarlo por el encargo?',
 
   'deliverables.title.plan': 'Entregables · Planes',
   'deliverables.title.skill': 'Entregables · Skills',

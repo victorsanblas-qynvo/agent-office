@@ -250,6 +250,17 @@ describe('desktop notifier', () => {
 
   describe('reminders', () => {
     const MIN = 60_000;
+    test('a question already past due on the first snapshot is not reminded', () => {
+      const clock = new Date(2026, 9, 23, 12, 0);
+      const old = question('q1', { createdAt: clock.getTime() - 60 * MIN });
+      const desk = new Notifier(fakeStore(selected, [old]), () => clock);
+      desk.save(allOn());
+      desk.observe(snapshot({ questions: [old] }));
+      FakeNotification.created.length = 0;
+      desk.tick();
+      expect(FakeNotification.created).toHaveLength(0);
+    });
+
     test('a question still open after the wait reminds once, and a closed one never does', () => {
       let clock = new Date(2026, 9, 23, 12, 0);
       const open = [question('q1', { createdAt: clock.getTime() }), question('p1', { kind: 'permission', createdAt: clock.getTime() })];

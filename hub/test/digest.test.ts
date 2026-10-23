@@ -29,6 +29,10 @@ function order(db: Harness['db'], slug: string, floor: string, status: string, a
   );
 }
 
+function fin(db: Harness['db'], floor: string, slug: string, at: number, ref = `order:${slug}`): void {
+  db.run("INSERT INTO alerts (ts, level, floor, agent_key, files, ref, cycle) VALUES (?, 'fin', ?, 'a', '[]', ?, 1)", [at, floor, ref]);
+}
+
 function run(db: Harness['db'], floor: string, status: string, at: number): void {
   db.run('INSERT INTO check_runs (order_id, floor, slug, sha, trigger, status, started_at, ended_at) VALUES (1, ?, ?, ?, ?, ?, ?, ?)', [floor, 's', 'abc', 'listo', status, at, at]);
 }
@@ -48,12 +52,17 @@ function seed(db: Harness['db']): void {
   order(db, 'wip', 'mobile', 'en-curso', D2 + HOUR);
   order(db, 'gone', 'mobile', 'hecho', D2 + HOUR, D2 + 2 * HOUR);
   order(db, 'api', 'backend', 'hecho', D2 + 2 * HOUR);
+  fin(db, 'mobile', 'login', D2 + 9 * HOUR);
+  fin(db, 'mobile', 'logout', D2 + 11 * HOUR);
+  fin(db, 'mobile', 'old', D1 + HOUR);
+  fin(db, 'mobile', 'gone', D2 + HOUR);
+  fin(db, 'backend', 'api', D2 + 2 * HOUR);
   blocked(db, 'mobile', D2 + HOUR);
   blocked(db, 'mobile', D2 + 2 * HOUR);
   blocked(db, 'mobile', D2 + 3 * HOUR, 'talking');
   blocked(db, 'backend', D1 + HOUR);
   run(db, 'mobile', 'failed', D2 + HOUR);
-  run(db, 'mobile', 'timeout', D2 + 2 * HOUR);
+  run(db, 'mobile', 'failed', D2 + 2 * HOUR);
   run(db, 'mobile', 'passed', D2 + 3 * HOUR);
   run(db, 'backend', 'passed', D2 + 3 * HOUR);
   run(db, 'backend', 'passed', D1 + 3 * HOUR);
@@ -98,6 +107,19 @@ describe('digest', () => {
     expect(result.totals).toEqual({ delivered: 3, blocked: 2, redRuns: 2, greenRuns: 2, tokens: 150, plans: { approved: 1, noAgreement: 1 }, lessons: 1 });
   });
 
+  test('delivered follows the end alert, not later updates of the order', () => {
+    const { office: o, db } = office();
+    order(db, 'late', 'mobile', 'hecho', D3 + HOUR);
+    fin(db, 'mobile', 'late', D2 + HOUR);
+    order(db, 'p1', 'mobile', 'hecho', D3);
+    order(db, 'p2', 'backend', 'hecho', D3);
+    db.run("UPDATE orders SET plan_slug = 'plan-x' WHERE slug IN ('p1', 'p2')");
+    fin(db, 'mobile', 'p1', D2 + 2 * HOUR, 'plan:plan-x');
+    const result = o.dayDigest('2026-10-22') as OfficeDigest;
+    expect(result.floors.flatMap((f) => f.delivered.map((d) => d.slug)).sort()).toEqual(['late', 'p1', 'p2']);
+    expect((o.dayDigest('2026-10-23') as OfficeDigest).totals.delivered).toBe(0);
+  });
+
   test('a day with nothing has no floors', () => {
     const { office: o, db } = office();
     seed(db);
@@ -108,9 +130,10 @@ describe('digest', () => {
 
   test('the day starts and ends at local midnight', () => {
     const { office: o, db } = office();
-    order(db, 'first', 'mobile', 'hecho', D2);
-    order(db, 'last', 'mobile', 'hecho', D3 - 1);
-    order(db, 'next', 'mobile', 'hecho', D3);
+    for (const [slug, at] of [['first', D2], ['last', D3 - 1], ['next', D3]] as const) {
+      order(db, slug, 'mobile', 'hecho', at);
+      fin(db, 'mobile', slug, at);
+    }
     const result = o.dayDigest('2026-10-22') as OfficeDigest;
     expect(result.floors[0]?.delivered.map((d) => d.slug)).toEqual(['first', 'last']);
     expect((o.dayDigest('2026-10-23') as OfficeDigest).floors[0]?.delivered.map((d) => d.slug)).toEqual(['next']);
@@ -120,6 +143,7 @@ describe('digest', () => {
   test('rejects what is not a calendar day and days to come, and defaults to today', () => {
     const { office: o, db } = office();
     order(db, 'today', 'mobile', 'hecho', D3 + HOUR);
+    fin(db, 'mobile', 'today', D3 + HOUR);
     expect(o.dayDigest('2026-02-30')).toBe('bad-day');
     expect(o.dayDigest('ayer')).toBe('bad-day');
     expect(o.dayDigest('2026-10-24')).toBe('future-day');

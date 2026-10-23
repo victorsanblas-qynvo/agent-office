@@ -68,7 +68,7 @@ export function reportMarkdown(report: ReportView, agent?: AgentView): string {
   return `${out.join('\n').trimEnd()}\n`;
 }
 
-// Pure: informe-<agent>-YYYYMMDD-HHMM.md, the agent reduced to [a-z0-9-].
+// Pure: <report>-<agent>-YYYYMMDD-HHMM.md, the agent reduced to [a-z0-9-].
 export function reportFilename(report: Pick<ReportView, 'name' | 'agentKey'>, now: Date): string {
   const slug = (report.name ?? report.agentKey)
     .normalize('NFD')
@@ -76,5 +76,5 @@ export function reportFilename(report: Pick<ReportView, 'name' | 'agentKey'>, no
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
-  return `informe-${slug || 'agente'}-${fileStamp(now)}.md`;
+  return `${t('report.file.name')}-${slug || t('report.file.agent')}-${fileStamp(now)}.md`;
 }

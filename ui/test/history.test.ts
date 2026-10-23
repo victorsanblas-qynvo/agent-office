@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from 'bun:test';
-import { openHistory, type Nav } from '../src/navigate';
+import { applyLang } from '../src/i18n';
+import { openHistory, runKey, runTarget, type Nav } from '../src/navigate';
 import { loadRecording, replayFetchUrl } from '../src/replay';
 import { dayBound, EMPTY_FILTERS, hitKey, matchesQuery, mergeHits, normalize, PAGE_SIZE, readTableView, replayHref, searchPath } from '../src/table/history';
 import { HISTORY_COLUMNS, historyFilename, historyRows, historyToCsv, historyToJson, isoLocal, type HistoryRow } from '../src/table/history-export';
@@ -109,6 +110,38 @@ describe('the slash shortcut', () => {
   });
 });
 
+describe('the slash key and the palette entry on the board', () => {
+  const calls: string[] = [];
+  const nav = (tab: string): Nav =>
+    ({
+      api: {},
+      tab: () => tab,
+      showTab: (next: string) => calls.push(`tab:${next}`),
+      board: () => ({ focusFilter: () => calls.push('filter') }),
+      table: () => ({ showHistory: () => (calls.push('history'), true) }),
+    }) as unknown as Nav;
+  const cursor = {} as never;
+  const extra = { palette() {}, help() {} };
+
+  test('the key focuses the board filter', () => {
+    calls.length = 0;
+    runKey(nav('board'), { type: 'history' }, cursor, extra);
+    expect(calls).toEqual(['filter']);
+  });
+
+  test('the key opens the history from any other tab', () => {
+    calls.length = 0;
+    runKey(nav('office'), { type: 'history' }, cursor, extra);
+    expect(calls).toEqual(['tab:table', 'history']);
+  });
+
+  test('the palette entry opens the history even on the board', () => {
+    calls.length = 0;
+    runTarget(nav('board'), { type: 'history' } as never);
+    expect(calls).toEqual(['tab:table', 'history']);
+  });
+});
+
 describe('loadRecording', () => {
   const realFetch = globalThis.fetch;
   afterEach(() => {
@@ -204,5 +237,8 @@ describe('history export', () => {
     const now = new Date(2026, 0, 5, 9, 7, 59);
     expect(historyFilename('csv', now)).toBe('agent-office-historial-20260105-0907.csv');
     expect(historyFilename('json', now)).toBe('agent-office-historial-20260105-0907.json');
+    applyLang('en');
+    expect(historyFilename('csv', now)).toBe('agent-office-history-20260105-0907.csv');
+    applyLang('es');
   });
 });

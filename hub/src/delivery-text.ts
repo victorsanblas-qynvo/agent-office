@@ -115,8 +115,15 @@ function trimBrief(text: string): string {
   const clean = text.trim();
   if (clean.length <= PR_MAX_SUMMARY) return clean;
   const cut = clean.slice(0, PR_MAX_SUMMARY).trimEnd();
-  const fences = cut.split('\n').filter((line) => /^ {0,3}(```|~~~)/.test(line)).length;
-  return `${cut}${fences % 2 === 1 ? '\n```' : ''}…`;
+  let open: string | null = null;
+  for (const line of cut.split('\n')) {
+    const match = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
+    if (!match) continue;
+    const run = match[1];
+    if (open === null) open = run;
+    else if (run[0] === open[0] && run.length >= open.length && match[2].trim() === '') open = null;
+  }
+  return open === null ? `${cut}…` : `${cut}…\n${open}`;
 }
 
 function cell(value: string): string {

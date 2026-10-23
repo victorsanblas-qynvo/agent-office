@@ -1,3 +1,4 @@
+import { PATIENT_TOOLS } from '../../shared/patient-tools';
 import { t } from './i18n';
 import { hubText } from './i18n/hub';
 import { collisions, heldClaims, type Collision } from './chat/claims';
@@ -47,6 +48,19 @@ export type NeedSources = {
 // Every store topic the queue reads; the time-based entries (limit, hung) also need the tick.
 export const NEEDS_TOPICS: readonly Topic[] = ['agents', 'questions', 'documents', 'orders', 'usage', 'chat', 'lang', 'tick'];
 
+export const NEEDS_TICK_MS = 5_000;
+
+// Any topic but the clock recomputes the needs at once; the clock alone only every few seconds, as time moves slowly for them.
+export function needsDue(changed: ReadonlySet<Topic>, lastAt: number, now: number): boolean {
+  let tick = false;
+  for (const topic of changed) {
+    if (!NEEDS_TOPICS.includes(topic)) continue;
+    if (topic !== 'tick') return true;
+    tick = true;
+  }
+  return tick && now - lastAt >= NEEDS_TICK_MS;
+}
+
 const RANK = new Map<NeedKind, number>(NEED_KINDS.map((kind, index) => [kind, index]));
 const LIMIT_PCT = 90;
 const LIMIT_SOON_MS = 30 * 60_000;
@@ -58,7 +72,6 @@ const WINDOW_BUCKET_MS = 3_600_000;
 // Tools that wait for somebody by design.
 // The shown states a running tool can sit under.
 const HUNG_STATES: ReadonlySet<AgentState> = new Set(['working', 'reading', 'testing', 'checking']);
-const PATIENT_TOOLS: ReadonlySet<string> = new Set(['AskUserQuestion', 'ExitPlanMode', 'Agent', 'Task']);
 
 function rankOf(need: Need): number {
   return need.imminent ? (RANK.get('permission') ?? 0) + 0.5 : (RANK.get(need.kind) ?? 0);
@@ -99,7 +112,7 @@ function agentNeed(kind: NeedKind, agent: AgentView | undefined, key: string, si
 }
 
 function hungNeed(agent: AgentView, now: number, thresholdMs: number): Need | null {
-  const tool = agent.tool;
+  const tool = agent.openTool;
   if (agent.toolSince === null || !tool || PATIENT_TOOLS.has(tool) || agent.waiting !== null) return null;
   const ran = now - agent.toolSince;
   if (ran < thresholdMs) return null;
@@ -267,12 +280,20 @@ export function snoozedNeeds(needs: readonly Need[], snoozes: Snoozes, now: numb
   return needs.filter((need) => isSnoozed(need, snoozes, now));
 }
 
-// Drops what no longer postpones anything: expired, woken by a change, or gone from the queue.
-export function pruneSnoozes(snoozes: Snoozes, needs: readonly Need[], now: number): Snoozes {
+const CONTEXT_PREFIX = 'context:';
+
+// Drops what no longer postpones anything: expired, woken by a change, or gone from the queue. A context warning
+// that left the queue only because its agent's sample went stale keeps its snooze while the agent is still around.
+export function pruneSnoozes(snoozes: Snoozes, needs: readonly Need[], now: number, agentKeys: ReadonlySet<string> = new Set()): Snoozes {
   const kept: Snoozes = {};
   for (const need of needs) {
     const entry = snoozes[need.id];
     if (entry && isSnoozed(need, snoozes, now)) kept[need.id] = entry;
+  }
+  const listed = new Set(needs.map((need) => need.id));
+  for (const [id, entry] of Object.entries(snoozes)) {
+    if (listed.has(id) || !id.startsWith(CONTEXT_PREFIX) || !agentKeys.has(id.slice(CONTEXT_PREFIX.length))) continue;
+    if (entry.until === null || now < entry.until) kept[id] = entry;
   }
   return kept;
 }

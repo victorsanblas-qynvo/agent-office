@@ -24,6 +24,7 @@ export const agent = (key: string, extra: Partial<AgentView> = {}): AgentView =>
   waiting: null,
   stalledSince: null,
   toolSince: null,
+  openTool: null,
   context: null,
   ...extra,
 });

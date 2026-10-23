@@ -140,6 +140,7 @@ export class Notifier {
       case 'snapshot':
         // History does not notify: only pending questions, which may have arrived while the hub restarted.
         for (const question of message.data.questions) this.question(question);
+        for (const question of dueReminders(message.data.questions, this.now().getTime(), readRemindMinutes(), this.reminded)) this.reminded.add(question.id);
         this.seedDocuments(message.data.documents ?? []);
         this.stalled.clear();
         for (const agent of message.data.agents) this.stalled.set(agent.key, agent.stalledSince ?? null);

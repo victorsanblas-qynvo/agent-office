@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { applyLang } from '../src/i18n/index';
 import { clockMinutes } from '../src/time';
-import { activeNeeds, filterByFloor, floorChips, liveFloorFilter, canSnooze, collectNeeds, loadSnoozes, menuStart, menuStep, NEEDS_TOPICS, needSignature, pruneSnoozes, saveSnoozes, shouldPersistSnoozes, shouldPruneSnoozes, snoozedNeeds, snoozeNeed, triggerSignature, wakeNeed, NeedCursor, needLabel, needToast, type Need, type NeedSources } from '../src/needs';
+import { activeNeeds, filterByFloor, floorChips, liveFloorFilter, canSnooze, collectNeeds, loadSnoozes, menuStart, menuStep, NEEDS_TOPICS, needSignature, pruneSnoozes, saveSnoozes, shouldPersistSnoozes, shouldPruneSnoozes, snoozedNeeds, snoozeNeed, needsDue, NEEDS_TICK_MS, triggerSignature, wakeNeed, NeedCursor, needLabel, needToast, type Need, type NeedSources } from '../src/needs';
 import { SNOOZE_KEY, type Snoozes } from '../src/prefs';
 import type { Collision } from '../src/chat/claims';
 import type { UsageForecast, UsageView, UsageWindow } from '../src/types';
@@ -177,7 +177,7 @@ describe('usage limits', () => {
 
 describe('hung tools', () => {
   const MIN = 60_000;
-  const busy = (extra: Partial<ReturnType<typeof agent>> = {}) => agent('lead', { state: 'testing', tool: 'Bash', detail: 'bun test', toolSince: NOW - 12 * MIN, updatedAt: NOW, ...extra });
+  const busy = (extra: Partial<ReturnType<typeof agent>> = {}) => agent('lead', { state: 'testing', tool: 'Bash', openTool: 'Bash', detail: 'bun test', toolSince: NOW - 12 * MIN, updatedAt: NOW, ...extra });
 
   test('below the threshold nothing is flagged', () => {
     expect(collectNeeds(sources({ agents: [busy({ toolSince: NOW - 9 * MIN })] }))).toEqual([]);
@@ -230,12 +230,13 @@ describe('hung tools', () => {
       busy({ key: 'idle', state: 'idle' }),
       busy({ key: 'asking', state: 'asking' }),
       busy({ key: 'waits', waiting: { who: 'x', what: 'y', since: 1 } }),
-      busy({ key: 'asker', tool: 'AskUserQuestion' }),
-      busy({ key: 'spawner', tool: 'Task' }),
+      busy({ key: 'asker', openTool: 'AskUserQuestion' }),
+      busy({ key: 'spawner', openTool: 'Task' }),
       busy({ key: 'away', away: true }),
       busy({ key: 'closed', toolSince: null }),
       busy({ key: 'question' }),
-      busy({ key: 'toolless', tool: null }),
+      busy({ key: 'toolless', openTool: null }),
+      busy({ key: 'shown-other', tool: 'Agent', openTool: null, toolSince: null }),
     ];
     const needs = collectNeeds(sources({ agents, questions: [question('q', 'question', 5)] }));
     expect(kinds(needs)).toEqual(['question:question']);
@@ -257,6 +258,16 @@ describe('hung tools', () => {
   test('ranks after blocked and before stalled', () => {
     const agents = [agent('stalled', { stalledSince: 10 }), busy({ key: 'hung' }), agent('blocked', { state: 'blocked' })];
     expect(kinds(collectNeeds(sources({ agents })))).toEqual(['blocked:blocked', 'hung:hung', 'stalled:stalled']);
+  });
+});
+
+describe('needsDue', () => {
+  test('every topic but the clock is immediate; the clock waits its five seconds', () => {
+    expect(needsDue(new Set(['questions']), 1000, 1001)).toBe(true);
+    expect(needsDue(new Set(['tick', 'agents']), 1000, 1001)).toBe(true);
+    expect(needsDue(new Set(['tick']), 1000, 1000 + NEEDS_TICK_MS - 1)).toBe(false);
+    expect(needsDue(new Set(['tick']), 1000, 1000 + NEEDS_TICK_MS)).toBe(true);
+    expect(needsDue(new Set(['floors']), 1000, 99_999)).toBe(false);
   });
 });
 
@@ -448,6 +459,11 @@ describe('where snoozes are kept', () => {
     for (const connection of ['connecting', 'offline', 'nokey', 'denied'] as const) expect(shouldPruneSnoozes({ replay: false, connection })).toBe(false);
   });
 
+  test('a context snooze outlives its stale-sample drop while the agent exists and is not expired', () => {
+    const context = { 'context:lead': { until: null, sig: 'context:lead:1' }, 'context:gone': { until: NOW + 60_000, sig: 'context:gone:1' }, 'context:old': { until: NOW - 1, sig: 'context:old:1' } };
+    expect(Object.keys(pruneSnoozes(context, [], NOW, new Set(['lead', 'old'])))).toEqual(['context:lead']);
+  });
+
   test('a live snapshot with an empty queue drops every snooze', () => {
     expect(pruneSnoozes({ 'agent:a': { until: null, sig: 'question:x:y' } }, [], NOW)).toEqual({});
   });
@@ -552,7 +568,7 @@ describe('context almost full', () => {
 
   test('an agent also hung appears once, as hung', () => {
     const MIN = 60_000;
-    const needs = collectNeeds(sources({ agents: [full({ state: 'testing', tool: 'Bash', detail: '', toolSince: NOW - 12 * MIN })] }));
+    const needs = collectNeeds(sources({ agents: [full({ state: 'testing', tool: 'Bash', openTool: 'Bash', detail: '', toolSince: NOW - 12 * MIN })] }));
     expect(kinds(needs)).toEqual(['hung:lead']);
   });
 });

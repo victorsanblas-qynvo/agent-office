@@ -21,7 +21,7 @@ function emptyCounts(): DigestCounts {
 }
 
 // What the office did on one local day, per floor, with floors that did nothing left out. Every query is bounded by
-// the day; orders and lessons have no index on their time column, so those two scan their table.
+// the day; lessons have no index on their time column, so that one scans its table.
 export function digest(db: Database, day: string, now: number): OfficeDigest | 'bad-day' | 'future-day' {
   const range = dayRange(day);
   if (!range) return 'bad-day';
@@ -42,7 +42,10 @@ export function digest(db: Database, day: string, now: number): OfficeDigest | '
 
   for (const order of db
     .query<{ floor: string; slug: string; title: string }, [number, number]>(
-      "SELECT floor, slug, title FROM orders WHERE status = 'hecho' AND removed_at IS NULL AND updated_at >= ? AND updated_at < ? ORDER BY updated_at, id",
+      `SELECT o.floor, o.slug, o.title FROM alerts a
+         JOIN orders o ON (a.ref = 'order:' || o.slug AND a.floor = o.floor) OR (a.ref = 'plan:' || o.plan_slug AND o.status <> 'descartado')
+        WHERE a.level = 'fin' AND a.ts >= ? AND a.ts < ? AND o.status = 'hecho' AND o.removed_at IS NULL
+        GROUP BY o.id ORDER BY MIN(a.ts), o.id`,
     )
     .all(start, end)) {
     floorOf(order.floor).delivered.push({ slug: order.slug, title: order.title });
@@ -53,7 +56,7 @@ export function digest(db: Database, day: string, now: number): OfficeDigest | '
     (floor, n) => (floor.blocked = n),
   );
   each(
-    "SELECT floor, COUNT(*) AS n FROM check_runs WHERE ended_at >= ? AND ended_at < ? AND status IN ('failed', 'timeout') GROUP BY floor",
+    "SELECT floor, COUNT(*) AS n FROM check_runs WHERE ended_at >= ? AND ended_at < ? AND status = 'failed' GROUP BY floor",
     [start, end],
     (floor, n) => (floor.redRuns = n),
   );

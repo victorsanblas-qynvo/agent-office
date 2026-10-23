@@ -95,6 +95,13 @@ export function filterOrders(orders: readonly OrderView[], query: string, floorL
   });
 }
 
+export const AGE_REPAINT_MS = 60_000;
+
+// Whether the age badges are due: a minute went by since the last paint, or the stale threshold changed.
+export function agesDue(lastAt: number, lastStale: number, now: number, staleHours: number): boolean {
+  return staleHours !== lastStale || now - lastAt >= AGE_REPAINT_MS;
+}
+
 export type AgeBadge = { text: string; stale: boolean };
 
 const HOUR = 3_600_000;
