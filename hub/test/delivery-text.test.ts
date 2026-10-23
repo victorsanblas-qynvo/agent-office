@@ -49,6 +49,25 @@ describe('prDraft', () => {
     expect(body).not.toContain('x'.repeat(PR_MAX_SUMMARY + 1));
   });
 
+  test('a brief cut inside a fenced block gets the fence closed; a balanced one is left alone', () => {
+    const open = `${'a\n'.repeat(10)}\`\`\`ts\n${'x'.repeat(PR_MAX_SUMMARY)}`;
+    const cut = prDraft(input({ brief: open })).body;
+    expect(cut).toMatch(/x\n```…\n/);
+    const even = `\`\`\`\ncode\n\`\`\`\n${'y'.repeat(PR_MAX_SUMMARY)}`;
+    const kept = prDraft(input({ brief: even })).body;
+    expect(kept).toContain('y…\n');
+    expect(kept).not.toContain('```…');
+    const tilde = prDraft(input({ brief: `~~~\n${'z'.repeat(PR_MAX_SUMMARY)}` })).body;
+    expect(tilde).toContain('z\n```…');
+  });
+
+  test('stale checks add one notice line under the heading; the total of commits wins over the list', () => {
+    const { body } = prDraft(input({ staleChecksSha: 'abc1234', commitsTotal: 120, lang: 'en' }));
+    expect(body).toContain('## Checks\n\n> These checks are from an earlier commit (abc1234)\n\n| Check |');
+    expect(body).toContain('- …and 70 more');
+    expect(prDraft(input()).body).not.toContain('>');
+  });
+
   test('an empty brief falls back to the title; pipes in a check name are escaped', () => {
     const { body } = prDraft(input({ brief: '  ', checks: [{ name: 'a|b', status: 'passed', durationMs: 0 }] }));
     expect(body).toContain('## Resumen\n\nPantalla de login');

@@ -306,6 +306,7 @@ export type HubTextParams = {
   'hub.pr.noCommits': undefined;
   'hub.pr.checks': undefined;
   'hub.pr.noChecks': undefined;
+  'hub.pr.staleChecks': { sha: string };
   'hub.pr.colCheck': undefined;
   'hub.pr.colResult': undefined;
   'hub.pr.colDuration': undefined;

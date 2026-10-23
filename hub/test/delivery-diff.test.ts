@@ -316,12 +316,54 @@ describe('pull request draft of a delivery order', () => {
     const es = await call(`/api/board/orders/${id}/pr-draft`);
     expect(es.status).toBe(200);
     expect(es.body.title).toBe('Pantalla de login');
-    expect(es.body.body).toContain('- fix: add b\n- feat: add a');
+    expect(es.body.body).toContain('- feat: add a\n- fix: add b');
     expect(es.body.body).toContain('## Resumen');
     expect(es.body.body).toContain('2 archivos, +3 −0');
     const en = await call(`/api/board/orders/${id}/pr-draft?lang=en`);
     expect(en.body.body).toContain('## Summary');
     expect(en.body.body).toContain('2 files, +3 −0');
+  });
+
+  test('checks of an older commit carry a notice; checks of the head do not', async () => {
+    rig = deliveryRig();
+    const call = api(rig);
+    const { id, path } = await orderWithFolder(rig);
+    write(path, 'a.txt', 'a\n');
+    const head = commitAll(path, 'feat: add a');
+    const insertRun = (sha: string): void => {
+      const runId = Number(
+        rig!.h.db
+          .query("INSERT INTO check_runs (order_id, floor, slug, sha, trigger, status, started_at) VALUES (?, 'mobile', 'login', ?, 'listo', 'passed', 1)")
+          .run(id, sha).lastInsertRowid,
+      );
+      rig!.h.db.query("INSERT INTO checks (run_id, floor, slug, name, command, status, duration_ms) VALUES (?, 'mobile', 'login', 'analyze', 'x', 'passed', 1500)").run(runId);
+    };
+    insertRun('1234567890abcdef1234567890abcdef12345678');
+    const stale = await call(`/api/board/orders/${id}/pr-draft`);
+    expect(stale.body.body).toContain('## Comprobaciones\n\n> Estas comprobaciones son de un commit anterior (1234567)\n\n| Comprobación');
+    expect(stale.body.body).toContain('| analyze | verde | 1.5 s |');
+    expect((await call(`/api/board/orders/${id}/pr-draft?lang=en`)).body.body).toContain('> These checks are from an earlier commit (1234567)');
+    insertRun(`${head}-dirty`);
+    expect((await call(`/api/board/orders/${id}/pr-draft`)).body.body).toContain(`(${head.slice(0, 7)}-dirty)`);
+    insertRun(head);
+    expect((await call(`/api/board/orders/${id}/pr-draft`)).body.body).not.toContain('commit anterior');
+  });
+
+  test('past the commit cap the more-count comes from rev-list, not from the log', async () => {
+    const subjects = Array.from({ length: 500 }, (_, i) => `commit ${i}`).join('\n');
+    const { calls, git: recorded } = recorder((args) =>
+      args[0] === 'log' && args.includes('--format=%s')
+        ? { code: 0, stdout: subjects, stderr: '' }
+        : args[0] === 'rev-list' && args.includes('--no-merges')
+          ? { code: 0, stdout: '812\n', stderr: '' }
+          : null,
+    );
+    rig = deliveryRig({ office: { git: recorded } });
+    const call = api(rig);
+    const { id } = await orderWithFolder(rig);
+    const draft = await call(`/api/board/orders/${id}/pr-draft`);
+    expect(draft.body.body).toContain('- …y 762 más');
+    expect(calls.some((entry) => entry.args[0] === 'rev-list' && entry.args.includes('--count') && entry.args.includes('--no-merges'))).toBe(true);
   });
 
   test('bad id, unknown order and an order without a branch', async () => {

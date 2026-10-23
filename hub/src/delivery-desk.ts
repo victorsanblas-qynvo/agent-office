@@ -74,13 +74,24 @@ export class DeliveryDesk {
     if (!row?.branch) return failure(409, { key: 'hub.api.orderNoBranch' });
     const log = await run(this.opts.git, cwd, () => gitOps.logSubjects(base, head, MAX_PR_COMMITS), this.timeout());
     if (log.code !== 0) return failure(500, { key: 'hub.api.logFailed' });
-    const checks = this.opts.latestChecks(orderId)?.checks ?? [];
+    const subjects = log.stdout.split('\n').filter((subject) => subject.trim() !== '');
+    let commitsTotal = subjects.length;
+    if (subjects.length >= MAX_PR_COMMITS) {
+      const count = await run(this.opts.git, cwd, () => gitOps.revCount(base, head), this.timeout());
+      const n = count.code === 0 ? Number.parseInt(count.stdout.trim(), 10) : Number.NaN;
+      if (Number.isInteger(n) && n > commitsTotal) commitsTotal = n;
+    }
+    const latest = this.opts.latestChecks(orderId);
+    const checks = latest?.checks ?? [];
+    const staleChecksSha = latest && checks.length > 0 && latest.sha !== head ? `${latest.sha.slice(0, 7)}${latest.sha.endsWith('-dirty') ? '-dirty' : ''}` : null;
     const draft = prDraft({
       title: row.title,
       brief: row.description,
       branch: row.branch,
       base: row.base_ref ?? base.slice(0, 7),
-      commits: log.stdout.split('\n'),
+      commits: subjects,
+      commitsTotal,
+      staleChecksSha,
       checks: checks.map((check) => ({ name: check.name, status: check.status, durationMs: check.durationMs })),
       totals: totalsOf(entries),
       lang,

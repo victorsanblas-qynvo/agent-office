@@ -131,6 +131,25 @@ describe('git argv constructors', () => {
     expect(() => gitOps.diffFile(base, head, 'a', '/etc/passwd')).toThrow(RepoOpError);
   });
 
+  test('the commit log of an order is oldest first, without merges, signatures or colour', () => {
+    const base = 'a'.repeat(40);
+    const head = 'b'.repeat(40);
+    expect(gitOps.logSubjects(base, head, 9999)).toEqual([
+      'log',
+      '--no-color',
+      '--no-show-signature',
+      '--no-merges',
+      '--reverse',
+      '--max-count=500',
+      '--format=%s',
+      `${base}..${head}`,
+      '--',
+    ]);
+    expect(gitOps.revCount(base, head)).toEqual(['rev-list', '--count', '--no-merges', `${base}..${head}`, '--']);
+    expect(() => gitOps.revCount('develop', head)).toThrow(RepoOpError);
+    expect(() => gitOps.revCount(base, '--all')).toThrow(RepoOpError);
+  });
+
   test('parseNumstat reads counts, renames and binaries of a -z numstat', () => {
     const stdout = ['3\t1\tlib/a.dart', '-\t-\tlogo.png', '0\t0\t', 'old name.txt', 'new\tname.txt', '12\t0\tb.txt', ''].join('\0');
     expect(parseNumstat(stdout)).toEqual([

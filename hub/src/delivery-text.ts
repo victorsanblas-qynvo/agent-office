@@ -104,6 +104,8 @@ export type PrDraftInput = {
   branch: string;
   base: string;
   commits: string[];
+  commitsTotal?: number;
+  staleChecksSha?: string | null;
   checks: { name: string; status: CheckStatus; durationMs: number | null }[];
   totals: { files: number; adds: number; dels: number };
   lang: TextLang;
@@ -111,7 +113,10 @@ export type PrDraftInput = {
 
 function trimBrief(text: string): string {
   const clean = text.trim();
-  return clean.length <= PR_MAX_SUMMARY ? clean : `${clean.slice(0, PR_MAX_SUMMARY).trimEnd()}…`;
+  if (clean.length <= PR_MAX_SUMMARY) return clean;
+  const cut = clean.slice(0, PR_MAX_SUMMARY).trimEnd();
+  const fences = cut.split('\n').filter((line) => /^ {0,3}(```|~~~)/.test(line)).length;
+  return `${cut}${fences % 2 === 1 ? '\n```' : ''}…`;
 }
 
 function cell(value: string): string {
@@ -127,11 +132,13 @@ export function prDraft(input: PrDraftInput): { title: string; body: string } {
   const say = (value: HubText): string => renderHubText(value, input.lang);
   const subjects = input.commits.map((subject) => subject.trim()).filter((subject) => subject !== '');
   const shown = subjects.slice(0, PR_MAX_COMMITS).map((subject) => `- ${subject}`);
-  if (subjects.length > PR_MAX_COMMITS) shown.push(`- ${say({ key: 'hub.pr.commitsMore', params: { n: subjects.length - PR_MAX_COMMITS } })}`);
+  const total = Math.max(subjects.length, input.commitsTotal ?? 0);
+  if (total > PR_MAX_COMMITS) shown.push(`- ${say({ key: 'hub.pr.commitsMore', params: { n: total - PR_MAX_COMMITS } })}`);
   const checks =
     input.checks.length === 0
       ? [say({ key: 'hub.pr.noChecks' })]
       : [
+          ...(input.staleChecksSha ? [`> ${say({ key: 'hub.pr.staleChecks', params: { sha: input.staleChecksSha } })}`, ''] : []),
           `| ${say({ key: 'hub.pr.colCheck' })} | ${say({ key: 'hub.pr.colResult' })} | ${say({ key: 'hub.pr.colDuration' })} |`,
           '| --- | --- | --- |',
           ...input.checks.map((check) => `| ${cell(check.name)} | ${say({ key: `hub.pr.status.${check.status}` })} | ${seconds(check.durationMs)} |`),

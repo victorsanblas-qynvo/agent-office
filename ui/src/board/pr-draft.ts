@@ -18,18 +18,20 @@ async function copy(source: HTMLTextAreaElement): Promise<boolean> {
   }
 }
 
-function field(label: string, value: string, rows: number, store: Store): HTMLElement {
+function field(id: string, label: string, value: string, rows: number, store: Store): HTMLElement {
   const area = el('textarea', 'pr-draft-text');
   area.readOnly = true;
   area.rows = rows;
   area.value = value;
   area.spellcheck = false;
-  area.setAttribute('aria-label', label);
+  area.setAttribute('aria-labelledby', id);
   const copyButton = button(t('board.pr.copy'));
   copyButton.addEventListener('click', () => {
     void copy(area).then((done) => store.toast(t(done ? 'board.pr.copied' : 'board.pr.copyFailed'), done ? 'ok' : 'error'));
   });
-  return el('label', 'pr-draft-field', el('span', 'pr-draft-label', label, copyButton), area);
+  const caption = el('span', '', label);
+  caption.id = id;
+  return el('div', 'pr-draft-field', el('div', 'pr-draft-label', caption, copyButton), area);
 }
 
 // The title and the description of the pull request of an order, read only and ready to copy.
@@ -55,7 +57,7 @@ export function openPrDraft(host: HTMLElement, store: Store, api: OfficeApi, ord
     if (!backdrop.isConnected) return;
     content.replaceChildren(
       ...(result.ok
-        ? [field(t('board.pr.title'), result.data.title, 1, store), field(t('board.pr.body'), result.data.body, 16, store)]
+        ? [field('pr-draft-title', t('board.pr.title'), result.data.title, 1, store), field('pr-draft-body', t('board.pr.body'), result.data.body, 16, store)]
         : [el('p', 'new-order-status error', result.message)]),
     );
   });
