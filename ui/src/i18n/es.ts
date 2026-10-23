@@ -707,6 +707,7 @@ export const es = {
   'board.diff.none': 'La rama no cambia nada respecto a su base.',
   'board.diff.binary': 'binario',
   'board.diff.reload': 'Recargar',
+  'board.diff.stale': 'Hay commits nuevos · Recargar',
   'board.diff.pick': 'Elige un fichero para ver su parche.',
   'board.diff.patchTruncated': 'El parche es demasiado largo y se muestra cortado.',
   'board.diff.patchBinary': 'Fichero binario: no hay parche que mostrar.',

@@ -707,6 +707,7 @@ export const en: Messages = {
   'board.diff.none': 'The branch changes nothing against its base.',
   'board.diff.binary': 'binary',
   'board.diff.reload': 'Reload',
+  'board.diff.stale': 'There are new commits · Reload',
   'board.diff.pick': 'Pick a file to see its patch.',
   'board.diff.patchTruncated': 'The patch is too long and is shown cut.',
   'board.diff.patchBinary': 'Binary file: there is no patch to show.',
