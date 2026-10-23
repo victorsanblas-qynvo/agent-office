@@ -3340,6 +3340,35 @@ button.diff-file.active {
   --c: var(--danger);
 }
 
+.needs-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.needs-row .needs-item {
+  flex: 1;
+  min-width: 0;
+}
+
+.needs-snooze,
+.needs-wake,
+.needs-snoozed-toggle {
+  flex: none;
+  font-size: 12px;
+}
+
+.needs-snoozed-toggle {
+  border-color: transparent;
+  background: transparent;
+  text-align: left;
+}
+
+.needs-asleep .needs-label {
+  flex: 1;
+  opacity: 0.7;
+}
+
 .needs-age {
   flex: none;
   font-size: 12px;

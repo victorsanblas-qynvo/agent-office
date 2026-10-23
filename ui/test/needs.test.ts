@@ -1,7 +1,8 @@
 import { describe, expect, test } from 'bun:test';
 import { applyLang } from '../src/i18n/index';
 import { clockMinutes } from '../src/time';
-import { collectNeeds, NEEDS_TOPICS, NeedCursor, needLabel, needToast, type Need, type NeedSources } from '../src/needs';
+import { activeNeeds, canSnooze, collectNeeds, NEEDS_TOPICS, needSignature, pruneSnoozes, snoozedNeeds, snoozeNeed, wakeNeed, NeedCursor, needLabel, needToast, type Need, type NeedSources } from '../src/needs';
+import type { Snoozes } from '../src/prefs';
 import type { Collision } from '../src/chat/claims';
 import type { UsageForecast, UsageView, UsageWindow } from '../src/types';
 import { agent, doc, order, question } from './fixtures';
@@ -292,5 +293,64 @@ describe('file claim collisions', () => {
   test('ranks after stalled and before plan', () => {
     const needs = collectNeeds(sources({ agents: [agent('stalled', { stalledSince: 10 })], documents: [doc('plans/a.md')], claims: [clash('a.dart', 1)] }));
     expect(needs.map((need) => need.kind)).toEqual(['stalled', 'claim', 'plan']);
+  });
+});
+
+describe('snoozing', () => {
+  const plan = (name: string, id = 'plan:a'): Need => ({ id, kind: 'plan', since: 1, name, agentKey: null, floor: null, docPath: id, orderSlug: null });
+  const permit: Need = { id: 'agent:p', kind: 'permission', since: 1, name: 'p', agentKey: 'p', floor: null, docPath: null, orderSlug: null };
+  const ids = (needs: Need[]): string[] => needs.map((need) => need.id);
+
+  test('a timed snooze hides the entry until `until` and wakes it after', () => {
+    const need = plan('Plan A');
+    const snoozes = snoozeNeed({}, need, NOW + 15 * 60_000);
+    expect(ids(activeNeeds([need], snoozes, NOW))).toEqual([]);
+    expect(ids(snoozedNeeds([need], snoozes, NOW))).toEqual(['plan:a']);
+    expect(ids(activeNeeds([need], snoozes, NOW + 15 * 60_000 - 1))).toEqual([]);
+    expect(ids(activeNeeds([need], snoozes, NOW + 15 * 60_000))).toEqual(['plan:a']);
+  });
+
+  test('"until it changes" wakes when the label changes', () => {
+    const snoozes = snoozeNeed({}, plan('Plan A'), null);
+    expect(ids(activeNeeds([plan('Plan A')], snoozes, NOW + 99 * HOUR))).toEqual([]);
+    expect(ids(activeNeeds([plan('Plan A v2')], snoozes, NOW))).toEqual(['plan:a']);
+    expect(needSignature(plan('Plan A'))).not.toBe(needSignature(plan('Plan A v2')));
+  });
+
+  test('a permission is never hidden, even if a snooze is stored for it', () => {
+    const stored: Snoozes = { [permit.id]: { until: null, sig: needSignature(permit) } };
+    expect(canSnooze(permit)).toBe(false);
+    expect(ids(activeNeeds([permit], stored, NOW))).toEqual(['agent:p']);
+    expect(snoozeNeed({}, permit, null)).toEqual({});
+  });
+
+  test('pruneSnoozes drops expired, changed and vanished ids', () => {
+    const keep = plan('Keep', 'plan:keep');
+    const expired = plan('Old', 'plan:old');
+    const changed = plan('New', 'plan:changed');
+    const snoozes: Snoozes = {
+      'plan:keep': { until: NOW + HOUR, sig: needSignature(keep) },
+      'plan:old': { until: NOW - 1, sig: needSignature(expired) },
+      'plan:changed': { until: null, sig: needSignature(plan('Before', 'plan:changed')) },
+      'plan:gone': { until: null, sig: 'plan:x' },
+    };
+    expect(Object.keys(pruneSnoozes(snoozes, [keep, expired, changed], NOW))).toEqual(['plan:keep']);
+  });
+
+  test('wakeNeed removes one entry', () => {
+    const snoozes = snoozeNeed(snoozeNeed({}, plan('A', 'plan:a'), null), plan('B', 'plan:b'), null);
+    expect(Object.keys(wakeNeed(snoozes, 'plan:a'))).toEqual(['plan:b']);
+  });
+
+  test('the cursor and the count walk only the active needs', () => {
+    const a = plan('A', 'plan:a');
+    const b = plan('B', 'plan:b');
+    const c = plan('C', 'plan:c');
+    const active = activeNeeds([a, b, c], snoozeNeed({}, b, null), NOW);
+    expect(active.length).toBe(2);
+    const cursor = new NeedCursor();
+    expect(cursor.step(active, 1)?.need.id).toBe('plan:a');
+    expect(cursor.step(active, 1)?.need.id).toBe('plan:c');
+    expect(cursor.step(active, 1)).toMatchObject({ position: 1, total: 2 });
   });
 });
