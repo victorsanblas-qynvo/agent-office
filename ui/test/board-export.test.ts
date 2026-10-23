@@ -44,7 +44,32 @@ describe('ghCommand', () => {
     expect(out).toEndWith("<<'AGENT_OFFICE_PR_3'\nx\nAGENT_OFFICE_PR\nAGENT_OFFICE_PR_2\nAGENT_OFFICE_PR_3");
   });
 
-  test('quotes unsafe refs and omits unknown ones', () => {
-    expect(ghCommand(draft, null, 'a b')).toContain("gh pr create --head 'a b' --title");
+  test('quotes unusual refs and omits unknown ones', () => {
+    expect(ghCommand(draft, null, 'feat/a+b')).toContain("gh pr create --head 'feat/a+b' --title");
+  });
+
+  test('a carriage return in the body cannot close the heredoc early', () => {
+    const out = ghCommand({ title: 't', body: 'fix\rAGENT_OFFICE_PR\rtouch x\r\nok\r' }, 'main', 'b');
+    const lines = out.replace(/\r\n?/g, '\n').split('\n');
+    const delimiter = /<<'([^']+)'/.exec(out)?.[1];
+    expect(delimiter).toBe('AGENT_OFFICE_PR_2');
+    expect(out).not.toContain('\r');
+    expect(lines.findIndex((line) => line === delimiter)).toBe(lines.length - 1);
+    expect(lines).toContain('touch x');
+  });
+
+  test('control characters leave the body and the title stays on one line', () => {
+    const out = ghCommand({ title: 'a\rb\nc\u001b[2Jd', body: 'x\u0000y\u001b]0;z\u0007\tw\u007f\u009b' }, 'main', 'b');
+    expect(out).toContain("--title 'a b c [2Jd' --body-file -");
+    expect(out).toEndWith("\nxy]0;z\tw\nAGENT_OFFICE_PR");
+    expect(out.split('\n')[0]).toStartWith('gh pr create ');
+    expect(out.split('\n')).toHaveLength(3);
+  });
+
+  test('omits refs that could pass for an option or split into words', () => {
+    for (const bad of ['-o', '--upload-pack=x', 'a b', 'a\tb', 'a\nb', 'a\rb', 'a\u0000b']) {
+      const out = ghCommand(draft, bad, bad);
+      expect(out, JSON.stringify(bad)).toStartWith("gh pr create --title 'Fix it'\\''s' --body-file - <<'AGENT_OFFICE_PR'\n");
+    }
   });
 });

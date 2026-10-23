@@ -4,6 +4,7 @@ import { t, type MessageKey, type Params } from '../i18n';
 import { readJson, writeJson } from '../prefs';
 import type { Store } from '../store';
 import type { FinishedView } from '../types';
+import { safeExternalUrl } from './markdown-safe';
 
 export type FinishedMode = 'popup' | 'desktop' | 'both';
 
@@ -91,9 +92,10 @@ export function mountFinished(host: HTMLElement, store: Store, api: OfficeApi | 
     const heading = finishedHeading(view);
     const { total } = queue.position();
     const checks = view.checks ? el('span', 'checks-badge checks-passed', el('span', 'checks-mark', '✓'), el('span', '', t('finished.checks', { passed: view.checks.passed, total: view.checks.total }))) : null;
-    const pr = view.prUrl ? el('a', 'finished-pr', t('finished.pr')) : null;
-    if (pr && view.prUrl) {
-      pr.href = view.prUrl;
+    const prUrl = view.prUrl ? safeExternalUrl(view.prUrl) : null;
+    const pr = prUrl ? el('a', 'finished-pr', t('finished.pr')) : null;
+    if (pr && prUrl) {
+      pr.href = prUrl;
       pr.target = '_blank';
       pr.rel = 'noopener noreferrer';
     }
