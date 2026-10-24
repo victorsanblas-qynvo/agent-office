@@ -57,6 +57,17 @@ describe('transcript tail', () => {
     expect(JSON.stringify(body)).not.toContain('linea dos');
   });
 
+  test('a long text with no whitespace is redacted whole, so no fragment of a secret near the clip shows', async () => {
+    const secret = ['gh', 'p_', 'Ab3dE5gH7jK9mN1pQ3sT5vX7zB9dF1hJ3kL5'].join('');
+    const text = '!'.repeat(480) + secret + '!'.repeat(5000 - 480 - secret.length);
+    const call = rig([assistant([{ type: 'text', text }])]);
+    const { body } = await call('/api/sessions/s-1/tail');
+    const shown = body.entries[0].text as string;
+    expect(shown.length).toBeLessThanOrEqual(500);
+    expect(shown).not.toContain(secret.slice(0, 8));
+    expect(shown).not.toContain(secret.slice(-8));
+  });
+
   test('texts are cut: 500 chars for text, 200 for a tool input and for a result line', async () => {
     const call = rig([
       assistant([{ type: 'text', text: 'x'.repeat(900) }, { type: 'tool_use', name: 'Grep', input: { pattern: 'p'.repeat(400) } }]),

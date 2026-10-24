@@ -219,6 +219,13 @@ export class ChecksDesk {
     return true;
   }
 
+  async cancelAndWait(orderId: number): Promise<void> {
+    const running = this.active.get(orderId);
+    if (!running) return;
+    running.controller.abort();
+    await running.done.catch(() => {});
+  }
+
   // The dev announces the files are theirs no more (listo): a run, a little later, once more files may be coming.
   scheduleListo(order: OrderRow): void {
     const pending = this.listoTimers.get(order.id);

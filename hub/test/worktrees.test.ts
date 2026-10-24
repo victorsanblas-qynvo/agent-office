@@ -872,6 +872,55 @@ describe('a folder whose checks are running', () => {
     expect(existsSync(d.path)).toBe(false);
   });
 
+  test('a forced removal waits for the cancelled run to end, or for the timeout, before removing the folder', async () => {
+    for (const stuck of [false, true]) {
+      let finish = () => {};
+      const gate = new Promise<void>((resolve) => (finish = resolve));
+      const shell: WorktreeDeskOpts['shell'] = (_command, opts) =>
+        new Promise<ShellResult>((resolve) => {
+          const end = () => resolve({ code: null, timedOut: false, cancelled: true, tail: '', durationMs: 1 });
+          opts.signal?.addEventListener('abort', () => void gate.then(end));
+        });
+      const d = deskRig({ checks: shell });
+      cleanups.push(d.cleanup);
+      const desk = new WorktreeDesk({
+        store: d.store,
+        git: runGit,
+        now: () => d.clock.now,
+        bus: new OfficeBus(() => {}),
+        config: () => d.config,
+        hubId: 'hub-test',
+        inside: () => false,
+        changed: () => {},
+        sizeOf: async () => 1,
+        exclusive: (id, task) => d.checks.exclusive(id, task),
+        running: (id) => d.checks.isRunning(id),
+        cancelChecks: (id) => d.checks.cancelAndWait(id),
+        cancelWaitMs: 50,
+      });
+      const started = await d.checks.start(d.order.id, 'panel');
+      if (!started.ok) throw new Error(started.reason);
+      let removed = false;
+      const removing = desk.remove(d.order.id, { deleteBranch: false, force: true }).then((r) => {
+        removed = true;
+        return r;
+      });
+      if (stuck) {
+        expect(await removing).toBe('ok');
+        expect(existsSync(d.path)).toBe(false);
+        finish();
+      } else {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        expect(removed).toBe(false);
+        expect(existsSync(d.path)).toBe(true);
+        finish();
+        expect(await removing).toBe('ok');
+        expect(existsSync(d.path)).toBe(false);
+      }
+      await started.done;
+    }
+  });
+
   test('a forced removal of the floor waits for the start still committing, then cancels the run and removes the folder', async () => {
     const held = heldChecks();
     let commitHeld: (() => void) | null = null;
