@@ -6,8 +6,16 @@ const DONE_PREFIX = /^\s*HECHO\s*:/i;
 
 export type DeliveryContext = { agents: ReadonlyMap<string, AgentView>; orders: readonly OrderView[] };
 
+export function isBlockedText(text: string): boolean {
+  return BLOCK_PREFIX.test(text);
+}
+
+export function isDoneText(text: string): boolean {
+  return DONE_PREFIX.test(text);
+}
+
 export function isBlockedMessage(message: MessageView): boolean {
-  return message.text !== null && BLOCK_PREFIX.test(message.text);
+  return message.text !== null && isBlockedText(message.text);
 }
 
 // A floor that works with orders says its ends through the alert of the order, which only an accepted HECHO makes.
@@ -18,7 +26,7 @@ export function isTracked(store: DeliveryContext, agentKey: string): boolean {
 
 // The floor of a HECHO of a lead whose floor does not track orders, or null for any other message.
 export function leadDeliveryFloor(store: DeliveryContext, message: MessageView): string | null {
-  if (message.text === null || !DONE_PREFIX.test(message.text)) return null;
+  if (message.text === null || !isDoneText(message.text)) return null;
   const lead = store.agents.get(message.fromKey);
   if (lead === undefined || lead.roleKind !== 'lead' || isTracked(store, message.fromKey)) return null;
   return lead.floor;

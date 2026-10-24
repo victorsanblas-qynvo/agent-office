@@ -10,6 +10,8 @@ export type NoticeBell = {
   root: HTMLElement;
   // Starts showing this inbox; the bell stays hidden until then (a replay has none).
   bind(log: NoticeLog, open: (target: NoticeTarget) => void): void;
+  // Opens the menu if there is an inbox and it is not open.
+  open(): void;
   // Closes the menu if it is open and says whether it was.
   close(): boolean;
 };
@@ -155,6 +157,9 @@ export function mountNoticeBell(store: Store): NoticeBell {
   return {
     root,
     close,
+    open() {
+      if (!isOpen()) open();
+    },
     bind(next, open) {
       log = next;
       openTarget = open;
