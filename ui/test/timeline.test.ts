@@ -3,7 +3,7 @@ import { applyLang } from '../src/i18n';
 import { readTableView } from '../src/table/history';
 import { timelineAgentName } from '../src/table/timeline';
 import type { Store } from '../src/store';
-import { hourTicks, layoutSegments, readTimelineHours, segmentFilters } from '../src/table/timeline-model';
+import { hourTicks, layoutSegments, readTimelineHours, segmentFilters, stateTotals, timelineCsv, timelineFilename, utilisation } from '../src/table/timeline-model';
 
 afterEach(() => applyLang('es'));
 
@@ -88,5 +88,45 @@ describe('segmentFilters', () => {
 
   test('a segment inside one day gives the same day twice', () => {
     expect(segmentFilters('a', { from: FROM, to: TO })).toMatchObject({ from: '2026-10-24', to: '2026-10-24' });
+  });
+});
+
+describe('stateTotals and utilisation', () => {
+  const agents = [
+    { agent: 'a', floor: 'f1', segments: [{ from: FROM - 30 * MIN, to: FROM + 20 * MIN, state: 'working' }, { from: FROM + 20 * MIN, to: TO, state: 'idle' }] },
+    { agent: 'b', floor: 'f1', segments: [{ from: FROM, to: FROM + 10 * MIN, state: 'working' }, { from: FROM + 10 * MIN, to: FROM + 20 * MIN, state: 'blocked' }] },
+  ];
+
+  test('sums the clipped time per state across agents, longest first', () => {
+    expect(stateTotals(agents, FROM, TO)).toEqual([
+      { state: 'idle', ms: 40 * MIN },
+      { state: 'working', ms: 30 * MIN },
+      { state: 'blocked', ms: 10 * MIN },
+    ]);
+    expect(stateTotals([], FROM, TO)).toEqual([]);
+  });
+
+  test('counts only working-like states in the share of the window', () => {
+    const [a, b] = agents;
+    expect(utilisation(a!.segments, FROM, TO)).toEqual({ percent: 33, byState: [{ state: 'idle', ms: 40 * MIN }, { state: 'working', ms: 20 * MIN }] });
+    expect(utilisation(b!.segments, FROM, TO).percent).toBe(17);
+    expect(utilisation(a!.segments, TO, TO).percent).toBe(0);
+  });
+});
+
+describe('timelineCsv', () => {
+  test('writes a BOM, a header and one defused row per segment', () => {
+    applyLang('es');
+    const csv = timelineCsv([{ agent: 'k', floor: 'f1', segments: [{ from: FROM, to: FROM + 90_000, state: 'working' }] }], () => '=Ana, "x"');
+    const lines = csv.split('\r\n');
+    expect(lines[0]).toBe('\ufeffagent,floor,state,from,to,seconds');
+    expect(lines[1]).toMatch(/^"'=Ana, ""x""",f1,working,2026-10-24T10:00:00\.000[+-]\d\d:\d\d,2026-10-24T10:01:30\.000[+-]\d\d:\d\d,90$/);
+  });
+
+  test('names the file in the language', () => {
+    applyLang('es');
+    expect(timelineFilename(new Date(2026, 9, 24, 9, 5))).toBe('linea-de-tiempo-20261024-0905.csv');
+    applyLang('en');
+    expect(timelineFilename(new Date(2026, 9, 24, 9, 5))).toBe('timeline-20261024-0905.csv');
   });
 });

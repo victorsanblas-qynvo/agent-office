@@ -49,9 +49,16 @@ function cell(value: string): string {
 }
 
 // Pure: RFC 4180 (UTF-8 BOM, comma, CRLF, a header row) with the cells that start like a formula defused by a single quote.
-export function historyToCsv(rows: readonly HistoryRow[]): string {
-  const lines = [HISTORY_COLUMNS.join(','), ...rows.map((row) => HISTORY_COLUMNS.map((column) => cell(row[column])).join(','))];
+export function toCsv(header: readonly string[], rows: readonly (readonly string[])[]): string {
+  const lines = [header.join(','), ...rows.map((row) => row.map(cell).join(','))];
   return `\ufeff${lines.map((line) => `${line}\r\n`).join('')}`;
+}
+
+export function historyToCsv(rows: readonly HistoryRow[]): string {
+  return toCsv(
+    HISTORY_COLUMNS,
+    rows.map((row) => HISTORY_COLUMNS.map((column) => row[column])),
+  );
 }
 
 // Pure: the rows as pretty JSON with the keys always in the order of the columns.

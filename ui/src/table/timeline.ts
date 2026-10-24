@@ -1,12 +1,18 @@
 import type { OfficeApi } from '../api';
+import { saveFile } from '../download';
 import { el } from '../dom';
 import { t } from '../i18n';
-import { agentName, floorLabel } from '../labels';
+import { agentName, floorLabel, STATE_COLORS, stateLabel } from '../labels';
 import type { Store } from '../store';
-import type { AgentTimeline } from '../types';
+import { duration } from '../time';
+import type { AgentState, AgentTimeline } from '../types';
 import { readJson, writeJson } from '../prefs';
 import type { HistoryFilters } from './history';
-import { hourTicks, layoutSegments, PX_PER_HOUR, readTimelineHours, segmentColor, segmentFilters, TIMELINE_HOURS } from './timeline-model';
+import { hourTicks, layoutSegments, PX_PER_HOUR, readTimelineHours, segmentColor, segmentFilters, stateTotals, TIMELINE_HOURS, timelineCsv, timelineFilename, utilisation } from './timeline-model';
+
+function stateName(state: string): string {
+  return state in STATE_COLORS ? stateLabel(state as AgentState) : state;
+}
 
 // Pure over the store: the agent's name when the office knows it, else the start of its key.
 export function timelineAgentName(store: Pick<Store, 'agents'>, key: string): string {
@@ -25,15 +31,26 @@ export function mountTimeline(store: Store, api: OfficeApi, openHistory: (filter
 
   const picks = TIMELINE_HOURS.map((value) => ({ value, button: el('button', 'table-switch-option') }));
   for (const pick of picks) pick.button.type = 'button';
+  const exportCsv = el('button', 'history-export', 'CSV');
+  exportCsv.type = 'button';
   const selector = el('div', 'table-switch timeline-hours', ...picks.map((pick) => pick.button));
   selector.setAttribute('role', 'group');
   const body = el('div', 'timeline-body');
-  const root = el('section', 'timeline', el('header', 'timeline-head', selector), body);
+  const root = el('section', 'timeline', el('header', 'timeline-head', selector, exportCsv), body);
 
   const floorName = (slug: string): string => {
     const known = store.floorBySlug(slug);
     return known ? floorLabel(known) : slug;
   };
+
+  function paintLegend(from: number): HTMLElement {
+    const items = stateTotals(agents ?? [], from, until).map((total) => {
+      const swatch = el('span', 'timeline-swatch');
+      swatch.style.background = segmentColor(total.state);
+      return el('li', 'timeline-legend-item', swatch, `${stateName(total.state)} · ${duration(total.ms)}`);
+    });
+    return el('ul', 'timeline-legend', ...items);
+  }
 
   function paintStrip(): HTMLElement {
     const from = until - hours * 3_600_000;
@@ -66,7 +83,10 @@ export function mountTimeline(store: Store, api: OfficeApi, openHistory: (filter
         bar.title = placed.title;
         lane.append(bar);
       }
-      rows.push(el('div', 'timeline-row', el('div', 'timeline-name', timelineAgentName(store, agent.agent)), lane));
+      const use = utilisation(agent.segments, from, until);
+      const name = el('div', 'timeline-name', timelineAgentName(store, agent.agent), ' ', el('span', 'muted', t('timeline.active', { percent: use.percent })));
+      name.title = use.byState.map((total) => `${stateName(total.state)} · ${duration(total.ms)}`).join('\n');
+      rows.push(el('div', 'timeline-row', name, lane));
     }
     return el('div', 'timeline-strip', ...rows);
   }
@@ -80,7 +100,9 @@ export function mountTimeline(store: Store, api: OfficeApi, openHistory: (filter
     }
     if (agents === null) body.replaceChildren(el('p', 'muted', failure ?? t('timeline.loading')));
     else if (agents.length === 0) body.replaceChildren(el('p', 'muted', t('timeline.empty')));
-    else body.replaceChildren(paintStrip());
+    else body.replaceChildren(paintLegend(until - hours * 3_600_000), paintStrip());
+    exportCsv.disabled = !agents?.length;
+    exportCsv.title = t('timeline.export.hint');
   }
 
   async function load(): Promise<void> {
@@ -105,6 +127,9 @@ export function mountTimeline(store: Store, api: OfficeApi, openHistory: (filter
       void load();
     }),
   );
+  exportCsv.addEventListener('click', () => {
+    if (agents?.length) saveFile(timelineFilename(new Date()), timelineCsv(agents, (key) => timelineAgentName(store, key)), 'text/csv');
+  });
   store.watch(['lang', 'floors'], render);
   render();
   return { root, activate: () => void load() };

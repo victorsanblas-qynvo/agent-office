@@ -4533,6 +4533,31 @@ button.diff-file.active {
 
 .timeline-head {
   margin: 0 0 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.timeline-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+  font-size: 0.85em;
+}
+
+.timeline-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.timeline-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
 }
 
 .timeline-body {
