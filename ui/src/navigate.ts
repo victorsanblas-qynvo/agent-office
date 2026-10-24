@@ -55,6 +55,7 @@ const SECTION_OF: Record<NeedKind, SectionId | null> = {
   claim: null,
   plan: null,
   checks: null,
+  staleOrder: null,
   limit: null,
   budget: null,
 };
