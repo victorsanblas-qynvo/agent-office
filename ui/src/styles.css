@@ -4531,3 +4531,30 @@ button.diff-file.active {
   padding-left: 18px;
   font-size: 12px;
 }
+
+.whats-new {
+  width: min(560px, 100%);
+}
+
+.whats-new-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow: auto;
+}
+
+.whats-new-body:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.whats-new-heading {
+  margin: 0 0 4px;
+}
+
+.whats-new-items {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: 18px;
+}

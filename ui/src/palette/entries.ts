@@ -28,6 +28,7 @@ export type PaletteTarget =
   | { type: 'focus'; floor: string | null }
   | { type: 'lang' }
   | { type: 'history' }
+  | { type: 'whatsNew' }
   | { type: 'mute' }
   | { type: 'muteSound' }
   | { type: 'theme'; theme: ThemePref }
@@ -88,6 +89,7 @@ function actions(context: PaletteContext): PaletteEntry[] {
   if (context.focus !== null) add('focusClear', t('palette.action.focusClear'), t('palette.hint.focus'), { type: 'focus', floor: null }, false);
   add('lang', t(currentLang() === 'es' ? 'palette.action.langEn' : 'palette.action.langEs'), t('palette.hint.lang'), { type: 'lang' }, false);
   add('history', t('palette.action.history'), '/', { type: 'history' }, false);
+  add('whatsNew', t('palette.action.whatsNew'), t('palette.hint.whatsNew'), { type: 'whatsNew' }, false);
   if (context.mute) add('mute', t('palette.action.mute'), t('palette.hint.notifications'), { type: 'mute' }, false);
   if (context.muteSound) add('muteSound', t('palette.action.muteSound'), t('palette.hint.sound'), { type: 'muteSound' }, false);
   if (context.recent.length > 0) add('clearRecent', t('palette.action.clearRecent'), t('palette.hint.recent'), { type: 'clearRecent' }, false);

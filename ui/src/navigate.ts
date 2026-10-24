@@ -27,6 +27,8 @@ import { TABS, type Tab } from './topbar';
 import type { AgentView, QuestionView } from './types';
 import type { KeyAction } from './keys';
 
+import type { WhatsNewDialog } from './whats-new-dialog';
+
 export type Nav = {
   store: Store;
   api: OfficeApi | null;
@@ -38,6 +40,7 @@ export type Nav = {
   board(): BoardHandle;
   chat(): ChatHandle | null;
   table(): TableHandle;
+  whatsNew(): WhatsNewDialog;
 };
 
 const SECTION_OF: Record<NeedKind, SectionId | null> = {
@@ -276,6 +279,9 @@ export function runTarget(nav: Nav, target: PaletteTarget): void {
       break;
     case 'history':
       openHistory(nav);
+      break;
+    case 'whatsNew':
+      nav.whatsNew().open();
       break;
     case 'theme':
       theme.set(target.theme);

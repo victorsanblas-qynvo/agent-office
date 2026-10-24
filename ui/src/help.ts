@@ -14,7 +14,7 @@ function isMac(): boolean {
 }
 
 // The shortcuts overlay, written from the same table the key listener reads.
-export function mountHelp(host: HTMLElement): HelpOverlay {
+export function mountHelp(host: HTMLElement, openWhatsNew: () => void): HelpOverlay {
   let backdrop: HTMLElement | null = null;
   let previous: Element | null = null;
 
@@ -24,7 +24,13 @@ export function mountHelp(host: HTMLElement): HelpOverlay {
     const close = el('button', 'primary', t('keys.close'));
     close.type = 'button';
     close.addEventListener('click', () => api.close());
-    const dialog = el('div', 'help', el('h3', 'help-heading', t('keys.title')), el('ul', 'help-rows', ...rows), el('p', 'help-note muted', t('keys.note')), el('div', 'help-actions', close));
+    const news = el('button', '', t('whatsNew.open'));
+    news.type = 'button';
+    news.addEventListener('click', () => {
+      api.close();
+      openWhatsNew();
+    });
+    const dialog = el('div', 'help', el('h3', 'help-heading', t('keys.title')), el('ul', 'help-rows', ...rows), el('p', 'help-note muted', t('keys.note')), el('div', 'help-actions', news, close));
     const wrapper = el('div', 'dialog-backdrop help-backdrop', dialog);
     wrapper.setAttribute('role', 'dialog');
     wrapper.setAttribute('aria-modal', 'true');
@@ -35,7 +41,7 @@ export function mountHelp(host: HTMLElement): HelpOverlay {
     wrapper.addEventListener('keydown', (event) => {
       if (event.key !== 'Tab') return;
       event.preventDefault();
-      close.focus();
+      (document.activeElement === close ? news : close).focus();
     });
     queueMicrotask(() => close.focus());
     return wrapper;
