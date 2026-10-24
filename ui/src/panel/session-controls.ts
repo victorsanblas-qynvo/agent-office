@@ -3,7 +3,7 @@ import { button } from '../dom';
 import { plural, t } from '../i18n';
 import { agentName } from '../labels';
 import type { Store } from '../store';
-import { broadcast, broadcastRunning, leadTargets } from '../broadcast';
+import { broadcast, broadcastRunning, leadTargets, messageRequest, remembering } from '../broadcast';
 import { relaunchAll, relaunchCandidates, relaunchRunning } from '../relaunch-all';
 import { duration } from '../time';
 import type { AgentView, SessionView } from '../types';
@@ -92,10 +92,7 @@ export async function requestStatusAll(api: OfficeApi | null, store: Store): Pro
   if (!window.confirm(plural('floors.statusAllConfirm', ids.length))) return;
   const tally = await broadcast(
     ids,
-    async (sessionId) => {
-      lastAsked.set(sessionId, Date.now());
-      return api.requestStatus(sessionId);
-    },
+    remembering((sessionId) => api.requestStatus(sessionId), lastAsked, Date.now),
     (sessionId) => statusAllowed(store.sessions.get(sessionId)),
   );
   reportBroadcast(store, tally);
@@ -109,7 +106,7 @@ export function requestMessageAll(api: OfficeApi | null, store: Store): void {
       store,
       await broadcast(
         ids,
-        (sessionId) => api.order({ sessionId, text }),
+        (sessionId) => api.order(messageRequest(sessionId, text)),
         (sessionId) => {
           const session = store.sessions.get(sessionId);
           return session !== undefined && orderable(session);

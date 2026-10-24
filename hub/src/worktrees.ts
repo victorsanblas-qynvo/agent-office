@@ -1,5 +1,6 @@
-import { appendFileSync, cpSync, existsSync, mkdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join, sep } from 'node:path';
+import { writeAtomic } from './config';
 import { isInside, realPath } from './floors';
 import type { GitRunner } from './git';
 import type { OfficeBus } from './office-bus';
@@ -14,6 +15,8 @@ const SIZE_CACHE_MS = 10 * 60_000;
 const SIZE_TIMEOUT_MS = 60_000;
 const MARKER = 'office-hub';
 const EXCLUDE_LINE = '/.claude/worktrees/';
+const LINKED_START = '# agent-office linkDirs';
+const LINKED_END = '# agent-office linkDirs end';
 const ACTIVE_STATUSES = new Set(['pendiente', 'en-curso', 'revision']);
 const BUILDING = new Set<WorktreeState>(['creando', 'preparando', 'listo']);
 const REMOTE = 'origin/';
@@ -50,6 +53,10 @@ export type WorktreeDeskOpts = {
   changed: (order: OrderRow) => void;
   // The tip an existing branch of this order may have to be reused: a checkpoint of the order it was forked from.
   forkPoint?: (order: OrderRow, sha: string) => boolean;
+  // A removal takes the turn of the order's check starts; a run still going keeps its folder unless forced.
+  exclusive?: <T>(orderId: number, task: () => Promise<T>) => Promise<T>;
+  running?: (orderId: number) => boolean;
+  cancelChecks?: (orderId: number) => void;
   sizeOf?: (path: string) => Promise<number | null>;
   shell?: typeof runShell;
 };
@@ -78,6 +85,10 @@ export class WorktreeDesk {
       if (isUnder(cwd, entry.path) || isUnder(cwd, entry.real)) return this.opts.store.get(entry.id);
     }
     return null;
+  }
+
+  building(slug: string): boolean {
+    return this.creating.has(slug);
   }
 
   folderOf(floor: string, slug: string): string | null {
@@ -200,11 +211,10 @@ export class WorktreeDesk {
     const exclude = join(commonDir, 'info', 'exclude');
     try {
       const current = existsSync(exclude) ? readFileSync(exclude, 'utf8') : '';
-      const present = new Set(current.split('\n').map((line) => line.trim()));
-      const missing = [...new Set([EXCLUDE_LINE, ...linked.map((dir) => `/${dir}`)])].filter((line) => !present.has(line));
-      if (missing.length === 0) return;
+      const next = withExcludes(current, linked);
+      if (next === current) return;
       mkdirSync(dirname(exclude), { recursive: true });
-      appendFileSync(exclude, `${current === '' || current.endsWith('\n') ? '' : '\n'}${missing.join('\n')}\n`);
+      writeAtomic(exclude, next, 0o644);
     } catch {
       // The folder shows as untracked in the main copy; nothing breaks.
     }
@@ -473,11 +483,20 @@ export class WorktreeDesk {
     return removed;
   }
 
-  async remove(orderId: number, opts: { deleteBranch: boolean; force: boolean }): Promise<RemoveResult> {
+  remove(orderId: number, opts: { deleteBranch: boolean; force: boolean }): Promise<RemoveResult> {
+    const task = () => this.removeNow(orderId, opts);
+    return this.opts.exclusive ? this.opts.exclusive(orderId, task) : task();
+  }
+
+  private async removeNow(orderId: number, opts: { deleteBranch: boolean; force: boolean }): Promise<RemoveResult> {
     const row = this.opts.store.get(orderId);
     const path = row?.worktree_path;
     if (!row || !path || row.worktree_state === 'retirado') return 'not-found';
     if (this.opts.inside(path)) return 'busy';
+    if (this.opts.running?.(orderId)) {
+      if (!opts.force) return 'busy';
+      this.opts.cancelChecks?.(orderId);
+    }
     const repo = this.repoOf(row);
     if (!repo) return 'failed';
     const present = existsSync(path);
@@ -586,7 +605,7 @@ export class WorktreeDesk {
       const path = row.worktree_path ?? '';
       const size = await this.size(path);
       totalKb += size.kb ?? 0;
-      if (!due(row)) continue;
+      if (!due(row) || this.opts.running?.(row.id)) continue;
       const facts = await this.facts(row);
       if (!facts.known) {
         unknown.push(row.slug);
@@ -614,6 +633,19 @@ export class WorktreeDesk {
   private note(summary: HubText): void {
     this.opts.bus.pushActivity({ ts: this.opts.now(), agentKey: 'panel', event: 'Worktrees', tool: null, state: null, summary });
   }
+}
+
+// info/exclude with the line of the folders and one block, between its marker lines, with the linked dirs as they are
+// now: the block is rewritten whole in its place, so a dir taken out of linkDirs leaves it. The rest is the user's.
+export function withExcludes(current: string, linked: readonly string[]): string {
+  const lines = current === '' ? [] : current.replace(/\n$/, '').split('\n');
+  if (!lines.some((line) => line.trim() === EXCLUDE_LINE)) lines.push(EXCLUDE_LINE);
+  const dirs = [...new Set(linked.map((dir) => `/${dir}`))];
+  const block = dirs.length > 0 ? [LINKED_START, ...dirs, LINKED_END] : [];
+  const start = lines.findIndex((line) => line.trim() === LINKED_START);
+  const end = start < 0 ? -1 : lines.findIndex((line, i) => i > start && line.trim() === LINKED_END);
+  const next = start < 0 ? [...lines, ...block] : [...lines.slice(0, start), ...block, ...lines.slice(end < 0 ? start + 1 : end + 1)];
+  return `${next.join('\n')}\n`;
 }
 
 // Commits of its own that are not in the base, or facts git could not confirm: somebody has to decide.

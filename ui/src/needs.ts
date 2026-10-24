@@ -3,7 +3,7 @@ import { t } from './i18n';
 import { hubText } from './i18n/hub';
 import { collisions, heldClaims, type Collision } from './chat/claims';
 import { agentName, floorLabel, formatTokens, isAway } from './labels';
-import { budgetSpend, floorSpendOf, readFloorBudgets, type FloorBudgets } from './budgets';
+import { budgetSpend, dayKey, floorSpendOf, readFloorBudgets, type FloorBudgets } from './budgets';
 import { readContextWarn, readHungMinutes, readSnoozes, writeSnoozes, type Snoozes } from './prefs';
 import type { Store, Topic } from './store';
 import { clockMinutes } from './time';
@@ -103,12 +103,6 @@ function limitNeed(id: 'five' | 'seven', sample: UsageWindow | null, now: number
 }
 
 const BUDGET_WARN_PCT = 80;
-
-function dayKey(at: number): string {
-  const date = new Date(at);
-  const pad = (value: number): string => String(value).padStart(2, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-}
 
 // A floor from 80 % of its daily budget; the day and the 80/100 bucket name the occurrence, so a snooze holds until either changes.
 export function budgetNeed(slug: string, budget: number, spent: number, now: number, floorName: string): Need | null {
@@ -263,7 +257,7 @@ export function needsOf(store: Store): Need[] {
     hungAfterMinutes: readHungMinutes(),
     contextWarnPct: readContextWarn(),
     budgets: readFloorBudgets(),
-    floorSpend: floorSpendOf(budgetSpend()?.summary ?? null),
+    floorSpend: floorSpendOf(budgetSpend(store.now())?.summary ?? null),
     floorName: (slug) => {
       const known = store.floorBySlug(slug);
       return known ? floorLabel(known) : slug;

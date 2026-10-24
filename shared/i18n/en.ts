@@ -224,6 +224,7 @@ export const hubEn = {
   'hub.api.sessionNotOffice': 'That session is not part of the office: it gets no orders and is not relaunched from the panel',
   'hub.api.transcriptMissing': 'There is no transcript of that session on disk',
   'hub.api.orderFailed': 'The order could not be delivered',
+  'hub.api.statusBusy': 'Its status was already asked for less than 2 minutes ago',
   'hub.api.settingsUnavailable': 'Settings unavailable',
   'hub.api.floorsUnavailable': 'Projects unavailable',
   'hub.api.badMemoryTarget': 'Invalid floor or role',

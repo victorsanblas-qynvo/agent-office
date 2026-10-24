@@ -2,9 +2,11 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PROFILES_DIR } from '../src/config';
+import { broadcastText } from '../src/courier';
 import { Office, STATUS_REQUEST } from '../src/office';
 import { parseProtocol, parseWaiting } from '../src/protocol';
 import { loadProfiles } from '../src/profiles';
+import type { SessionBook } from '../src/session-book';
 import type { AgentView, HookMeta } from '../src/types';
 import { ev, floor, harness, keyOf, type Harness } from './helpers';
 
@@ -313,6 +315,42 @@ describe('status request', () => {
     h.clock.advance(11 * MINUTE);
     h.office.tick();
     expect(agent()?.stalledSince).not.toBeNull();
+  });
+
+  test('a second request within two minutes is busy and delivers nothing; after them it goes again', async () => {
+    stalledLead();
+    expect(await h.office.requestStatus(LEAD)).toBe('ok');
+    h.clock.advance(2 * MINUTE - 1);
+    expect(await h.office.requestStatus(LEAD)).toBe('busy');
+    expect(sent).toHaveLength(1);
+    h.clock.advance(1);
+    expect(await h.office.requestStatus(LEAD)).toBe('ok');
+    expect(sent).toHaveLength(2);
+  });
+
+  test('a request that could not be delivered does not hold the next one back', async () => {
+    office();
+    h.office.ingest(ev('sin-socket', repo, 'SessionStart', {}), { ...leadMeta(null), name: 'lead-otro' });
+    expect(await h.office.requestStatus('sin-socket')).toBe('unreachable');
+    expect(await h.office.requestStatus('sin-socket')).toBe('unreachable');
+  });
+
+  test('a message to every lead leaves its task and its plan alone, also when it arrives as a prompt', async () => {
+    stalledLead();
+    const runtime = () => (h.office as unknown as { book: SessionBook }).book.agents.get(LEAD);
+    const before = agent()?.task;
+    const message = 'Mirad redaccion/planes/otro-plan.md antes de seguir';
+    expect(await h.office.order(LEAD, message, { broadcast: true })).toBe('ok');
+    expect(sent[0]?.payload).toContain(broadcastText(message));
+    expect(agent()?.task).toBe(before);
+    h.office.ingest(lead('UserPromptSubmit', { prompt: broadcastText(message) }));
+    expect(agent()?.task).toBe(before);
+    expect(runtime()?.planSlug).toBeNull();
+    expect(h.office.snapshot().activity.map((a) => a.summary)).toContainEqual({ key: 'hub.act.order', params: { text: message } });
+
+    expect(await h.office.order(LEAD, message)).toBe('ok');
+    expect(agent()?.task).toBe(message);
+    expect(runtime()?.planSlug).toBe('otro-plan');
   });
 
   test('answers not-found and unreachable like an order', async () => {

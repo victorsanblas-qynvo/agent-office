@@ -44,6 +44,7 @@ export type BoardDeskOpts = {
     create(order: OrderRow): Promise<CreateResult>;
     resetup(orderId: number): Promise<OrderRow | null>;
     claimFork(order: OrderRow, parent: OrderRow, start: string): Promise<ForkClaim>;
+    building(slug: string): boolean;
   };
   byPath: (cwd: string | null | undefined) => OrderRow | null;
   deliver: typeof deliver;
@@ -74,6 +75,7 @@ type AlertRow = { id: number; ts: number; detail: string | null };
 
 export class BoardDesk {
   private readonly lastWrite = new Map<number, number>();
+  private readonly claiming = new Set<number>();
   private readonly outsideNoted = new Map<string, number>();
   private readonly insertFinished;
   private readonly unseen;
@@ -263,7 +265,13 @@ export class BoardDesk {
     let row = inserted;
     if (raw.startSha) {
       const parent = this.opts.store.get(raw.parentId as number);
-      const claimed = parent ? await this.opts.worktrees.claimFork(inserted, parent, raw.startSha) : null;
+      this.claiming.add(inserted.id);
+      let claimed: ForkClaim | null;
+      try {
+        claimed = parent ? await this.opts.worktrees.claimFork(inserted, parent, raw.startSha) : null;
+      } finally {
+        this.claiming.delete(inserted.id);
+      }
       if (!claimed?.ok) {
         this.opts.store.update(inserted.id, { removed_at: this.opts.now() });
         return claimed?.error === 'exists'
@@ -309,7 +317,7 @@ export class BoardDesk {
   async retryFolder(id: number): Promise<MoveResult> {
     const row = this.opts.store.get(id);
     if (!row) return { ok: false, status: 404, error: { key: 'hub.api.orderNotFound' } };
-    if (row.worktree_state !== 'error') return { ok: false, status: 409, error: { key: 'hub.api.orderBadState' } };
+    if (row.worktree_state !== 'error' && !this.stranded(row)) return { ok: false, status: 409, error: { key: 'hub.api.orderBadState' } };
     if (row.worktree_path) {
       const ready = await this.opts.worktrees.resetup(id);
       if (!ready) return { ok: false, status: 409, error: { key: 'hub.api.noFolder' } };
@@ -319,6 +327,21 @@ export class BoardDesk {
       await this.begin(reset);
     }
     return { ok: true, order: this.view(this.opts.store.get(id) as OrderRow) };
+  }
+
+  // An order of the lead starts its folder at once; one with no state and no folder after that is one the hub went
+  // down on before the build began (a fork right after its branch was claimed). A card waiting for its brief is not.
+  private stranded(row: OrderRow): boolean {
+    return (
+      row.worktree_state === null &&
+      row.worktree_path === null &&
+      row.source === 'panel-lead' &&
+      row.removed_at === null &&
+      row.status !== 'hecho' &&
+      row.status !== 'descartado' &&
+      !this.claiming.has(row.id) &&
+      !this.opts.worktrees.building(row.slug)
+    );
   }
 
   private dependencies(row: OrderRow): string {

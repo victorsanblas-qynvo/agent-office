@@ -249,7 +249,7 @@ export function createApp(opts: ServerOptions, holdRequest: (req: Request) => vo
     const order = text(body.text);
     if (!sessionId || !order) return c.json({ error: { key: 'hub.api.orderFields' } }, 400);
     if (order.length > INBOX_MAX_TEXT) return c.json({ error: { key: 'hub.api.orderTooLong' } }, 400);
-    const result = await office.order(sessionId, order);
+    const result = await office.order(sessionId, order, { broadcast: body.broadcast === true });
     if (result === 'ok') return c.json({ ok: true });
     if (result === 'not-found') return c.json({ error: { key: 'hub.api.sessionNotFound' } }, 404);
     if (result === 'not-office') return c.json({ error: { key: 'hub.api.sessionNotOffice' } }, 403);
@@ -259,6 +259,7 @@ export function createApp(opts: ServerOptions, holdRequest: (req: Request) => vo
   app.post('/api/sessions/:id/status', requirePanel, async (c) => {
     const result = await office.requestStatus(c.req.param('id') ?? '');
     if (result === 'ok') return c.json({ ok: true });
+    if (result === 'busy') return c.json({ error: { key: 'hub.api.statusBusy' } }, 409);
     if (result === 'not-found') return c.json({ error: { key: 'hub.api.sessionNotFound' } }, 404);
     if (result === 'not-office') return c.json({ error: { key: 'hub.api.sessionNotOffice' } }, 403);
     return c.json({ error: { key: 'hub.api.orderFailed' } }, 502);

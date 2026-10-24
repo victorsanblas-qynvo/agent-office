@@ -175,18 +175,18 @@ export const gitOps = {
     ...(oldPath !== null && oldPath !== path ? [`:(literal)${pathspecPath(oldPath)}`] : []),
     `:(literal)${pathspecPath(path)}`,
   ],
-  logSubjects: (base: string, head: string, max: number): string[] => [
+  logSubjects: (base: string, head: string, max: number, merges = false): string[] => [
     'log',
     '--no-color',
     '--no-show-signature',
-    '--no-merges',
+    ...(merges ? [] : ['--no-merges']),
     '--reverse',
     `--max-count=${Math.max(1, Math.min(500, Math.trunc(max)))}`,
     '--format=%s',
     `${sha(base)}..${sha(head)}`,
     '--',
   ],
-  revCount: (base: string, head: string): string[] => ['rev-list', '--count', '--no-merges', `${sha(base)}..${sha(head)}`, '--'],
+  revCount: (base: string, head: string, merges = false): string[] => ['rev-list', '--count', ...(merges ? [] : ['--no-merges']), `${sha(base)}..${sha(head)}`, '--'],
   show: (revision: string, path: string): string[] => ['show', `${sha(revision)}:${repoPath(path)}`],
   checkIgnore: (): string[] => ['check-ignore', '-z', '--stdin'],
   logOneLine: (baseSha: string, branch: string, max: number): string[] => [

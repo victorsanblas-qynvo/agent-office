@@ -129,6 +129,12 @@ export class CheckpointDesk {
       .map((row) => ({ id: row.id, sha: row.sha, reason: row.reason, label: row.label, createdAt: row.created_at }));
   }
 
+  // The changed files a checkpoint would leave out, found without committing anything.
+  leftOutOf(path: string, files: readonly string[]): string[] {
+    const { maxFileKb, skipGlobs } = this.opts.config().checkpoints;
+    return files.filter((file) => leftOut(path, file, maxFileKb * 1024, skipGlobs) !== null);
+  }
+
   skipped(order: OrderRow): SkippedFile[] {
     return parseSkipped(this.opts.store.get(order.id)?.skipped_files ?? null);
   }

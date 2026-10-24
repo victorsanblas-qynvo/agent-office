@@ -1,6 +1,6 @@
 import type { ApiResult } from './api';
 import { INBOX_MAX_TEXT } from '../../shared/review-message';
-import type { AgentView, SessionView } from './types';
+import type { AgentView, OrderRequest, SessionView } from './types';
 
 export type Tally = { ok: number; busy: number; failed: number; skipped: number };
 
@@ -28,6 +28,20 @@ export function leadTargets(sessions: ReadonlyMap<string, SessionView>, agents: 
     if (!current || agent.updatedAt >= current.updatedAt) byFloor.set(agent.floor, agent);
   }
   return [...byFloor.values()].map((agent) => agent.sessionId);
+}
+
+// A message to every lead: the hub delivers it without making it the task or the plan of whoever reads it.
+export function messageRequest(sessionId: string, text: string): OrderRequest {
+  return { sessionId, text, broadcast: true };
+}
+
+// The time of an ask is kept only once the hub took it: a refused or failed one may be asked again at once.
+export function remembering(call: (id: string) => Promise<ApiResult>, asked: Map<string, number>, now: () => number): (id: string) => Promise<ApiResult> {
+  return async (id) => {
+    const result = await call(id);
+    if (result.ok) asked.set(id, now());
+    return result;
+  };
 }
 
 export function broadcastTextValid(text: string): boolean {
