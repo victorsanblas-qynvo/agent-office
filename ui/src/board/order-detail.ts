@@ -19,6 +19,7 @@ import { orderNoteKey } from '../notes';
 import { mountNoteEditor } from '../notes-editor';
 import { REVIEW_MAX_BODY } from '../../../shared/review-message';
 import { spendLine, spendTitle } from './spend';
+import { openCompare } from './compare-dialog';
 import { openPrDraft } from './pr-draft';
 import { openRestorePreview } from './restore-preview';
 import { canRestore, newestFirst, pointNumbers, restoreBlock, restoreNeedsForce } from './points-model';
@@ -123,7 +124,7 @@ function pointRow(point: CheckpointView, n: number | undefined, now: number, act
 }
 
 // The drawer of a card: what the order is, its checks and its checkpoints.
-export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi | null, orderId: number, onClose: () => void): OrderDetail {
+export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi | null, orderId: number, onClose: () => void, onOpen: (id: number) => void = () => {}): OrderDetail {
   const panel = el('aside', 'order-drawer');
   panel.setAttribute('role', 'dialog');
   panel.setAttribute('aria-label', t('board.drawer.label'));
@@ -334,6 +335,12 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
       draft.addEventListener('click', () => openPrDraft(host, store, api, orderId));
       row.append(draft);
     }
+    const original = current.parentId === null ? undefined : store.orders.find((o) => o.id === current.parentId);
+    if (original) {
+      const compare = button(t('board.compare.open'));
+      compare.addEventListener('click', () => openCompare(host, store, api, current, original));
+      row.append(compare);
+    }
     if (current.status !== 'descartado') {
       const discard = button(t('board.discard'), 'doc-discard');
       discard.addEventListener('click', () => {
@@ -350,6 +357,17 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
 
   const metaRow = (label: string, value: Node | string | null): HTMLElement | null =>
     value === null || value === '' ? null : el('div', 'order-meta-row', el('span', 'muted', label), typeof value === 'string' ? el('span', '', value) : value);
+
+  const forkLinks = (current: OrderView): HTMLElement | null => {
+    const forks = store.orders.filter((o) => o.parentId === current.id);
+    if (forks.length === 0) return null;
+    const links = forks.map((fork) => {
+      const link = button(fork.slug, 'order-fork-link');
+      link.addEventListener('click', () => onOpen(fork.id));
+      return link;
+    });
+    return el('div', 'order-forks', el('span', 'muted', t('board.forks')), ...links);
+  };
 
   const spendNode = (current: OrderView): HTMLElement | null => {
     const line = spend ? spendLine(spend) : null;
@@ -774,6 +792,8 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
       activityLoaded,
       activityLoading,
       activityError,
+      store.orders.filter((o) => o.parentId === orderId).map((o) => o.id),
+      store.orders.some((o) => o.id === current.parentId),
       diff?.head ?? null,
       diffError,
       diffLoading,
@@ -830,6 +850,7 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
       ),
       current.worktree?.error ? el('pre', 'order-error', current.worktree.error) : null,
       notes?.node ?? null,
+      forkLinks(current),
       current.description ? el('p', 'order-description', current.description) : null,
       criteriaBlock(current),
       actions(current),

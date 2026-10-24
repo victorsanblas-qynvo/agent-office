@@ -331,7 +331,7 @@ describe('fork from a checkpoint', () => {
 
     expect(forked.status).toBe(200);
     const order = forked.body.order as OrderView;
-    expect(order).toMatchObject({ status: 'pendiente', floor: 'mobile', parentId: c.id, title: `${c.title} @${short}`, source: 'panel-lead' });
+    expect(order).toMatchObject({ status: 'pendiente', floor: 'mobile', parentId: c.id, parentSlug: c.slug, title: `${c.title} @${short}`, source: 'panel-lead' });
     expect(order.description).toStartWith(`Bifurcación de encargo/${c.slug} en el punto 1 (${short} `);
     await r.h.office.idle();
     const ready = orderOf(r, order.slug);

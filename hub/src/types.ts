@@ -834,6 +834,7 @@ export type OrderView = {
   source: OrderSource;
   planSlug: string | null;
   parentId: number | null;
+  parentSlug: string | null;
   lead: string | null;
   branch: string | null;
   base: string | null;
