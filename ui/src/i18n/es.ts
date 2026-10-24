@@ -708,6 +708,11 @@ export const es = {
   'chat.sent': 'Publicado en #{channel}',
   'chat.sentNoLead': 'Publicado, pero ningún jefe tiene la sesión abierta: lo leerán en su siguiente turno.',
   'chat.readOnly': 'Solo lectura: sin conexión con el hub.',
+  'chat.new': '— nuevos —',
+  'chat.search': 'Buscar en el canal…',
+  'chat.results.one': '{n} resultado',
+  'chat.results.other': '{n} resultados',
+  'chat.noResults': 'Ningún mensaje coincide.',
 
 
   'topbar.tab.board': 'Tablero',
@@ -1563,6 +1568,9 @@ export const es = {
   'whatsNew.safety.git': 'La salida de git y gh está acotada y se corta con todo su grupo de procesos. Automático.',
   'whatsNew.safety.deletes': 'Una rama solo se borra con hechos que git confirmó, tras un fetch. Automático.',
   'whatsNew.safety.controls': 'Los caracteres de control se neutralizan en comandos y mensajes. Automático.',
+  'whatsNew.chat.title': 'Chat',
+  'whatsNew.chat.unread': 'Los mensajes sin leer se cuentan por canal, una marca «— nuevos —» señala el primero y la pestaña Chat lleva un punto. Pestaña Chat.',
+  'whatsNew.chat.search': 'Filtra los mensajes de un canal por texto o autor, con las coincidencias resaltadas; Esc limpia. Pestaña Chat → Buscar en el canal.',
   'whatsNew.panel.commands': 'Copiar comando de tmux y de reanudar, en el panel del agente, para saltar a su sesión desde una terminal.',
 } as const;
 

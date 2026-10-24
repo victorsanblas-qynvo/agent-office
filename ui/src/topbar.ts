@@ -48,7 +48,7 @@ export function mountTopbar(store: Store, onTab: (tab: Tab) => void, onNeed: (ne
   const tabs = el('nav', 'tabs');
   const plansCount = el('b', 'tab-count');
   plansCount.hidden = true;
-  const chatCount = el('b', 'tab-count');
+  const chatCount = el('b', 'tab-dot');
   chatCount.hidden = true;
   for (const { tab } of TABS) {
     const tabButton = button('', 'tab');
@@ -103,7 +103,6 @@ export function mountTopbar(store: Store, onTab: (tab: Tab) => void, onNeed: (ne
 
   store.watch(['chat', 'lang'], () => {
     const count = store.unreadChat();
-    chatCount.textContent = String(count);
     chatCount.hidden = count === 0;
     tabButtons.get('chat')?.setAttribute('title', count > 0 ? plural('topbar.chatUnread', count) : '');
   });

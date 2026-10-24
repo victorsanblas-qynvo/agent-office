@@ -117,6 +117,11 @@ export const WHATS_NEW: readonly WhatsNewSection[] = [
     items: ['whatsNew.replay.seek', 'whatsNew.replay.export'],
   },
   {
+    id: 'chat',
+    title: 'whatsNew.chat.title',
+    items: ['whatsNew.chat.unread', 'whatsNew.chat.search'],
+  },
+  {
     id: 'safety',
     title: 'whatsNew.safety.title',
     items: ['whatsNew.safety.redaction', 'whatsNew.safety.git', 'whatsNew.safety.deletes', 'whatsNew.safety.controls'],

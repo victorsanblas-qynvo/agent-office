@@ -709,6 +709,11 @@ export const en: Messages = {
   'chat.sent': 'Posted in #{channel}',
   'chat.sentNoLead': 'Posted, but no lead has an open session: they will read it on their next turn.',
   'chat.readOnly': 'Read only: no connection to the hub.',
+  'chat.new': '— new —',
+  'chat.search': 'Search the channel…',
+  'chat.results.one': '{n} result',
+  'chat.results.other': '{n} results',
+  'chat.noResults': 'No message matches.',
 
 
   'topbar.tab.board': 'Board',
@@ -1562,5 +1567,8 @@ export const en: Messages = {
   'whatsNew.safety.git': 'The output of git and gh is bounded and killed with its whole process group. Automatic.',
   'whatsNew.safety.deletes': 'A branch is only deleted on facts git confirmed, after a fetch. Automatic.',
   'whatsNew.safety.controls': 'Control characters are neutralised in commands and messages. Automatic.',
+  'whatsNew.chat.title': 'Chat',
+  'whatsNew.chat.unread': 'Unread messages are counted per channel, a «— new —» line marks the first one and the Chat tab shows a dot. Chat tab.',
+  'whatsNew.chat.search': 'Filter a channel by text or author with the matches highlighted; Esc clears. Chat tab → Search the channel.',
   'whatsNew.panel.commands': 'Copy tmux command and Copy resume command, in the agent panel, to jump into its session from a terminal.',
 };
