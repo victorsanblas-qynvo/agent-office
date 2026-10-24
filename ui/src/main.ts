@@ -22,6 +22,7 @@ import { mountPanel } from './panel/panel';
 import { mountPlans } from './plans/plans';
 import { loadRecording, mountReplayControls, replayFetchUrl, ReplayPlayer } from './replay';
 import { Store } from './store';
+import { contrast } from './contrast';
 import { motion } from './motion';
 import { theme } from './theme';
 import { mountBudgetWatch } from './budgets';
@@ -44,6 +45,7 @@ function messageOf(error: unknown): string {
 async function boot(): Promise<void> {
   theme.apply();
   motion.apply();
+  contrast.apply();
   applyLang(readStoredLang());
   const root = document.getElementById('app');
   if (!root) return;

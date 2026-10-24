@@ -211,6 +211,8 @@ La pestaña **Ajustes** edita `config.json`: el modelo (`opus`, `sonnet`, `haiku
 
 Ajustes › Tema fija el aspecto del panel y de las escenas 2D y 3D en automático (el del sistema), claro u oscuro (`agent-office.theme`, también en la paleta como «Tema: claro/oscuro/automático»).
 
+Ajustes › Tema también fija el contraste en automático (`prefers-contrast`), alto (texto, bordes y colores de estado más marcados y foco más grueso) o normal (`agent-office.contrast`, también en la paleta como «Contraste: automático/alto/normal»).
+
 Ajustes › Movimiento fija el movimiento de las escenas en automático (la preferencia del sistema), reducido (la cámara salta, los personajes llegan sin caminar y el ambiente se actualiza como mucho una vez por minuto) o completo (`agent-office.motion`, también en la paleta como «Movimiento: automático/reducido/completo»).
 
 | Rol | Por defecto | Por qué |

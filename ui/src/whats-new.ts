@@ -93,6 +93,7 @@ export const WHATS_NEW: readonly WhatsNewSection[] = [
       'whatsNew.panel.focus',
       'whatsNew.panel.theme',
       'whatsNew.panel.motion',
+      'whatsNew.panel.contrast',
       'whatsNew.panel.tail',
       'whatsNew.panel.diagnostics',
       'whatsNew.panel.prefs',

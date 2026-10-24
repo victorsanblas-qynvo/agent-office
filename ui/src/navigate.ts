@@ -16,6 +16,7 @@ import { focusOrders } from './panel/orders';
 import { relaunchable } from './panel/orderable';
 import { togglePin } from './pins';
 import { broadcastRunning } from './broadcast';
+import { contrast } from './contrast';
 import { motion } from './motion';
 import { theme } from './theme';
 import { readSaved } from './table/history';
@@ -302,6 +303,9 @@ export function runTarget(nav: Nav, target: PaletteTarget): void {
       break;
     case 'motion':
       motion.set(target.motion);
+      break;
+    case 'contrast':
+      contrast.set(target.contrast);
       break;
     case 'search': {
       const search = readSaved().find((item) => item.name === target.name);

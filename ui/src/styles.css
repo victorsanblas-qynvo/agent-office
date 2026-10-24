@@ -58,6 +58,89 @@
   --shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
 }
 
+:root[data-contrast="high"]:not([data-theme="light"]) {
+  color-scheme: dark;
+  --bg: #000000;
+  --surface: #0a0e13;
+  --surface-2: #151b22;
+  --border: #7d8896;
+  --text: #ffffff;
+  --muted: #c3ccd6;
+  --accent: #8fb0ff;
+  --accent-text: #000000;
+  --danger: #ff6b6b;
+  --ok: #3ddc84;
+  --asking: #ffa94d;
+  --focus: #ffffff;
+  --canvas-bg: #000000;
+}
+
+@media (prefers-color-scheme: light) {
+  :root[data-contrast="high"]:not([data-theme="dark"]) {
+    color-scheme: light;
+    --bg: #ffffff;
+    --surface: #ffffff;
+    --surface-2: #eef1f5;
+    --border: #5d6b7c;
+    --text: #000000;
+    --muted: #3d4856;
+    --accent: #1d46c4;
+    --accent-text: #ffffff;
+    --danger: #b91c1c;
+    --ok: #166534;
+    --asking: #9a3412;
+    --focus: #000000;
+    --canvas-bg: #e6eaf0;
+  }
+}
+
+:root[data-contrast="high"][data-theme="light"] {
+  color-scheme: light;
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --surface-2: #eef1f5;
+  --border: #5d6b7c;
+  --text: #000000;
+  --muted: #3d4856;
+  --accent: #1d46c4;
+  --accent-text: #ffffff;
+  --danger: #b91c1c;
+  --ok: #166534;
+  --asking: #9a3412;
+  --focus: #000000;
+  --canvas-bg: #e6eaf0;
+}
+
+:root[data-contrast="high"][data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #000000;
+  --surface: #0a0e13;
+  --surface-2: #151b22;
+  --border: #7d8896;
+  --text: #ffffff;
+  --muted: #c3ccd6;
+  --accent: #8fb0ff;
+  --accent-text: #000000;
+  --danger: #ff6b6b;
+  --ok: #3ddc84;
+  --asking: #ffa94d;
+  --focus: #ffffff;
+  --canvas-bg: #000000;
+}
+
+:root[data-contrast="high"] :focus-visible,
+:root[data-contrast="high"] select:focus,
+:root[data-contrast="high"] textarea:focus,
+:root[data-contrast="high"] input[type='text']:focus,
+:root[data-contrast="high"] input[type='number']:focus {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+:root[data-contrast="high"] :is(.floor-observed, .agent-row.ended, .doc-descartado, .plans-cerrado, .floors-row-away, .usage-card.is-stale, .run-old, .needs-asleep .needs-label) {
+  opacity: 1;
+}
+
 * {
   box-sizing: border-box;
 }
