@@ -3,7 +3,7 @@ import { button, el } from '../dom';
 import { t } from '../i18n';
 import { fileStamp, saveFile } from '../download';
 import { floorLabel, formatTokens, tokensTotal } from '../labels';
-import { readBoardStaleHours, readJson, writeJson } from '../prefs';
+import { readBoardLanes, readBoardStaleHours, readJson, writeBoardLanes, writeJson } from '../prefs';
 import type { BoardMove } from '../keys';
 import { safeExternalUrl } from '../panel/markdown-safe';
 import type { Store } from '../store';
@@ -12,7 +12,7 @@ import type { OrderStatus, OrderView } from '../types';
 import { checksBadgeNode, folderBadgeNode } from './badges';
 import { boardMarkdown } from './board-markdown';
 import { applyFocus } from '../focus';
-import { ageBadge, agesDue, type AgeBadge, columnsOf, type Column, deliveryFloors, filterOrders, neighbours, neighbourStatus, nextCard, orderFloors } from './columns';
+import { ageBadge, agesDue, type AgeBadge, columnsOf, type Column, deliveryFloors, filterOrders, type Lane, laneLayout, neighbours, neighbourStatus, nextCard, nextCardInLanes, orderFloors } from './columns';
 import { orderNoteKey } from '../notes';
 import { noteIcon } from '../notes-editor';
 import { mountOrderDetail, type OrderDetail } from './order-detail';
@@ -48,7 +48,10 @@ export function mountBoard(host: HTMLElement, store: Store, api: OfficeApi | nul
   search.type = 'search';
   const add = button('', 'primary board-new');
   const exportMd = button('', 'board-export');
-  const head = el('header', 'board-head', heading, filterLabel, search, exportMd, add);
+  const lanesToggle = el('input');
+  lanesToggle.type = 'checkbox';
+  const lanesLabel = el('label', 'board-lanes-toggle', lanesToggle);
+  const head = el('header', 'board-head', heading, filterLabel, search, lanesLabel, exportMd, add);
   const notice = el('p', 'board-notice muted');
   const columnsHost = el('div', 'board-columns');
   const drawerHost = el('div', 'board-drawer-host');
@@ -63,6 +66,9 @@ export function mountBoard(host: HTMLElement, store: Store, api: OfficeApi | nul
   let highlightId: string | null = null;
   let visible: string[][] = [];
   let shownColumns: Column[] = [];
+  let lanesOn = readBoardLanes();
+  let shownLanes: Lane[] | null = null;
+  const collapsed = new Set<string>();
   let agedAt = store.now();
   let agedStale = readBoardStaleHours();
 
@@ -220,6 +226,28 @@ export function mountBoard(host: HTMLElement, store: Store, api: OfficeApi | nul
     }
   };
 
+  const navLanes = (lanes: readonly Lane[]): Lane[] =>
+    lanes.map((lane) => (collapsed.has(lane.floor) ? { floor: lane.floor, columns: lane.columns.map((group) => ({ status: group.status, orders: [] })) } : lane));
+
+  const lane = (entry: Lane, now: number): HTMLElement => {
+    const total = entry.columns.reduce((sum, group) => sum + group.orders.length, 0);
+    const label = store.floorBySlug(entry.floor) ? floorLabel(store.floorBySlug(entry.floor) as never) : entry.floor;
+    const closed = collapsed.has(entry.floor);
+    const toggle = button(`${closed ? '▸' : '▾'} ${label}`, 'board-lane-toggle');
+    toggle.title = t(closed ? 'board.lane.expand' : 'board.lane.collapse', { floor: label });
+    toggle.setAttribute('aria-expanded', String(!closed));
+    toggle.addEventListener('click', () => {
+      if (closed) collapsed.delete(entry.floor);
+      else collapsed.add(entry.floor);
+      render();
+    });
+    const counts = entry.columns.filter((group) => group.orders.length > 0).map((group) => el('span', 'chip', `${t(`board.col.${group.status}`)} ${group.orders.length}`));
+    const section = el('section', 'board-lane', el('header', 'board-lane-head', toggle, el('span', 'chip', String(total)), ...counts));
+    section.dataset.floor = entry.floor;
+    if (!closed) section.append(el('div', 'board-columns board-lane-columns', ...entry.columns.map((group) => column(group.status, group.orders, now))));
+    return section;
+  };
+
   const keyMove = (step: BoardMove): void => {
     if (step === 'open' || step === 'prev' || step === 'next') {
       const order = highlightId === null ? undefined : store.orders.find((o) => String(o.id) === highlightId);
@@ -232,7 +260,8 @@ export function mountBoard(host: HTMLElement, store: Store, api: OfficeApi | nul
       if (to) void move(order, to);
       return;
     }
-    highlightId = nextCard(visible, highlightId, step);
+    if (shownLanes) highlightId = nextCardInLanes(navLanes(shownLanes), highlightId, step);
+    else if (step !== 'laneDown' && step !== 'laneUp') highlightId = nextCard(visible, highlightId, step);
     paintHighlight(true);
   };
 
@@ -247,6 +276,8 @@ export function mountBoard(host: HTMLElement, store: Store, api: OfficeApi | nul
     search.placeholder = t('board.search.placeholder');
     search.setAttribute('aria-label', t('board.search.placeholder'));
     exportMd.textContent = t('board.export');
+    lanesLabel.replaceChildren(lanesToggle, ` ${t('board.lanes')}`);
+    lanesToggle.checked = lanesOn;
     add.textContent = t('board.new');
     add.hidden = api === null;
     add.disabled = deliveryFloors(store.floorList()).length === 0;
@@ -261,10 +292,12 @@ export function mountBoard(host: HTMLElement, store: Store, api: OfficeApi | nul
     notice.textContent =
       api === null ? t(store.replay ? 'board.replay' : 'board.offline') : [total === 0 ? t(query.trim() !== '' && store.orders.length > 0 ? 'board.search.empty' : 'board.empty') : '', add.disabled ? t('board.new.none') : ''].filter((part) => part !== '').join(' ');
     notice.hidden = notice.textContent === '';
-    columnsHost.replaceChildren(...grouped.map((group) => column(group.status, group.orders, now)));
+    shownLanes = lanesOn ? laneLayout(shown, { floor: applyFocus({ query, floor }, store.focusedFloor()).floor, floors: orderFloors(store.floorList()) }) : null;
+    columnsHost.classList.toggle('board-lanes', shownLanes !== null);
+    columnsHost.replaceChildren(...(shownLanes ? shownLanes.map((entry) => lane(entry, now)) : grouped.map((group) => column(group.status, group.orders, now))));
     shownColumns = grouped;
     exportMd.disabled = total === 0;
-    visible = grouped.map((group) => group.orders.map((order) => String(order.id)));
+    visible = shownLanes ? navLanes(shownLanes).flatMap((entry) => entry.columns.map((group) => group.orders.map((order) => String(order.id)))) : grouped.map((group) => group.orders.map((order) => String(order.id)));
     paintHighlight(false);
     if (openId !== null && !store.orders.some((order) => order.id === openId)) closeDetail();
   };
@@ -272,6 +305,11 @@ export function mountBoard(host: HTMLElement, store: Store, api: OfficeApi | nul
   filter.addEventListener('change', () => {
     floor = filter.value || null;
     writeJson(FILTER_KEY, floor);
+    render();
+  });
+  lanesToggle.addEventListener('change', () => {
+    lanesOn = lanesToggle.checked;
+    writeBoardLanes(lanesOn);
     render();
   });
   search.addEventListener('input', () => {
@@ -291,7 +329,7 @@ export function mountBoard(host: HTMLElement, store: Store, api: OfficeApi | nul
   add.addEventListener('click', newOrder);
   exportMd.addEventListener('click', () => {
     const now = store.now();
-    saveFile(`${t('board.export.file')}-${fileStamp(new Date(now))}.md`, boardMarkdown(shownColumns, now), 'text/markdown;charset=utf-8');
+    saveFile(`${t('board.export.file')}-${fileStamp(new Date(now))}.md`, boardMarkdown(shownColumns, now, shownLanes ?? undefined), 'text/markdown;charset=utf-8');
   });
   store.watch(['orders', 'lang', 'floors', 'mode', 'focus', 'notes'], render);
   // The age of a card moves on its own, and follows the stale threshold of Ajustes.

@@ -52,6 +52,21 @@ export function writeBoardStaleHours(hours: number): void {
   writeJson(BOARD_STALE_KEY, hours);
 }
 
+export const BOARD_LANES_KEY = 'agent-office.boardLanes';
+
+// Whether the Tablero groups its cards into one lane per floor.
+export function normalizeBoardLanes(stored: unknown): boolean {
+  return stored === true;
+}
+
+export function readBoardLanes(): boolean {
+  return normalizeBoardLanes(readJson(BOARD_LANES_KEY));
+}
+
+export function writeBoardLanes(on: boolean): void {
+  writeJson(BOARD_LANES_KEY, on);
+}
+
 export const EDITOR_KEY = 'agent-office.editor';
 export const EDITOR_OPTIONS: readonly Editor[] = ['vscode', 'cursor', 'zed', 'none'];
 export const EDITOR_DEFAULT: Editor = 'vscode';

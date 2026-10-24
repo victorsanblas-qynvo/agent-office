@@ -3,6 +3,7 @@ import { FLOOR_BUDGETS_KEY, normalizeFloorBudgets } from '../budgets';
 import { NOTES_KEY, parseNotes } from '../notes';
 import { BRIEF_TEMPLATES_KEY, parseTemplates } from '../panel/brief-templates';
 import {
+  BOARD_LANES_KEY,
   BOARD_STALE_KEY,
   CONTEXT_WARN_KEY,
   EDITOR_KEY,
@@ -11,6 +12,7 @@ import {
   PINS_KEY,
   QUIET_KEY,
   REMIND_KEY,
+  normalizeBoardLanes,
   normalizeBoardStaleHours,
   normalizeContextWarn,
   normalizeEditor,
@@ -43,6 +45,7 @@ const RULES: Record<string, Rule> = {
   [HUNG_KEY]: { kind: 'choice', normalize: normalizeHungMinutes },
   [CONTEXT_WARN_KEY]: { kind: 'choice', normalize: normalizeContextWarn },
   [BOARD_STALE_KEY]: { kind: 'choice', normalize: normalizeBoardStaleHours },
+  [BOARD_LANES_KEY]: { kind: 'choice', normalize: normalizeBoardLanes },
   [REMIND_KEY]: { kind: 'choice', normalize: normalizeRemindMinutes },
   [EDITOR_KEY]: { kind: 'choice', normalize: normalizeEditor },
   [THEME_KEY]: { kind: 'choice', normalize: normalizeTheme },

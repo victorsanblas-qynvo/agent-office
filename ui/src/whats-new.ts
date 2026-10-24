@@ -55,6 +55,7 @@ export const WHATS_NEW: readonly WhatsNewSection[] = [
       'whatsNew.board.age',
       'whatsNew.board.keys',
       'whatsNew.board.export',
+      'whatsNew.board.lanes',
       'whatsNew.board.activity',
       'whatsNew.board.spend',
       'whatsNew.board.compose',
