@@ -41,6 +41,8 @@ export type WorktreeSummary = { worktrees: WorktreeView[]; totalKb: number; warn
 // answered, the branch tip resolved and the folder (if any) is on that tip; without it nothing is decided.
 type Facts = { ahead: number; behind: number; own: number; dirty: boolean; merged: boolean; known: boolean; tip: string | null };
 
+const CANCEL_WAIT_MS = 10_000;
+
 export type WorktreeDeskOpts = {
   store: OrderStore;
   git: GitRunner;
@@ -56,7 +58,9 @@ export type WorktreeDeskOpts = {
   // A removal takes the turn of the order's check starts; a run still going keeps its folder unless forced.
   exclusive?: <T>(orderId: number, task: () => Promise<T>) => Promise<T>;
   running?: (orderId: number) => boolean;
-  cancelChecks?: (orderId: number) => void;
+  // Cancels the run and resolves when it has ended.
+  cancelChecks?: (orderId: number) => void | Promise<unknown>;
+  cancelWaitMs?: number;
   sizeOf?: (path: string) => Promise<number | null>;
   shell?: typeof runShell;
 };
@@ -488,6 +492,16 @@ export class WorktreeDesk {
     return this.opts.exclusive ? this.opts.exclusive(orderId, task) : task();
   }
 
+  private async cancelAndWait(orderId: number): Promise<void> {
+    const ended = Promise.resolve(this.opts.cancelChecks?.(orderId)).catch(() => {});
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const limit = new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, this.opts.cancelWaitMs ?? CANCEL_WAIT_MS);
+    });
+    await Promise.race([ended, limit]);
+    clearTimeout(timer);
+  }
+
   private async removeNow(orderId: number, opts: { deleteBranch: boolean; force: boolean }): Promise<RemoveResult> {
     const row = this.opts.store.get(orderId);
     const path = row?.worktree_path;
@@ -495,7 +509,7 @@ export class WorktreeDesk {
     if (this.opts.inside(path)) return 'busy';
     if (this.opts.running?.(orderId)) {
       if (!opts.force) return 'busy';
-      this.opts.cancelChecks?.(orderId);
+      await this.cancelAndWait(orderId);
     }
     const repo = this.repoOf(row);
     if (!repo) return 'failed';

@@ -391,9 +391,7 @@ export class Office {
       forkPoint: (order, sha) => order.parent_id !== null && this.checkpoints.list(order.parent_id).some((point) => point.sha === sha),
       exclusive: (id, task) => this.checks.exclusive(id, task),
       running: (id) => this.checks.isRunning(id),
-      cancelChecks: (id) => {
-        this.checks.cancel(id);
-      },
+      cancelChecks: (id) => this.checks.cancelAndWait(id),
     });
     this.branches = new BranchRestoreDesk({ db: opts.db, git: this.git, now: this.now, bus: this.bus, config: () => this.config });
     this.orphans = new OrphanBranchDesk({ db: opts.db, git: this.git, now: this.now, config: () => this.config });

@@ -10,6 +10,7 @@ export const TAIL_MAX = 50;
 const TEXT_CHARS = 500;
 const LINE_CHARS = 200;
 const REDACT_CHARS = 4096;
+const REDACT_HARD_CHARS = 16 * 1024;
 const INPUT_FIELDS = ['command', 'file_path', 'pattern', 'url'] as const;
 
 export function clampTail(raw: string | undefined): number {
@@ -50,14 +51,14 @@ function clip(value: string, max: number): string {
   return value.length > max ? value.slice(0, max) : value;
 }
 
-// Redaction runs before the clip, over a bounded head cut back to a whitespace, so neither cut leaves part of a secret
+// Redaction runs before the clip, over a bounded head cut back to a whitespace (a head with none is redacted whole, up to a hard cap), so neither cut leaves part of a secret
 // too short for the rules to see.
 function shown(value: string, max: number, key: string): string {
   let head = value;
   if (head.length > REDACT_CHARS) {
     head = head.slice(0, REDACT_CHARS);
     const space = head.search(/\s\S*$/);
-    if (space > 0) head = head.slice(0, space);
+    head = space > 0 ? head.slice(0, space) : value.slice(0, REDACT_HARD_CHARS);
   }
   return clip(redactLog(head, key), max);
 }
