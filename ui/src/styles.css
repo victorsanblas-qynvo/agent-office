@@ -2738,6 +2738,34 @@ button.plans-action {
   min-width: 880px;
 }
 
+.board-columns.board-lanes {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.board-lane-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.board-lane-toggle {
+  font-weight: 700;
+}
+
+.board-lane-columns {
+  grid-template-columns: repeat(4, minmax(210px, 1fr));
+  min-width: 0;
+}
+
+.board-lanes-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .board-col {
   display: flex;
   flex-direction: column;

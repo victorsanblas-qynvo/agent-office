@@ -48,6 +48,40 @@ export function nextCard(columns: readonly (readonly string[])[], current: strin
   return current;
 }
 
+export type Lane = { floor: string; columns: Column[] };
+
+export type LaneDirection = CardDirection | 'laneUp' | 'laneDown';
+
+// The Tablero grouped by floor: one lane per floor holding the four columns of its cards, and none for a floor
+// with no visible card. Lanes follow `filters.floors` first and then the other floors alphabetically.
+export function laneLayout(orders: readonly OrderView[], filters: { floor: string | null; floors?: readonly string[] }): Lane[] {
+  const known = filters.floors ?? [];
+  const slugs = [...new Set(orders.map((order) => order.floor))].filter((slug) => filters.floor === null || slug === filters.floor);
+  const rank = (slug: string): number => (known.includes(slug) ? known.indexOf(slug) : known.length);
+  slugs.sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
+  return slugs.map((slug) => ({ floor: slug, columns: columnsOf(orders, slug) })).filter((lane) => lane.columns.some((column) => column.orders.length > 0));
+}
+
+// Like nextCard over lanes: j/k and h/l stay inside the lane of the current card; laneDown and laneUp go to the
+// same column and position of the nearest lane below or above that has a card there. A lane with nothing
+// shown (a collapsed one) holds empty columns.
+export function nextCardInLanes(lanes: readonly Lane[], current: string | null, dir: LaneDirection): string | null {
+  const grid = lanes.map((lane) => lane.columns.map((column) => column.orders.map((order) => String(order.id))));
+  const first = grid.flat().find((ids) => ids.length > 0)?.[0] ?? null;
+  if (current === null) return first;
+  const at = grid.findIndex((columns) => columns.some((ids) => ids.includes(current)));
+  if (at < 0) return first;
+  if (dir !== 'laneUp' && dir !== 'laneDown') return nextCard(grid[at] ?? [], current, dir);
+  const col = (grid[at] ?? []).findIndex((ids) => ids.includes(current));
+  const row = (grid[at]?.[col] ?? []).indexOf(current);
+  const step = dir === 'laneDown' ? 1 : -1;
+  for (let lane = at + step; lane >= 0 && lane < grid.length; lane += step) {
+    const target = grid[lane]?.[col] ?? [];
+    if (target.length > 0) return target[Math.min(row, target.length - 1)] ?? current;
+  }
+  return current;
+}
+
 // The column `[` and `]` take a card to: the same neighbour the arrows of the card use.
 export function neighbourStatus(status: OrderStatus, dir: 'prev' | 'next'): OrderStatus | null {
   const near = neighbours(status);

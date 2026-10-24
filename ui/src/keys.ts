@@ -1,5 +1,5 @@
 import { t, type MessageKey } from './i18n';
-import type { CardDirection } from './board/columns';
+import type { LaneDirection } from './board/columns';
 import { TABS } from './topbar';
 
 export type KeyAction =
@@ -12,8 +12,8 @@ export type KeyAction =
   | { type: 'board'; move: BoardMove }
   | { type: 'escape' };
 
-// What the keyboard does on the Tablero: step the highlight, open its drawer or ask to move its card.
-export type BoardMove = CardDirection | 'open' | 'prev' | 'next';
+// What the keyboard does on the Tablero: step the highlight (J and K between lanes), open its drawer or ask to move its card.
+export type BoardMove = LaneDirection | 'open' | 'prev' | 'next';
 
 // A hidden row is an alias of another one and stays out of the help.
 export type Binding = { combo: string; action: KeyAction; label: () => string; hidden?: boolean };
@@ -45,6 +45,8 @@ export const BINDINGS: readonly Binding[] = [
   alias('ArrowUp', { type: 'board', move: 'up' }, 'keys.boardUp'),
   alias('ArrowLeft', { type: 'board', move: 'left' }, 'keys.boardLeft'),
   alias('ArrowRight', { type: 'board', move: 'right' }, 'keys.boardRight'),
+  fixed('shift+j', { type: 'board', move: 'laneDown' }, 'keys.boardLaneDown'),
+  fixed('shift+k', { type: 'board', move: 'laneUp' }, 'keys.boardLaneUp'),
   fixed('Enter', { type: 'board', move: 'open' }, 'keys.boardOpen'),
   fixed('[', { type: 'board', move: 'prev' }, 'keys.boardPrev'),
   fixed(']', { type: 'board', move: 'next' }, 'keys.boardNext'),
