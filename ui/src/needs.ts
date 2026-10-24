@@ -2,17 +2,18 @@ import { PATIENT_TOOLS } from '../../shared/patient-tools';
 import { t } from './i18n';
 import { hubText } from './i18n/hub';
 import { collisions, heldClaims, type Collision } from './chat/claims';
+import { isWorking } from './boards';
 import { agentName, floorLabel, formatTokens, isAway } from './labels';
 import { budgetSpend, dayKey, floorSpendOf, readFloorBudgets, type FloorBudgets } from './budgets';
-import { readContextWarn, readHungMinutes, readSnoozes, writeSnoozes, type Snoozes } from './prefs';
+import { readBoardStaleHours, readContextWarn, readHungMinutes, readSnoozes, writeSnoozes, type Snoozes } from './prefs';
 import type { Store, Topic } from './store';
-import { clockMinutes } from './time';
+import { clockMinutes, relativeTime } from './time';
 import type { AgentState, AgentView, DocumentView, OrderView, QuestionView, UsageView, UsageWindow } from './types';
 
-export type NeedKind = 'permission' | 'question' | 'blocked' | 'hung' | 'stalled' | 'context' | 'claim' | 'plan' | 'checks' | 'limit' | 'budget';
+export type NeedKind = 'permission' | 'question' | 'blocked' | 'hung' | 'stalled' | 'context' | 'claim' | 'plan' | 'checks' | 'staleOrder' | 'limit' | 'budget';
 
 // Most urgent first: this is also the order of the queue.
-export const NEED_KINDS: readonly NeedKind[] = ['permission', 'question', 'blocked', 'hung', 'stalled', 'context', 'claim', 'plan', 'checks', 'limit', 'budget'];
+export const NEED_KINDS: readonly NeedKind[] = ['permission', 'question', 'blocked', 'hung', 'stalled', 'context', 'claim', 'plan', 'checks', 'staleOrder', 'limit', 'budget'];
 
 export type Need = {
   id: string;
@@ -43,6 +44,8 @@ export type NeedSources = {
   hungAfterMinutes: number;
   // Percentage of the context window from which an agent is warned about; 0 is off.
   contextWarnPct: number;
+  // Hours an open order may go without activity before it is stale; 0 is off.
+  staleOrderHours: number;
   // Daily token budget by floor slug and what each floor spent today.
   budgets: FloorBudgets;
   floorSpend: Readonly<Record<string, number>>;
@@ -221,6 +224,26 @@ export function collectNeeds(sources: NeedSources): Need[] {
       orderSlug: order.slug,
     });
   }
+  if (sources.staleOrderHours > 0) {
+    const leads = [...agents.values()].filter((agent) => agent.roleKind === 'lead' && !isAway(agent));
+    for (const order of sources.orders) {
+      if (order.status !== 'en-curso' && order.status !== 'revision') continue;
+      const touched = Math.max(order.lastActivity ?? 0, order.updatedAt);
+      if (sources.now - touched <= sources.staleOrderHours * 3_600_000) continue;
+      if (leads.some((lead) => lead.floor === order.floor && isWorking(lead, sources.stateOf))) continue;
+      needs.push({
+        id: `stale:${order.slug}`,
+        kind: 'staleOrder',
+        since: touched,
+        name: t('needs.staleOrder.name', { title: order.title, time: relativeTime(touched, sources.now) }),
+        instance: `${order.status}:${order.lastActivity ?? order.updatedAt}`,
+        agentKey: null,
+        floor: order.floor,
+        docPath: null,
+        orderSlug: order.slug,
+      });
+    }
+  }
   for (const collision of sources.claims) {
     const [first, second] = collision.holders;
     const rest = collision.holders.length - 2;
@@ -256,6 +279,7 @@ export function needsOf(store: Store): Need[] {
     now: store.now(),
     hungAfterMinutes: readHungMinutes(),
     contextWarnPct: readContextWarn(),
+    staleOrderHours: readBoardStaleHours(),
     budgets: readFloorBudgets(),
     floorSpend: floorSpendOf(budgetSpend(store.now())?.summary ?? null),
     floorName: (slug) => {
@@ -277,10 +301,10 @@ function hashOf(text: string): string {
 }
 
 // A short fingerprint of the occurrence and of what the entry says: `kind:instance:label`. A snooze "until it
-// changes" ends when any of it changes; a timed one only when the occurrence does. The context and budget labels carry
+// changes" ends when any of it changes; a timed one only when the occurrence does. The context, budget and stale-order labels carry
 // a figure that moves with every sample, so only the occurrence counts there.
 export function needSignature(need: Pick<Need, 'kind' | 'name' | 'instance'>): string {
-  return `${need.kind}:${hashOf(need.instance)}:${hashOf(need.kind === 'context' || need.kind === 'budget' ? '' : need.name)}`;
+  return `${need.kind}:${hashOf(need.instance)}:${hashOf(need.kind === 'context' || need.kind === 'budget' || need.kind === 'staleOrder' ? '' : need.name)}`;
 }
 
 function occurrenceOf(signature: string): string {

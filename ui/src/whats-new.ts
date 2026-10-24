@@ -32,6 +32,7 @@ export const WHATS_NEW: readonly WhatsNewSection[] = [
       'whatsNew.needs.budgets',
       'whatsNew.needs.snooze',
       'whatsNew.needs.floor',
+      'whatsNew.needs.stale',
     ],
   },
   {

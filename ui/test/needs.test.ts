@@ -4,7 +4,7 @@ import { clockMinutes } from '../src/time';
 import { activeNeeds, filterByFloor, floorChips, liveFloorFilter, canSnooze, collectNeeds, loadSnoozes, menuStart, menuStep, NEEDS_TOPICS, needSignature, pruneSnoozes, saveSnoozes, shouldPersistSnoozes, shouldPruneSnoozes, snoozedNeeds, snoozeNeed, needsDue, NEEDS_TICK_MS, triggerSignature, wakeNeed, NeedCursor, needLabel, needToast, type Need, type NeedSources } from '../src/needs';
 import { SNOOZE_KEY, type Snoozes } from '../src/prefs';
 import type { Collision } from '../src/chat/claims';
-import type { UsageForecast, UsageView, UsageWindow } from '../src/types';
+import type { OrderView, UsageForecast, UsageView, UsageWindow } from '../src/types';
 import { agent, doc, order, question } from './fixtures';
 
 applyLang('es');
@@ -13,7 +13,7 @@ const NOW = 1_000_000_000;
 const HOUR = 3_600_000;
 
 function sources(extra: Partial<NeedSources> & { agents?: ReturnType<typeof agent>[] } = {}): NeedSources {
-  return { agents: [], questions: [], documents: [], orders: [], usage: null, claims: [], budgets: {}, floorSpend: {}, floorName: (slug) => slug, now: NOW, hungAfterMinutes: 10, contextWarnPct: 85, stateOf: (a) => a.state, ...extra };
+  return { agents: [], questions: [], documents: [], orders: [], usage: null, claims: [], budgets: {}, floorSpend: {}, floorName: (slug) => slug, now: NOW, hungAfterMinutes: 10, contextWarnPct: 85, staleOrderHours: 0, stateOf: (a) => a.state, ...extra };
 }
 
 const kinds = (needs: Need[]): string[] => needs.map((need) => `${need.kind}:${need.agentKey ?? need.docPath ?? need.orderSlug}`);
@@ -650,5 +650,66 @@ describe('floor budget needs', () => {
     const usage: UsageView = { fiveHour: { usedPct: 95, resetsAt: NOW + 2 * HOUR }, sevenDay: null, at: NOW };
     const needs = budgeted(1_700_000, { usage, agents: [agent('stalled', { stalledSince: 10 })] });
     expect(needs.map((need) => need.kind)).toEqual(['stalled', 'limit', 'budget']);
+  });
+});
+
+describe('stale orders', () => {
+  const old = NOW - 50 * HOUR;
+  const stale = (extra: Partial<NeedSources> & { agents?: ReturnType<typeof agent>[] } = {}): Need[] => collectNeeds(sources({ staleOrderHours: 24, ...extra })).filter((need) => need.kind === 'staleOrder');
+
+  test('a fresh order has no entry', () => {
+    expect(stale({ orders: [order('o', { updatedAt: NOW - HOUR })] })).toEqual([]);
+  });
+
+  test('an en-curso order past the threshold is flagged with its age', () => {
+    const [need] = stale({ orders: [order('o', { title: 'Login', updatedAt: old })] });
+    expect(need).toMatchObject({ id: 'stale:o', orderSlug: 'o', floor: 'mobile', since: old });
+    expect(need.name).toBe('Login sin movimiento desde hace 2 d');
+  });
+
+  test('a recent lastActivity keeps an old updatedAt from being stale', () => {
+    expect(stale({ orders: [order('o', { updatedAt: old, lastActivity: NOW - HOUR })] })).toEqual([]);
+  });
+
+  test('a revision order is flagged', () => {
+    expect(kinds(stale({ orders: [order('r', { status: 'revision', updatedAt: old })] }))).toEqual(['staleOrder:r']);
+  });
+
+  test('hecho and other statuses are not flagged', () => {
+    expect(stale({ orders: [order('d', { status: 'hecho', updatedAt: old }), order('p', { status: 'pendiente', updatedAt: old })] })).toEqual([]);
+  });
+
+  test('a working floor lead keeps its orders out; another floor does not', () => {
+    const orders = [order('o', { updatedAt: old })];
+    expect(stale({ orders, agents: [agent('lead', { roleKind: 'lead', floor: 'mobile', state: 'working' })] })).toEqual([]);
+    expect(stale({ orders, agents: [agent('lead', { roleKind: 'lead', floor: 'backend', state: 'working' })] })).toHaveLength(1);
+    expect(stale({ orders, agents: [agent('lead', { roleKind: 'lead', floor: 'mobile', state: 'idle' })] })).toHaveLength(1);
+  });
+
+  test('a threshold of 0 turns it off and the threshold moves the line', () => {
+    const orders = [order('o', { updatedAt: NOW - 8 * HOUR })];
+    expect(stale({ orders, staleOrderHours: 0 })).toEqual([]);
+    expect(stale({ orders, staleOrderHours: 24 })).toEqual([]);
+    expect(stale({ orders, staleOrderHours: 6 })).toHaveLength(1);
+  });
+
+  test('the instance follows the status and the last activity, not the age text', () => {
+    const at = (extra: Partial<OrderView>, now = NOW): Need => stale({ now, orders: [order('o', { updatedAt: old, ...extra })] })[0];
+    const base = at({});
+    expect(at({ lastActivity: old + 1 }).instance).not.toBe(base.instance);
+    expect(at({ status: 'revision' }).instance).not.toBe(base.instance);
+    expect(needSignature(at({}, NOW + 24 * HOUR))).toBe(needSignature(base));
+  });
+
+  test('it ranks after checks and before a usage limit', () => {
+    const touched = { status: 'passed' as const, passed: 1, total: 1, sha: 'abc', touched: ['x'], forced: false };
+    const needs = collectNeeds(
+      sources({
+        staleOrderHours: 24,
+        orders: [order('s', { updatedAt: old }), order('c', { updatedAt: NOW, checks: touched })],
+        usage: { at: NOW, fiveHour: { usedPct: 95, resetsAt: NOW + 3 * HOUR, forecast: null }, sevenDay: null } as unknown as UsageView,
+      }),
+    );
+    expect(kinds(needs)).toEqual(['checks:c', 'staleOrder:s', 'limit:null']);
   });
 });
