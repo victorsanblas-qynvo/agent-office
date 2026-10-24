@@ -306,6 +306,8 @@ export type TableHandle = {
   showHistory(): boolean;
   // Shows the history view with a saved search applied; false when this panel has no hub to ask.
   showSearch(saved: SavedSearch): boolean;
+  // Shows the live view, where the spend is.
+  showNow(): void;
 };
 
 export function mountTable(host: HTMLElement, store: Store, api: OfficeApi | null): TableHandle {
@@ -320,6 +322,7 @@ export function mountTable(host: HTMLElement, store: Store, api: OfficeApi | nul
   host.replaceChildren(nowView);
   let showHistory = (): boolean => false;
   let showSearch = (_saved: SavedSearch): boolean => false;
+  let showNow = (): void => {};
   if (api) {
     const historyHost = el('div', 'table-history');
     const history = mountHistory(historyHost, store, api, {
@@ -366,6 +369,7 @@ export function mountTable(host: HTMLElement, store: Store, api: OfficeApi | nul
       setView('history', true);
       return true;
     };
+    showNow = (): void => setView('now', false);
     showSearch = (search: SavedSearch): boolean => {
       setView('history', false);
       history.apply(search);
@@ -448,5 +452,5 @@ export function mountTable(host: HTMLElement, store: Store, api: OfficeApi | nul
   store.watch(['lang'], () => help.replaceChildren(...helpContent()));
   store.watch(['agents', 'floors', 'questions', 'selection', 'tick', 'alerts', 'documents', 'lang', 'orders'], schedule);
 
-  return { showHistory: () => showHistory(), showSearch: (saved) => showSearch(saved) };
+  return { showHistory: () => showHistory(), showSearch: (saved) => showSearch(saved), showNow: () => showNow() };
 }

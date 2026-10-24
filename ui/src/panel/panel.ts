@@ -3,7 +3,7 @@ import type { OfficeApi } from '../api';
 import { el } from '../dom';
 import type { Store } from '../store';
 import { mountDeliverables } from './deliverables';
-import { mountFloors } from './floors';
+import { mountFloors, type FloorLinks } from './floors';
 import { mountHeader } from './header';
 import { mountMemory } from './memory';
 import { mountNotes } from './notes';
@@ -13,7 +13,7 @@ import { mountQuestion } from './question-form';
 import { mountReport } from './report';
 import { mountTimeline } from './timeline';
 
-export function mountPanel(host: HTMLElement, store: Store, actions: Actions, api: OfficeApi | null): void {
+export function mountPanel(host: HTMLElement, store: Store, actions: Actions, api: OfficeApi | null, links: FloorLinks): void {
   const header = el('div', 'panel-header');
   const notes = el('div', 'panel-notes');
   const floors = el('div', 'panel-floors');
@@ -29,7 +29,7 @@ export function mountPanel(host: HTMLElement, store: Store, actions: Actions, ap
 
   mountHeader(header, store);
   mountNotes(notes, store);
-  mountFloors(floors, store, api);
+  mountFloors(floors, store, api, links);
   mountNow(now, store, api);
   mountQuestion(question, store, actions);
   mountDeliverables(deliverables, store, api);

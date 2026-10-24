@@ -20,6 +20,7 @@ const SAME_KEYS: MessageKey[] = [
   'metrics.days.option',
   'metrics.p90',
   'digest.totals',
+  'floors.chip.spendBudget',
   'needs.kind.hung',
   'needs.kind.context',
   'needs.kind.budget',

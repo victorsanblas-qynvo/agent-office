@@ -128,7 +128,16 @@ async function boot(): Promise<void> {
   const actions: Actions = api ? liveActions(store, api) : replayActions(store);
 
   const table = mountTable(tableHost, store, api);
-  mountPanel(panelHost, store, actions, api);
+  mountPanel(panelHost, store, actions, api, {
+    openBoard: (floor) => {
+      showTab('board');
+      board.show(floor);
+    },
+    openSpend: () => {
+      showTab('table');
+      table.showNow();
+    },
+  });
   const board = mountBoard(boardHost, store, api);
   mountPlans(plansHost, store, api);
   chat = mountChat(chatHost, store, api);
