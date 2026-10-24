@@ -2,6 +2,7 @@ import { Color, Group, Mesh, MeshStandardMaterial, SRGBColorSpace, Vector3, type
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import type { LiftService } from '../lift';
 import { modelOverride } from '../layouts';
+import { motionReduced } from '../motion';
 import type { AgentState, FloorLayoutOverride, RoleKind, TestResult } from '../types';
 import { buildMannequin, type AssetLibrary, type LoadedModel, type LogicalClip } from './assets';
 import {
@@ -59,6 +60,8 @@ export type SceneLift = LiftService<{ x: number; z: number }> & { stops(): LiftS
 
 type Ride = { leg: LiftLeg; phase: 'approach' | 'waiting' | 'boarding' | 'riding' };
 
+// Seconds of walking granted per frame when motion is reduced: enough to reach any destination at once.
+const TELEPORT_S = 1e4;
 const STEP_REACH = LIFT_W / 2 + 0.3;
 
 type Activity = {
@@ -576,7 +579,7 @@ export class Character {
   }
 
   private advance(dt: number, resolve: Resolver): void {
-    let budget = dt;
+    let budget = motionReduced() ? TELEPORT_S : dt;
     let guard = 0;
     while (budget > 1e-6 && guard < 24) {
       guard += 1;

@@ -16,6 +16,7 @@ import { focusOrders } from './panel/orders';
 import { relaunchable } from './panel/orderable';
 import { togglePin } from './pins';
 import { broadcastRunning } from './broadcast';
+import { motion } from './motion';
 import { theme } from './theme';
 import { readSaved } from './table/history';
 import { relaunchCandidates, relaunchRunning } from './relaunch-all';
@@ -298,6 +299,9 @@ export function runTarget(nav: Nav, target: PaletteTarget): void {
       break;
     case 'theme':
       theme.set(target.theme);
+      break;
+    case 'motion':
+      motion.set(target.motion);
       break;
     case 'search': {
       const search = readSaved().find((item) => item.name === target.name);

@@ -210,6 +210,8 @@ La pestaña **Ajustes** edita `config.json`: el modelo (`opus`, `sonnet`, `haiku
 
 Ajustes › Tema fija el aspecto del panel y de las escenas 2D y 3D en automático (el del sistema), claro u oscuro (`agent-office.theme`, también en la paleta como «Tema: claro/oscuro/automático»).
 
+Ajustes › Movimiento fija el movimiento de las escenas en automático (la preferencia del sistema), reducido (la cámara salta, los personajes llegan sin caminar y el ambiente se actualiza como mucho una vez por minuto) o completo (`agent-office.motion`, también en la paleta como «Movimiento: automático/reducido/completo»).
+
 | Rol | Por defecto | Por qué |
 |---|---|---|
 | Director | fable · xhigh | Reparte entre plantas y fija los contratos que comparten: un error se propaga a todas. Es una sola sesión larga. |

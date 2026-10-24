@@ -1,6 +1,7 @@
 import { Box3, PerspectiveCamera, Plane, Raycaster, Vector2, Vector3 } from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { currentLang, t } from '../i18n';
+import { motionReduced } from '../motion';
 
 export type FloorButton = { slug: string; label: string; accent: string; annex: boolean };
 
@@ -209,7 +210,7 @@ export class CameraRig {
   }
 
   moveTo(position: Vector3, target: Vector3, duration: number): void {
-    if (duration <= 0) {
+    if (duration <= 0 || motionReduced()) {
       this.tween = null;
       this.camera.position.copy(position);
       this.controls.target.copy(target);

@@ -1,5 +1,6 @@
 import { Rectangle, type Container } from 'pixi.js';
 import type { LiftService } from '../lift';
+import { motionReduced } from '../motion';
 import { buildCharacter, type CharacterParts, type Look } from '../sprites/sprites';
 import type { AgentState, TestResult } from '../types';
 import {
@@ -229,7 +230,8 @@ export class CharacterView {
   }
 
   private advance(dt: number): void {
-    let budget = WALK_SPEED * dt;
+    const reduced = motionReduced();
+    let budget = reduced ? Infinity : WALK_SPEED * dt;
     this.walking = false;
     const lift = this.lift;
     for (let guard = 0; guard < 16; guard += 1) {
@@ -282,6 +284,7 @@ export class CharacterView {
       if (budget < 0) break;
       this.path.shift();
     }
+    if (reduced) this.walking = false;
     if (this.walking) this.walkClock += dt;
   }
 

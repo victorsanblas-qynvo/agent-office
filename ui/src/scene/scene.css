@@ -436,10 +436,15 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .scene-tag *,
-  .scene-tag-chip {
+  :root:not([data-motion="full"]) .scene-tag *,
+  :root:not([data-motion="full"]) .scene-tag-chip {
     animation: none !important;
   }
+}
+
+:root[data-motion="reduced"] .scene-tag *,
+:root[data-motion="reduced"] .scene-tag-chip {
+  animation: none !important;
 }
 
 .scene-hint {

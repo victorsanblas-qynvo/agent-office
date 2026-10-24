@@ -21,6 +21,7 @@ import {
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
 import { ambient, coffeePlan, daylightFor, quantizeDaylight, type CoffeeVisit } from '../ambient';
+import { ambientInterval } from '../motion';
 import { effectiveTheme, theme } from '../theme';
 import { t } from '../i18n';
 import { resolveOverride } from '../layouts';
@@ -157,6 +158,7 @@ class OfficeScene {
   private coffee = new Map<string, CoffeeVisit>();
   private daylight = -1;
   private daylightTimer = 0;
+  private siteTimer = Infinity;
   private seenDeliveries = 0;
   private seenCounter = 0;
   private primed = false;
@@ -319,7 +321,7 @@ class OfficeScene {
       this.refreshMeetings();
     }
     this.daylightTimer += dt;
-    if (this.daylightTimer >= DAYLIGHT_CHECK_S) {
+    if (this.daylightTimer >= ambientInterval(DAYLIGHT_CHECK_S)) {
       this.daylightTimer = 0;
       this.updateDaylight(false);
     }
@@ -644,7 +646,11 @@ class OfficeScene {
       desk.setScreen(0);
       desk.setSeated(false);
     }
-    this.site.tick(this.elapsed, testing);
+    this.siteTimer += dt;
+    if (this.siteTimer >= ambientInterval(0)) {
+      this.siteTimer = 0;
+      this.site.tick(this.elapsed, testing);
+    }
     const liftX = this.site.liftX;
     this.cabin.update(liftX === null ? null : this.lift, liftX ?? 0, AISLE_Z);
     pulseRings(this.elapsed);

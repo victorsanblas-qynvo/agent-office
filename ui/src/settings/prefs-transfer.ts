@@ -20,6 +20,7 @@ import {
   normalizeQuietHours,
   normalizeRemindMinutes,
 } from '../prefs';
+import { MOTION_KEY, normalizeMotion } from '../motion';
 import { SOUND_KEY, normalizeSoundPrefs } from '../sound';
 import { SAVED_KEY, parseSaved } from '../table/history';
 import { THEME_KEY, normalizeTheme } from '../theme';
@@ -44,6 +45,7 @@ const RULES: Record<string, Rule> = {
   [REMIND_KEY]: { kind: 'choice', normalize: normalizeRemindMinutes },
   [EDITOR_KEY]: { kind: 'choice', normalize: normalizeEditor },
   [THEME_KEY]: { kind: 'choice', normalize: normalizeTheme },
+  [MOTION_KEY]: { kind: 'choice', normalize: normalizeMotion },
   [QUIET_KEY]: { kind: 'record', normalize: normalizeQuietHours },
   [AMBIENT_KEY]: { kind: 'record', normalize: normalizeAmbientPrefs },
   [SOUND_KEY]: { kind: 'record', normalize: normalizeSoundPrefs },
