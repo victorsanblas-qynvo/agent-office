@@ -15,6 +15,8 @@ import type { RunMark } from './diff-model';
 import { parseDiff } from './diff-parse';
 import { editorLink } from './editor-link';
 import { readEditor } from '../prefs';
+import { orderNoteKey } from '../notes';
+import { mountNoteEditor } from '../notes-editor';
 import { REVIEW_MAX_BODY } from '../../../shared/review-message';
 import { spendLine, spendTitle } from './spend';
 import { openPrDraft } from './pr-draft';
@@ -167,6 +169,9 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
   let lastPaint = store.now();
 
   const order = (): OrderView | undefined => store.orders.find((o) => o.id === orderId);
+  const noted = order();
+  const noteKey = noted ? orderNoteKey(noted.slug) : null;
+  const notes = noteKey ? mountNoteEditor(store, noteKey) : null;
 
   const reload = async (): Promise<void> => {
     if (!api) return;
@@ -824,6 +829,7 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
         metaRow(t('board.drawer.spend'), spendNode(current)),
       ),
       current.worktree?.error ? el('pre', 'order-error', current.worktree.error) : null,
+      notes?.node ?? null,
       current.description ? el('p', 'order-description', current.description) : null,
       criteriaBlock(current),
       actions(current),
@@ -831,7 +837,9 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
       tab === 'checks' ? checksTab(current, now) : tab === 'points' ? pointsTab(current, now) : tab === 'activity' ? activityTab(current, now) : diffTab(current),
     ];
     const typing = document.activeElement instanceof HTMLTextAreaElement && panel.contains(document.activeElement) ? document.activeElement : null;
+    const restoreNote = notes?.holdFocus();
     panel.replaceChildren(...parts.filter((part): part is Node => part !== null));
+    restoreNote?.();
     const input = panel.querySelector<HTMLTextAreaElement>('.review-input');
     if (focusEditor && input) input.focus();
     else if (typing?.isConnected) typing.focus();
@@ -859,6 +867,11 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
     lastPaint = now;
     for (const node of panel.querySelectorAll<HTMLElement>('time[data-ts]')) node.textContent = relativeTime(Number(node.dataset.ts), now);
   });
+  const unwatchJump = store.watch(['noteJump'], () => {
+    if (noteKey === null || store.noteJump !== noteKey) return;
+    store.noteJump = null;
+    notes?.reveal();
+  });
   noteRun();
   void reload();
   render();
@@ -869,6 +882,8 @@ export function mountOrderDetail(host: HTMLElement, store: Store, api: OfficeApi
       unwatch();
       unwatchChecks();
       unwatchTick();
+      unwatchJump();
+      notes?.destroy();
       document.removeEventListener('keydown', onKey);
     },
   };

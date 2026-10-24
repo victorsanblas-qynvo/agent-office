@@ -80,6 +80,7 @@ describe('palette entries for saved searches', () => {
     relaunch: null,
     relaunchAll: 0,
     pins: [],
+    notes: {},
     newOrder: false,
     focus: null,
     mute: false,

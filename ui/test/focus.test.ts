@@ -80,6 +80,7 @@ describe('palette focus entries', () => {
     statusAll: 0,
     messageAll: 0,
     pins: [],
+    notes: {},
     newOrder: false,
     focus: null,
     mute: false,

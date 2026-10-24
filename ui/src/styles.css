@@ -4558,3 +4558,35 @@ button.diff-file.active {
   margin: 0;
   padding-left: 18px;
 }
+
+.note-card {
+  margin: 8px 0;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.note-summary {
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.note-input {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  resize: vertical;
+}
+
+.note-hint {
+  display: block;
+  min-height: 1em;
+  font-size: 11px;
+}
+
+.note-icon {
+  margin-left: 4px;
+  font-size: 11px;
+  color: var(--muted);
+}

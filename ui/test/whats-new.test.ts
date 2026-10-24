@@ -51,6 +51,7 @@ describe('shouldShowWhatsNew', () => {
 describe('the palette', () => {
   const context: PaletteContext = {
     agents: [],
+    notes: {},
     floors: [],
     documents: [],
     orders: [],

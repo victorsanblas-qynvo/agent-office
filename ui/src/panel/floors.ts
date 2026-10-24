@@ -6,6 +6,8 @@ import { checksBadgeNode } from '../board/badges';
 import { activeOrder } from '../board/columns';
 import { agentName, contextFill, contextLevel, contextLine, contextOf, doingPhrase, floorLabel, isAway, roleLabel, STATE_COLORS } from '../labels';
 import type { Store } from '../store';
+import { agentNoteKey } from '../notes';
+import { noteIcon } from '../notes-editor';
 import { relativeTime } from '../time';
 import type { AgentView, FloorView } from '../types';
 import { panelSection } from './section';
@@ -27,7 +29,7 @@ function agentRow(store: Store, row: Row, times: TimeNode[], now: number): HTMLE
     'button',
     `floors-row${away ? ' floors-row-away' : ''}${store.selectedKey === agent.key ? ' selected' : ''}`,
     dot,
-    el('span', 'floors-name', agentName(agent)),
+    el('span', 'floors-name', agentName(agent), noteIcon(store.notes, agentNoteKey(agent.key))),
     el('span', 'chip floors-role', roleLabel(agent.roleKind)),
     store.questionFor(agent.key) ? el('span', 'floors-ask', '?') : null,
     time,
@@ -219,7 +221,7 @@ export function mountFloors(host: HTMLElement, store: Store, api: OfficeApi | nu
     true,
   );
 
-  store.watch(['agents', 'floors', 'selection', 'questions', 'sessions', 'lang', 'orders'], schedule);
+  store.watch(['agents', 'floors', 'selection', 'questions', 'sessions', 'lang', 'orders', 'notes'], schedule);
   store.watch(['tick'], () => {
     const now = store.now();
     for (const { node, text } of times) node.textContent = text(now);
