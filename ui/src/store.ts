@@ -2,6 +2,7 @@ import { StateDebouncer } from './debounce';
 import { deliveryFloors } from './deliveries';
 import { emptyLayouts } from './layouts';
 import { liveFocus } from './focus';
+import { readNotes, setNote, writeNotes, type Notes } from './notes';
 import { readFocus, readPins, writeFocus, writePins } from './prefs';
 import { applyLang, currentLang, plural, storeLang, t, type Lang, type MessageKey } from './i18n';
 import type {
@@ -54,7 +55,9 @@ export type Topic =
   | 'checks'
   | 'worktrees'
   | 'pins'
-  | 'focus';
+  | 'focus'
+  | 'notes'
+  | 'noteJump';
 
 export type ConnectionStatus = 'nokey' | 'connecting' | 'online' | 'offline' | 'denied' | 'replay';
 export type ToastKind = 'ok' | 'info' | 'error';
@@ -107,6 +110,10 @@ export class Store {
   toasts: Toast[] = [];
   selectedKey: string | null = null;
   pins: string[] = readPins();
+  // The user's private notes of this browser; they never leave it.
+  notes: Notes = readNotes();
+  // The note a palette entry asked to open; the editor of that note takes it and clears it.
+  noteJump: string | null = null;
   // The floor the whole panel is narrowed to, if any; read it through focusedFloor().
   focus: string | null = readFocus();
   connection: ConnectionStatus = 'connecting';
@@ -147,6 +154,17 @@ export class Store {
     this.pins = [...pins];
     writePins(this.pins);
     this.mark('pins');
+  }
+
+  setNote(key: string, text: string): void {
+    this.notes = setNote(this.notes, key, text, this.now());
+    writeNotes(this.notes);
+    this.mark('notes');
+  }
+
+  jumpToNote(key: string): void {
+    this.noteJump = key;
+    this.mark('noteJump');
   }
 
   setFocus(floor: string | null): void {

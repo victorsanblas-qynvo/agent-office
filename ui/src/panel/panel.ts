@@ -6,6 +6,7 @@ import { mountDeliverables } from './deliverables';
 import { mountFloors } from './floors';
 import { mountHeader } from './header';
 import { mountMemory } from './memory';
+import { mountNotes } from './notes';
 import { mountNow } from './now';
 import { mountOrders } from './orders';
 import { mountQuestion } from './question-form';
@@ -14,6 +15,7 @@ import { mountTimeline } from './timeline';
 
 export function mountPanel(host: HTMLElement, store: Store, actions: Actions, api: OfficeApi | null): void {
   const header = el('div', 'panel-header');
+  const notes = el('div', 'panel-notes');
   const floors = el('div', 'panel-floors');
   const now = el('div', 'panel-now');
   const question = el('div', 'panel-question');
@@ -23,9 +25,10 @@ export function mountPanel(host: HTMLElement, store: Store, actions: Actions, ap
   const timeline = el('div', 'panel-timeline');
   const orders = el('div', 'panel-orders');
 
-  host.replaceChildren(header, el('div', 'panel-scroll', floors, now, question, deliverables, report, memory, timeline), orders);
+  host.replaceChildren(header, el('div', 'panel-scroll', notes, floors, now, question, deliverables, report, memory, timeline), orders);
 
   mountHeader(header, store);
+  mountNotes(notes, store);
   mountFloors(floors, store, api);
   mountNow(now, store, api);
   mountQuestion(question, store, actions);

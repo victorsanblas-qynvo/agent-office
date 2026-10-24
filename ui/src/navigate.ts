@@ -206,6 +206,7 @@ export function paletteContext(nav: Nav): PaletteContext {
     statusAll: broadcastRunning() ? 0 : broadcastTargets(store, true).length,
     messageAll: broadcastRunning() ? 0 : broadcastTargets(store, false).length,
     pins: store.pins,
+    notes: store.notes,
     newOrder: nav.board().canCreate(),
     focus: store.focusedFloor(),
     mute: nav.notifier?.preferences.enabled === true,
@@ -244,6 +245,18 @@ export function runTarget(nav: Nav, target: PaletteTarget): void {
       nav.showTab('board');
       nav.board().show(target.floor, target.slug);
       break;
+    case 'note': {
+      if (target.key.startsWith('agent:')) {
+        goToAgent(nav, target.key.slice('agent:'.length));
+      } else {
+        const order = store.orders.find((item) => `order:${item.slug}` === target.key);
+        if (!order) break;
+        nav.showTab('board');
+        nav.board().show(order.floor, order.slug);
+      }
+      store.jumpToNote(target.key);
+      break;
+    }
     case 'reply': {
       const question = oldestQuestion(nav);
       if (question) goToAgent(nav, question.agentKey, 'question');

@@ -22,6 +22,7 @@ const context = (extra: Partial<PaletteContext> = {}): PaletteContext => ({
   statusAll: 0,
   messageAll: 0,
   pins: [],
+  notes: {},
   newOrder: false,
   mute: false,
   muteSound: false,

@@ -13,6 +13,8 @@ import { checksBadgeNode, folderBadgeNode } from './badges';
 import { boardMarkdown } from './board-markdown';
 import { applyFocus } from '../focus';
 import { ageBadge, agesDue, type AgeBadge, columnsOf, type Column, deliveryFloors, filterOrders, neighbours, neighbourStatus, nextCard, orderFloors } from './columns';
+import { orderNoteKey } from '../notes';
+import { noteIcon } from '../notes-editor';
 import { mountOrderDetail, type OrderDetail } from './order-detail';
 import { openNewOrder } from './new-order';
 
@@ -132,6 +134,7 @@ export function mountBoard(host: HTMLElement, store: Store, api: OfficeApi | nul
         order.planSlug ? el('span', 'chip', t('board.card.plan', { plan: order.planSlug })) : null,
         order.cycle > 1 ? el('span', 'chip', t('board.card.cycle', { cycle: order.cycle })) : null,
         el('span', 'muted', t('board.card.lead', { lead: order.lead ?? '—' })),
+        noteIcon(store.notes, orderNoteKey(order.slug)),
       ),
       order.branch ? el('code', 'board-card-branch muted', order.branch) : null,
       el(
@@ -290,7 +293,7 @@ export function mountBoard(host: HTMLElement, store: Store, api: OfficeApi | nul
     const now = store.now();
     saveFile(`${t('board.export.file')}-${fileStamp(new Date(now))}.md`, boardMarkdown(shownColumns, now), 'text/markdown;charset=utf-8');
   });
-  store.watch(['orders', 'lang', 'floors', 'mode', 'focus'], render);
+  store.watch(['orders', 'lang', 'floors', 'mode', 'focus', 'notes'], render);
   // The age of a card moves on its own, and follows the stale threshold of Ajustes.
   store.watch(['tick'], () => {
     const now = store.now();

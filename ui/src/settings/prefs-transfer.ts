@@ -1,5 +1,6 @@
 import { normalizeAmbientPrefs, AMBIENT_KEY } from '../ambient';
 import { FLOOR_BUDGETS_KEY, normalizeFloorBudgets } from '../budgets';
+import { NOTES_KEY, parseNotes } from '../notes';
 import { BRIEF_TEMPLATES_KEY, parseTemplates } from '../panel/brief-templates';
 import {
   BOARD_STALE_KEY,
@@ -47,6 +48,7 @@ const RULES: Record<string, Rule> = {
   [AMBIENT_KEY]: { kind: 'record', normalize: normalizeAmbientPrefs },
   [SOUND_KEY]: { kind: 'record', normalize: normalizeSoundPrefs },
   [FLOOR_BUDGETS_KEY]: { kind: 'record', normalize: normalizeFloorBudgets },
+  [NOTES_KEY]: { kind: 'record', normalize: parseNotes },
   [MUTED_FLOORS_KEY]: { kind: 'list', normalize: normalizeMutedFloors },
   [PINS_KEY]: { kind: 'list', normalize: normalizePins },
   [BRIEF_TEMPLATES_KEY]: { kind: 'list', normalize: parseTemplates },

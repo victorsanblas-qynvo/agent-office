@@ -1,5 +1,6 @@
 import { focusable } from '../focus';
-import { fuzzyFilter } from '../fuzzy';
+import { fold, fuzzyFilter } from '../fuzzy';
+import { noteTitle, type Notes } from '../notes';
 import { canPin } from '../pins';
 import { currentLang, plural, t } from '../i18n';
 import type { SavedSearch } from '../table/history';
@@ -7,9 +8,9 @@ import { THEME_OPTIONS, type ThemePref } from '../theme';
 import { agentName, documentStatusLabel, floorKindLabel, floorLabel, roleLabel } from '../labels';
 import type { AgentView, DocumentView, FloorView, OrderView } from '../types';
 
-export type PaletteGroup = 'action' | 'tab' | 'floor' | 'agent' | 'plan' | 'order' | 'search';
+export type PaletteGroup = 'action' | 'tab' | 'floor' | 'agent' | 'plan' | 'order' | 'note' | 'search';
 
-export const PALETTE_GROUPS: readonly PaletteGroup[] = ['action', 'tab', 'floor', 'agent', 'plan', 'order', 'search'];
+export const PALETTE_GROUPS: readonly PaletteGroup[] = ['action', 'tab', 'floor', 'agent', 'plan', 'order', 'note', 'search'];
 
 export type PaletteTarget =
   | { type: 'agent'; key: string }
@@ -17,6 +18,7 @@ export type PaletteTarget =
   | { type: 'tab'; index: number }
   | { type: 'plan'; path: string }
   | { type: 'order'; slug: string; floor: string }
+  | { type: 'note'; key: string }
   | { type: 'reply' }
   | { type: 'status'; sessionId: string }
   | { type: 'relaunch'; sessionId: string }
@@ -35,7 +37,7 @@ export type PaletteTarget =
   | { type: 'search'; name: string }
   | { type: 'clearRecent' };
 
-export type PaletteEntry = { id: string; group: PaletteGroup; label: string; hint: string; keywords?: string; target: PaletteTarget; write: boolean };
+export type PaletteEntry = { id: string; group: PaletteGroup; label: string; hint: string; keywords?: string; body?: string; target: PaletteTarget; write: boolean };
 
 export type PaletteContext = {
   agents: readonly AgentView[];
@@ -54,6 +56,7 @@ export type PaletteContext = {
   statusAll: number;
   messageAll: number;
   pins: readonly string[];
+  notes: Notes;
   newOrder: boolean;
   // The floor the panel is focused on, if any.
   focus: string | null;
@@ -120,6 +123,22 @@ function orderEntries(context: PaletteContext): PaletteEntry[] {
     });
 }
 
+// One entry per note whose order or agent is still there, the most recently written first; the text of the note
+// is matched by `body`, as typed, because letters in order would fit almost any long text.
+function noteEntries(context: PaletteContext): PaletteEntry[] {
+  const orders = new Map(context.orders.map((order) => [`order:${order.slug}`, order]));
+  const agents = new Map(context.agents.map((agent) => [`agent:${agent.key}`, agent]));
+  const out: PaletteEntry[] = [];
+  for (const [key, note] of Object.entries(context.notes).sort(([, a], [, b]) => b.updatedAt - a.updatedAt)) {
+    const order = orders.get(key);
+    const agent = agents.get(key);
+    const name = order ? order.title : agent ? agentName(agent) : null;
+    if (name === null) continue;
+    out.push({ id: `note:${key}`, group: 'note', label: t('palette.note', { name }), hint: noteTitle(note.text), keywords: order ? order.slug : agent?.key, body: note.text, target: { type: 'note', key }, write: false });
+  }
+  return out;
+}
+
 export function buildEntries(context: PaletteContext): PaletteEntry[] {
   const entries = actions(context);
   context.tabs.forEach((label, index) => {
@@ -145,6 +164,7 @@ export function buildEntries(context: PaletteContext): PaletteEntry[] {
     entries.push({ id: `plan:${doc.path}`, group: 'plan', label: doc.title, hint: documentStatusLabel(doc.status), target: { type: 'plan', path: doc.path }, write: false });
   }
   entries.push(...orderEntries(context));
+  entries.push(...noteEntries(context));
   if (context.live) {
     for (const search of context.searches) {
       entries.push({ id: `search:${search.name}`, group: 'search', label: t('palette.search', { name: search.name }), hint: t('palette.hint.search'), keywords: search.filters.q, target: { type: 'search', name: search.name }, write: false });
@@ -199,7 +219,9 @@ export function searchEntries(entries: readonly PaletteEntry[], query: string, r
     const shown = recentEntries(entries, recent).slice(0, RECENT_SHOWN).length;
     return ordered.slice(0, shown + EMPTY_LIMIT).map((entry, index): PaletteResult => (index < shown ? { entry, indices: [], recent: true } : { entry, indices: [] }));
   }
-  return fuzzyFilter(ordered, query, (entry) => `${entry.label} ${entry.hint} ${entry.keywords ?? ''}`)
-    .slice(0, RESULT_LIMIT)
-    .map(({ item, match }) => ({ entry: item, indices: match.indices.filter((index) => index < item.label.length) }));
+  const matched = fuzzyFilter(ordered, query, (entry) => `${entry.label} ${entry.hint} ${entry.keywords ?? ''}`).map(({ item, match }): PaletteResult => ({ entry: item, indices: match.indices.filter((index) => index < item.label.length) }));
+  const needle = fold(query.trim());
+  const found = new Set(matched.map((result) => result.entry));
+  const inBody = ordered.filter((entry) => !found.has(entry) && entry.body !== undefined && fold(entry.body).includes(needle)).map((entry): PaletteResult => ({ entry, indices: [] }));
+  return [...matched, ...inBody].slice(0, RESULT_LIMIT);
 }
