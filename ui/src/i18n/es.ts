@@ -346,6 +346,18 @@ export const es = {
   'floors.noAgents': 'Sin agentes.',
   'floors.away': 'Fuera de la oficina',
   'floors.countAway': '{inside} · {outside} fuera',
+  'floors.chip.open': '{n} abiertos',
+  'floors.chip.openHint': 'Encargos abiertos de la planta. Abre el Tablero en esta planta.',
+  'floors.chip.red': '{n} en rojo',
+  'floors.chip.redHint': 'Encargos con checks en rojo. Abre el Tablero en esta planta.',
+  'floors.chip.blocked': '{n} bloqueados',
+  'floors.chip.blockedHint': 'Agentes bloqueados. Selecciona al primero.',
+  'floors.chip.spendBudget': '{tokens} · {pct} %',
+  'floors.chip.spendHint': 'Gasto de hoy de la planta. Abre el consumo en la Tabla.',
+  'floors.chip.muted': 'silenciada',
+  'floors.chip.mutedHint': 'Planta silenciada: no avisa ni suena.',
+  'floors.chip.focus': 'enfocada',
+  'floors.chip.focusHint': 'El panel está enfocado en esta planta.',
   'floors.title': 'Plantas',
   'floors.stalled': 'parado {time}',
   'floors.askStatus': 'Pedir estado',
@@ -1572,6 +1584,7 @@ export const es = {
   'whatsNew.chat.unread': 'Los mensajes sin leer se cuentan por canal, una marca «— nuevos —» señala el primero y la pestaña Chat lleva un punto. Pestaña Chat.',
   'whatsNew.chat.search': 'Filtra los mensajes de un canal por texto o autor, con las coincidencias resaltadas; Esc limpia. Pestaña Chat → Buscar en el canal.',
   'whatsNew.panel.commands': 'Copiar comando de tmux y de reanudar, en el panel del agente, para saltar a su sesión desde una terminal.',
+  'whatsNew.panel.floorHeaders': 'Cada planta del panel muestra encargos abiertos, checks en rojo, bloqueados y gasto de hoy, con un clic a su sitio. Panel del agente → Plantas.',
 } as const;
 
 export type Messages = { [K in keyof typeof es]: string };

@@ -104,6 +104,7 @@ export const WHATS_NEW: readonly WhatsNewSection[] = [
       'whatsNew.panel.lessons',
       'whatsNew.panel.notes',
       'whatsNew.panel.commands',
+      'whatsNew.panel.floorHeaders',
     ],
   },
   {

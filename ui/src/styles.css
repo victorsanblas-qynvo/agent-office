@@ -2347,6 +2347,32 @@ button.plans-action {
   margin-left: auto;
 }
 
+.floors-chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.floors-chip {
+  padding: 0 6px;
+  font: inherit;
+  font-size: 11px;
+}
+
+button.floors-chip {
+  cursor: pointer;
+}
+
+.floors-chip-warn {
+  color: var(--asking);
+  border-color: var(--asking);
+}
+
+.floors-chip-danger {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
 .floors-body {
   padding: 2px 0 6px 12px;
 }

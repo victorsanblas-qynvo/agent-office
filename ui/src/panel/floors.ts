@@ -4,15 +4,21 @@ import { el, keepFocus, setStateColor } from '../dom';
 import { plural, t } from '../i18n';
 import { checksBadgeNode } from '../board/badges';
 import { activeOrder } from '../board/columns';
+import { floorScores, type FloorScore } from '../boards';
+import { budgetSpend, floorSpendOf, readFloorBudgets } from '../budgets';
+import { readMutedFloors } from '../prefs';
 import { agentName, contextFill, contextLevel, contextLine, contextOf, doingPhrase, floorLabel, isAway, roleLabel, STATE_COLORS } from '../labels';
 import type { Store } from '../store';
 import { agentNoteKey } from '../notes';
 import { noteIcon } from '../notes-editor';
 import { relativeTime } from '../time';
 import type { AgentView, FloorView } from '../types';
+import { chipSignature, floorHeaderChips, type FloorChip } from './floor-header';
 import { panelSection } from './section';
 import { relaunchable } from './orderable';
 import { canAskStatus, mainSession, relaunchButton, runSessionAction, stalledText, statusButton } from './session-controls';
+
+export type FloorLinks = { openBoard(floor: string): void; openSpend(): void };
 
 type TimeNode = { node: HTMLElement; text: (now: number) => string };
 
@@ -74,7 +80,39 @@ function sessionActions(store: Store, agent: AgentView, depth: number, times: Ti
   return actions;
 }
 
-function floorCard(store: Store, floor: FloorView, agents: readonly AgentView[], open: boolean, times: TimeNode[], now: number): HTMLElement {
+type HeaderFacts = { scores: ReadonlyMap<string, FloorScore>; spend: Record<string, number> | null; budgets: Record<string, number>; muted: readonly string[] };
+
+function headerFacts(store: Store): HeaderFacts {
+  const floors = store.floorList();
+  const scores = new Map(floorScores(floors, [...store.agents.values()], store.orders, (agent) => store.shownState(agent)).map((score) => [score.slug, score]));
+  const today = budgetSpend(store.now());
+  return { scores, spend: today ? floorSpendOf(today.summary) : null, budgets: readFloorBudgets(), muted: readMutedFloors() };
+}
+
+function headerChips(store: Store, slug: string, facts: HeaderFacts): FloorChip[] {
+  return floorHeaderChips({
+    score: facts.scores.get(slug) ?? null,
+    spent: facts.spend?.[slug] ?? null,
+    budget: facts.budgets[slug] ?? null,
+    muted: facts.muted.includes(slug),
+    focused: store.focusedFloor() === slug,
+  });
+}
+
+function chipsNode(chips: readonly FloorChip[]): HTMLElement {
+  const nodes = chips.map((chip) => {
+    const node = el(chip.action ? 'button' : 'span', `chip floors-chip floors-chip-${chip.tone}`, chip.label);
+    node.title = chip.title;
+    if (node instanceof HTMLButtonElement) node.type = 'button';
+    node.dataset.chip = chip.kind;
+    return node;
+  });
+  const box = el('span', 'floors-chips', ...nodes);
+  box.dataset.signature = chipSignature(chips);
+  return box;
+}
+
+function floorCard(store: Store, floor: FloorView, agents: readonly AgentView[], open: boolean, times: TimeNode[], now: number, facts: HeaderFacts): HTMLElement {
   const inside = agents.filter((agent) => !isAway(agent));
   const outside = agents.filter((agent) => isAway(agent));
   const body: HTMLElement[] = [];
@@ -94,6 +132,7 @@ function floorCard(store: Store, floor: FloorView, agents: readonly AgentView[],
       'floors-summary',
       el('span', 'floors-floor', floorLabel(floor)),
       orderBadge(store, floor.slug),
+      floor.kind === 'managed' ? chipsNode(headerChips(store, floor.slug, facts)) : null,
       el('span', 'chip floors-count', outside.length > 0 ? t('floors.countAway', { inside: inside.length, outside: outside.length }) : String(inside.length)),
     ),
     el('div', 'floors-body', ...body),
@@ -126,7 +165,7 @@ function floorsMeta(groups: readonly (readonly AgentView[])[]): string | null {
   return outside > 0 ? t('panel.sectionMeta.away', { agents: count, n: outside }) : count;
 }
 
-export function mountFloors(host: HTMLElement, store: Store, api: OfficeApi | null): void {
+export function mountFloors(host: HTMLElement, store: Store, api: OfficeApi | null, links: FloorLinks): void {
   const section = panelSection({ id: 'floors', title: () => t('floors.title'), host });
   const open = new Set<string>();
   let touched = false;
@@ -162,7 +201,26 @@ export function mountFloors(host: HTMLElement, store: Store, api: OfficeApi | nu
         if ((byFloor.get(floor.slug) ?? []).some((agent) => !isAway(agent))) open.add(floor.slug);
       }
     }
-    section.body.replaceChildren(...floors.map((floor) => floorCard(store, floor, byFloor.get(floor.slug) ?? [], open.has(floor.slug), times, now)));
+    const facts = headerFacts(store);
+    section.body.replaceChildren(...floors.map((floor) => floorCard(store, floor, byFloor.get(floor.slug) ?? [], open.has(floor.slug), times, now, facts)));
+  };
+
+  const refreshChips = (): void => {
+    const cards = section.body.querySelectorAll<HTMLElement>('details[data-floor]');
+    if (cards.length === 0) return;
+    const facts = headerFacts(store);
+    for (const card of cards) {
+      const box = card.querySelector<HTMLElement>('.floors-chips');
+      const slug = card.dataset.floor;
+      if (!box || slug === undefined) continue;
+      const chips = headerChips(store, slug, facts);
+      if (chipSignature(chips) !== box.dataset.signature) box.replaceWith(chipsNode(chips));
+    }
+  };
+
+  const firstBlocked = (floor: string): string | undefined => {
+    const here = [...store.agents.values()].filter((agent) => agent.floor === floor && !isAway(agent) && store.shownState(agent) === 'blocked');
+    return orderRows(here)[0]?.agent.key;
   };
 
   const schedule = (): void => {
@@ -197,6 +255,18 @@ export function mountFloors(host: HTMLElement, store: Store, api: OfficeApi | nu
   host.addEventListener('click', (event) => {
     const target = event.target;
     if (!(target instanceof Element)) return;
+    const chip = target.closest<HTMLElement>('button[data-chip]');
+    if (chip) {
+      event.preventDefault();
+      const floor = chip.closest<HTMLElement>('details[data-floor]')?.dataset.floor;
+      if (floor === undefined) return;
+      if (chip.dataset.chip === 'spend') links.openSpend();
+      else if (chip.dataset.chip === 'blocked') {
+        const key = firstBlocked(floor);
+        if (key) store.select(key);
+      } else links.openBoard(floor);
+      return;
+    }
     const action = target.closest<HTMLButtonElement>('button[data-action]');
     if (action) {
       void runSessionAction(api, store, action);
@@ -222,6 +292,7 @@ export function mountFloors(host: HTMLElement, store: Store, api: OfficeApi | nu
   );
 
   store.watch(['agents', 'floors', 'selection', 'questions', 'sessions', 'lang', 'orders', 'notes'], schedule);
+  store.watch(['tick', 'focus'], refreshChips);
   store.watch(['tick'], () => {
     const now = store.now();
     for (const { node, text } of times) node.textContent = text(now);
