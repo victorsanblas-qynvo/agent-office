@@ -38,6 +38,9 @@ export function mountNoteEditor(store: Store, key: string): NoteEditor {
     hint.textContent = t('notes.saved');
   };
 
+  window.addEventListener('pagehide', save);
+  area.addEventListener('blur', save);
+
   area.addEventListener('input', () => {
     pending = true;
     hint.textContent = '';
@@ -62,6 +65,7 @@ export function mountNoteEditor(store: Store, key: string): NoteEditor {
     },
     destroy() {
       save();
+      window.removeEventListener('pagehide', save);
     },
   };
 }
