@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { writeAtomic } from './config';
-import { encodeInbox, orderText, type deliver } from './courier';
+import { broadcastText, encodeInbox, orderText, type deliver } from './courier';
 import { commitDocument } from './docs-repo';
 import type { DocumentDesk } from './documents';
 import type { GitQueue, GitRunner } from './git';
@@ -46,46 +46,61 @@ export type OrderDeskOpts = {
   planExecuting: (plan: { slug: string; title: string; floors: string[] }) => void;
 };
 
+const STATUS_COOLDOWN_MS = 2 * 60_000;
+
+// task: the order is the agent's work from now on. message: a note that leaves its task and plan as they are.
+type Delivery = 'task' | 'message' | 'status';
+
 export class OrderDesk {
   private readonly removals = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly deciding = new Set<string>();
+  private readonly statusAsked = new Map<string, number>();
 
   constructor(private readonly opts: OrderDeskOpts) {}
 
-  async order(sessionId: string, body: string): Promise<OrderResult> {
-    const result = await this.deliverOrder(sessionId, body, { asTask: true });
+  async order(sessionId: string, body: string, opts: { broadcast?: boolean } = {}): Promise<OrderResult> {
+    const result = await this.deliverOrder(sessionId, body, opts.broadcast ? 'message' : 'task');
     if (result === 'ok') this.opts.instructed(sessionId, this.opts.now());
     return result;
   }
 
-  requestStatus(sessionId: string): Promise<OrderResult> {
-    return this.deliverOrder(sessionId, STATUS_REQUEST, { asTask: false });
+  // A session asked for its status less than two minutes ago is not asked again.
+  async requestStatus(sessionId: string): Promise<OrderResult | 'busy'> {
+    const now = this.opts.now();
+    for (const [id, at] of this.statusAsked) if (now - at >= STATUS_COOLDOWN_MS) this.statusAsked.delete(id);
+    if (this.statusAsked.has(sessionId)) return 'busy';
+    this.statusAsked.set(sessionId, now);
+    const result = await this.deliverOrder(sessionId, STATUS_REQUEST, 'status');
+    if (result !== 'ok' && this.statusAsked.get(sessionId) === now) this.statusAsked.delete(sessionId);
+    return result;
   }
 
-  private async deliverOrder(sessionId: string, body: string, opts: { asTask: boolean }): Promise<OrderResult> {
+  private async deliverOrder(sessionId: string, body: string, delivery: Delivery): Promise<OrderResult> {
     const session = this.opts.book.sessions.get(sessionId);
     if (!session || session.endedAt !== null) return 'not-found';
     if (!this.opts.book.sessionInOffice(session)) return 'not-office';
     if (!session.socket || !existsSync(session.socket)) return 'unreachable';
     try {
-      await this.opts.deliver(session.socket, encodeInbox(session.token, orderText(body)));
+      await this.opts.deliver(session.socket, encodeInbox(session.token, delivery === 'message' ? broadcastText(body) : orderText(body)));
     } catch {
       return 'failed';
     }
     this.opts.bus.pushActivity({
       ts: this.opts.now(),
       agentKey: session.sessionId,
-      event: opts.asTask ? 'Order' : 'Status',
+      event: delivery === 'status' ? 'Status' : 'Order',
       tool: null,
       state: null,
-      summary: opts.asTask
-        ? { key: 'hub.act.order', params: { text: short(body, 60) } }
-        : { key: 'hub.act.statusRequested', params: { who: session.name ?? session.sessionId.slice(0, 8) } },
+      summary:
+        delivery === 'status'
+          ? { key: 'hub.act.statusRequested', params: { who: session.name ?? session.sessionId.slice(0, 8) } }
+          : { key: 'hub.act.order', params: { text: short(body, 60) } },
     });
     const main = this.opts.book.agents.get(sessionId);
-    const plan = opts.asTask ? planSlugIn(body) : null;
+    const asTask = delivery === 'task';
+    const plan = asTask ? planSlugIn(body) : null;
     if (main && main.retiredAt === null && plan) this.opts.setPlan(main, plan);
-    const task = opts.asTask ? taskLine(publicText(body, session.floorKind)) : null;
+    const task = asTask ? taskLine(publicText(body, session.floorKind)) : null;
     if (main && main.retiredAt === null && task) {
       main.task = task;
       main.away = false;

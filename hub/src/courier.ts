@@ -8,6 +8,13 @@ export function orderText(text: string): string {
   return `${ORDER_LEAD} ${text.trim()}`;
 }
 
+// A message of the user to every lead: from the panel as well, but neither a task nor a plan of whoever reads it.
+export const BROADCAST_LEAD = `${ORDER_PREFIX} Mensaje del usuario a todos los jefes desde el panel de la oficina:`;
+
+export function broadcastText(text: string): string {
+  return `${BROADCAST_LEAD} ${text.trim()}`;
+}
+
 // Not ORDER_PREFIX on purpose: the templates read what starts with it as an order of the user, and a chat line is not one.
 export const CHAT_PREFIX = '[Chat de Agent Office]';
 

@@ -449,6 +449,10 @@ describe('relaunch and status routes', () => {
 
     expect((await post('/api/sessions/nope/status')).status).toBe(404);
     expect((await post(`/api/sessions/${LEAD}/status`)).status).toBe(200);
+    const asked = await post(`/api/sessions/${LEAD}/status`);
+    expect([asked.status, await asked.json()]).toEqual([409, { error: { key: 'hub.api.statusBusy' } }]);
+    h.clock.advance(2 * 60_000);
+    expect((await post(`/api/sessions/${LEAD}/status`)).status).toBe(200);
     h.office.ingest(ev('nosock-1', repo, 'SessionStart', {}), { ...leadMeta(''), socket: null, name: 'lead-otro' });
     expect((await post('/api/sessions/nosock-1/status')).status).toBe(502);
   });

@@ -65,6 +65,17 @@ describe('orphan branches', () => {
     expect((await api(rig)('/api/floors/mobile/orphan-branches')).body.branches).toMatchObject([{ order: { slug: card.slug } }]);
   });
 
+  test('a discarded order whose folder never existed lists its branch, an open one without a folder is left out', async () => {
+    rig = deliveryRig();
+    const card = await newOrder(rig, 'Pantalla de pagos');
+    rig.h.db.query("UPDATE orders SET status = 'en-curso', worktree_path = NULL, worktree_state = NULL WHERE id = ?").run(card.id);
+    expect((await api(rig)('/api/floors/mobile/orphan-branches')).body.branches).toEqual([]);
+    rig.h.db.query("UPDATE orders SET status = 'descartado' WHERE id = ?").run(card.id);
+    rig.h.clock.advance(31_000);
+    const listed = await api(rig)('/api/floors/mobile/orphan-branches');
+    expect(listed.body.branches).toMatchObject([{ branch: `encargo/${card.slug}`, order: { slug: card.slug, status: 'descartado' } }]);
+  });
+
   test('a delivered order with its folder retired lists its branch, a delivered one with its folder is left out', async () => {
     rig = deliveryRig();
     const card = await newOrder(rig, 'Pantalla de perfil');

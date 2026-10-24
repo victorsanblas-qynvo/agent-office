@@ -13,7 +13,7 @@ const HEADS = 'refs/heads/';
 const FIELD = '\x1f';
 const LIST_FORMAT = ['%(refname)', '%(objectname)', '%(committerdate:unix)'].join(FIELD);
 
-type OwnerRow = { slug: string; status: OrderStatus; worktree_state: string | null; removed_at: number | null };
+type OwnerRow = { slug: string; status: OrderStatus; worktree_state: string | null; worktree_path: string | null; removed_at: number | null };
 
 // The order branches in a floor's repository that no live order owns: a read-only list, the user deletes them by hand.
 export class OrphanBranchDesk {
@@ -23,7 +23,7 @@ export class OrphanBranchDesk {
   constructor(
     private readonly opts: { db: Database; git: GitRunner; now: () => number; config: () => OfficeConfig },
   ) {
-    this.owner = opts.db.query('SELECT slug, status, worktree_state, removed_at FROM orders WHERE branch = ?1 OR slug = ?2 ORDER BY branch = ?1 DESC LIMIT 1');
+    this.owner = opts.db.query('SELECT slug, status, worktree_state, worktree_path, removed_at FROM orders WHERE branch = ?1 OR slug = ?2 ORDER BY branch = ?1 DESC LIMIT 1');
   }
 
   managed(floor: string): boolean {
@@ -82,6 +82,8 @@ export class OrphanBranchDesk {
   }
 }
 
+// A discarded order that never got its folder (a fork claimed, then discarded) owns its branch no more.
 function live(order: OwnerRow): boolean {
+  if (order.status === 'descartado' && order.worktree_path === null) return false;
   return order.removed_at === null && order.worktree_state !== 'retirado';
 }

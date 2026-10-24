@@ -1,4 +1,4 @@
-import { CHAT_PREFIX, ORDER_LEAD, ORDER_PREFIX } from './courier';
+import { BROADCAST_LEAD, CHAT_PREFIX, ORDER_LEAD, ORDER_PREFIX } from './courier';
 import { DIRECCION, MANTENIMIENTO, REDACCION } from './floors';
 import { TASK_MAX } from './office-state';
 import { BRIEF_PREFIX, parseProtocol } from './protocol';
@@ -89,6 +89,10 @@ export function taskLine(body: string | null): string | null {
 export function isUserPrompt(prompt: string | null): boolean {
   const body = (prompt ?? '').trim();
   return body !== '' && !body.startsWith('<') && !body.startsWith(CHAT_PREFIX) && !body.includes(STATUS_QUESTION);
+}
+
+export function isBroadcast(prompt: string | null): boolean {
+  return (prompt ?? '').trim().startsWith(BROADCAST_LEAD);
 }
 
 export function historyPath(slug: string): string {

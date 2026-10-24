@@ -29,7 +29,7 @@ export type RestoreDeskOpts = {
   git: GitRunner;
   now: () => number;
   bus: OfficeBus;
-  checkpoints: Pick<CheckpointDesk, 'commit'>;
+  checkpoints: Pick<CheckpointDesk, 'commit' | 'leftOutOf'>;
   // The turn of the order's checks: a restore never runs while a start commits in the same folder.
   exclusive: <T>(orderId: number, task: () => Promise<T>) => Promise<T>;
   running: (orderId: number) => boolean;
@@ -50,6 +50,11 @@ type Ready = { order: OrderRow; path: string; sha: string; point: PointRow | nul
 
 const fail = (status: RestoreFailure['status'], error: HubText): RestoreFailure => ({ ok: false, status, error });
 
+const leftovers = (files: readonly string[]): HubText => ({
+  key: 'hub.api.restoreLeftovers',
+  params: { files: files.slice(0, LEFTOVERS_SHOWN).join(', ') + (files.length > LEFTOVERS_SHOWN ? ', …' : '') },
+});
+
 // Takes the folder of an order back to one of its checkpoints, keeping the HEAD it had under a ref so the reset
 // can be undone, or starts a new order from a checkpoint without touching the first one.
 export class RestoreDesk {
@@ -59,7 +64,8 @@ export class RestoreDesk {
     return this.restore(orderId, { kind: 'checkpoint', id: checkpointId, force });
   }
 
-  // What a reset to the checkpoint would do, without touching the folder. A done order is not blocked: the panel asks for that confirmation itself.
+  // What a reset to the checkpoint would do, without touching the folder. A done order is not blocked: the panel asks for
+  // that confirmation itself. Merge commits are dropped too, so they are listed and counted.
   async preview(orderId: number, checkpointId: number): Promise<PreviewResult> {
     const checked = await this.ready(orderId, { kind: 'checkpoint', id: checkpointId, force: true });
     const none: RestorePreview = { dropped: [], droppedTotal: 0, stat: { files: 0, adds: 0, dels: 0 }, dirty: [], blocked: null };
@@ -69,8 +75,8 @@ export class RestoreDesk {
     const head = await this.head(path);
     if (!head) return fail(500, { key: 'hub.api.restoreFailed' });
     const [log, count, numstat, status] = await Promise.all([
-      run(git, path, () => gitOps.logSubjects(sha, head, PREVIEW_COMMITS), PREVIEW_TIMEOUT_MS),
-      run(git, path, () => gitOps.revCount(sha, head), PREVIEW_TIMEOUT_MS),
+      run(git, path, () => gitOps.logSubjects(sha, head, PREVIEW_COMMITS, true), PREVIEW_TIMEOUT_MS),
+      run(git, path, () => gitOps.revCount(sha, head, true), PREVIEW_TIMEOUT_MS),
       run(git, path, () => gitOps.diffNumstat(sha, head), PREVIEW_TIMEOUT_MS),
       run(git, path, () => gitOps.status(), PREVIEW_TIMEOUT_MS),
     ]);
@@ -83,7 +89,10 @@ export class RestoreDesk {
       stat.adds += entry.adds ?? 0;
       stat.dels += entry.dels ?? 0;
     }
-    return { ok: true, preview: { dropped, droppedTotal: Number.isInteger(total) ? Math.max(total, dropped.length) : dropped.length, stat, dirty: statusPaths(status.stdout), blocked: null } };
+    const dirty = statusPaths(status.stdout);
+    const left = this.opts.checkpoints.leftOutOf(path, dirty);
+    const blocked = left.length > 0 ? leftovers(left) : null;
+    return { ok: true, preview: { dropped, droppedTotal: Number.isInteger(total) ? Math.max(total, dropped.length) : dropped.length, stat, dirty, blocked } };
   }
 
   async undo(orderId: number, ref: unknown, force = false): Promise<ResetResult> {
@@ -170,10 +179,7 @@ export class RestoreDesk {
     const status = await run(git, path, () => gitOps.status());
     if (status.code !== 0) return fail(500, { key: 'hub.api.restoreFailed' });
     const left = statusPaths(status.stdout);
-    if (left.length > 0) {
-      const files = left.slice(0, LEFTOVERS_SHOWN).join(', ') + (left.length > LEFTOVERS_SHOWN ? ', …' : '');
-      return fail(409, { key: 'hub.api.restoreLeftovers', params: { files } });
-    }
+    if (left.length > 0) return fail(409, leftovers(left));
     const busy = this.opts.busy(path);
     if (busy.length > 0) return fail(409, { key: 'hub.api.restoreBusy', params: { who: busy.join(', ') } });
     const head = saved.sha ?? (await this.head(path));

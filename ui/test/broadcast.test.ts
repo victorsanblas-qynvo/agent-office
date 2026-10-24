@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type { ApiResult } from '../src/api';
-import { BROADCAST_MAX_TEXT, RECENT_ASK_MS, broadcast, broadcastRunning, broadcastTextValid, leadTargets, runSequential } from '../src/broadcast';
+import { BROADCAST_MAX_TEXT, RECENT_ASK_MS, broadcast, broadcastRunning, broadcastTextValid, leadTargets, messageRequest, remembering, runSequential } from '../src/broadcast';
 import type { AgentView, SessionView } from '../src/types';
 
 const agent = (sessionId: string, floor: string, extra: Partial<AgentView> = {}): AgentView =>
@@ -86,5 +86,19 @@ describe('broadcastTextValid', () => {
     expect(broadcastTextValid('hola')).toBe(true);
     expect(broadcastTextValid('x'.repeat(BROADCAST_MAX_TEXT))).toBe(true);
     expect(broadcastTextValid('x'.repeat(BROADCAST_MAX_TEXT + 1))).toBe(false);
+  });
+});
+
+describe('remembering and messageRequest', () => {
+  test('an ask is remembered only when the hub took it, so a busy or failed lead is not held back by the panel', async () => {
+    const asked = new Map<string, number>();
+    const results: Record<string, ApiResult> = { a: { ok: true }, b: { ok: false, status: 409, message: 'busy' }, c: { ok: false, status: 502, message: 'no' } };
+    const call = remembering(async (id) => results[id]!, asked, () => 42);
+    expect(await runSequential(['a', 'b', 'c'], call)).toEqual({ ok: 1, busy: 1, failed: 1, skipped: 0 });
+    expect([...asked]).toEqual([['a', 42]]);
+  });
+
+  test('a message to every lead goes as a broadcast', () => {
+    expect(messageRequest('s-1', 'hola')).toEqual({ sessionId: 's-1', text: 'hola', broadcast: true });
   });
 });

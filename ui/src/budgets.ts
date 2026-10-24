@@ -1,4 +1,4 @@
-import type { OfficeApi } from './api';
+import type { ApiData, OfficeApi } from './api';
 import { readJson, writeJson } from './prefs';
 import type { Store } from './store';
 import type { UsageSummary } from './types';
@@ -6,6 +6,7 @@ import type { UsageSummary } from './types';
 export const FLOOR_BUDGETS_KEY = 'agent-office.floorBudgets';
 export const BUDGET_MAX = 1e12;
 export const BUDGET_REFRESH_MS = 5 * 60_000;
+export const BUDGET_RETRY_MS = 60_000;
 
 export type FloorBudgets = Record<string, number>;
 
@@ -53,24 +54,49 @@ export function hasBudgets(budgets: FloorBudgets): boolean {
   return Object.keys(budgets).length > 0;
 }
 
-// Only while some floor has a budget, and never twice at once or before the refresh time.
-export function shouldFetchBudgets(budgets: FloorBudgets, now: number, loadedAt: number | null, loading: boolean): boolean {
+// The local calendar day of a time, the one the hub's "today" counts.
+export function dayKey(at: number): string {
+  const date = new Date(at);
+  const pad = (value: number): string => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+// Only while some floor has a budget, and never twice at once, before the refresh time (a new day is due at once)
+// or within a minute of a fetch that failed.
+export function shouldFetchBudgets(budgets: FloorBudgets, now: number, loadedAt: number | null, loading: boolean, failedAt: number | null = null): boolean {
   if (!hasBudgets(budgets) || loading) return false;
-  return loadedAt === null || now - loadedAt >= BUDGET_REFRESH_MS;
+  if (failedAt !== null && now - failedAt < BUDGET_RETRY_MS) return false;
+  return loadedAt === null || now - loadedAt >= BUDGET_REFRESH_MS || dayKey(loadedAt) !== dayKey(now);
 }
 
 export type BudgetSpend = { summary: UsageSummary; at: number };
 
 let latest: BudgetSpend | null = null;
 let loading = false;
+let failedAt: number | null = null;
 
-// Today's spend by floor, as last fetched here or by the Tabla's usage block.
-export function budgetSpend(): BudgetSpend | null {
-  return latest;
+// Today's spend by floor, as last fetched here or by the Tabla's usage block; one fetched on another day is none.
+export function budgetSpend(now: number): BudgetSpend | null {
+  return latest && dayKey(latest.at) === dayKey(now) ? latest : null;
 }
 
 export function adoptTodaySummary(summary: UsageSummary, at: number): void {
   latest = { summary, at };
+  failedAt = null;
+}
+
+export async function refreshBudgetSpend(fetchToday: () => Promise<ApiData<UsageSummary>>, now: () => number, budgets: FloorBudgets): Promise<void> {
+  if (!shouldFetchBudgets(budgets, now(), latest?.at ?? null, loading, failedAt)) return;
+  loading = true;
+  try {
+    const result = await fetchToday();
+    if (result.ok) adoptTodaySummary(result.data, now());
+    else failedAt = now();
+  } catch {
+    failedAt = now();
+  } finally {
+    loading = false;
+  }
 }
 
 export function floorSpendOf(summary: UsageSummary | null): Record<string, number> {
@@ -81,13 +107,6 @@ export function floorSpendOf(summary: UsageSummary | null): Record<string, numbe
 
 export function mountBudgetWatch(store: Store, api: OfficeApi): void {
   store.watch(['tick'], () => {
-    const now = store.now();
-    if (!shouldFetchBudgets(readFloorBudgets(), now, latest?.at ?? null, loading)) return;
-    loading = true;
-    void api.usageSummary('today').then((result) => {
-      loading = false;
-      if (result.ok) adoptTodaySummary(result.data, store.now());
-      else if (latest) latest = { ...latest, at: store.now() };
-    });
+    void refreshBudgetSpend(() => api.usageSummary('today'), () => store.now(), readFloorBudgets());
   });
 }

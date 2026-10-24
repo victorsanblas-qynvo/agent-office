@@ -12,7 +12,8 @@ import { OfficeBus } from '../src/office-bus';
 import { OrderStore, type OrderRow } from '../src/order-store';
 import type { ShellResult } from '../src/shell';
 import type { ActivityView, OfficeConfig } from '../src/types';
-import { WorktreeDesk, type WorktreeDeskOpts } from '../src/worktrees';
+import { WorktreeDesk, withExcludes, type WorktreeDeskOpts } from '../src/worktrees';
+import { deskRig, type DeskRig } from './desk-rig';
 import { git, originAndClone, pushCommit, tempDir, useGitIdentity } from './helpers';
 
 useGitIdentity();
@@ -175,6 +176,29 @@ describe('create', () => {
     expect(await r.desk.create(order(r))).toMatchObject({ ok: false, error: 'exists' });
   });
 
+  test('a branch of the order whose tip is not a checkpoint of its parent is refused, and no folder is added on it', async () => {
+    const calls: string[][] = [];
+    const asked: string[] = [];
+    const r = rig({
+      git: (cwd, args, ...rest) => {
+        calls.push(args);
+        return runGit(cwd, args, ...rest);
+      },
+      forkPoint: (_order, sha) => {
+        asked.push(sha);
+        return false;
+      },
+    });
+    const tip = git(r.repo, 'rev-parse', 'origin/develop');
+    git(r.repo, 'branch', 'encargo/login-a1b2', tip);
+    const row = order(r);
+    expect(await r.desk.create(row)).toEqual({ ok: false, error: 'exists', detail: 'encargo/login-a1b2' });
+    expect(asked).toEqual([tip]);
+    expect(calls.filter((args) => args[0] === 'worktree' && args[1] === 'add')).toEqual([]);
+    expect(existsSync(r.desk.folderOf('mobile', 'login-a1b2') as string)).toBe(false);
+    expect(r.store.get(row.id)).toMatchObject({ worktree_path: null, branch: null });
+  });
+
   test('.worktreeinclude copies only literal entries that git ignores', async () => {
     const r = rig();
     writeFileSync(join(r.repo, '.gitignore'), '.env\nsecrets/\n');
@@ -224,6 +248,32 @@ describe('create', () => {
     const result = await checkpoints.commit(made, 'listo', 'listo');
     expect(result).toMatchObject({ committed: true, skipped: [] });
     expect(git(path, 'ls-tree', '-r', '--name-only', 'HEAD').split('\n').sort()).toEqual(['.gitignore', 'README.md', 'a.txt']);
+  });
+
+  test('the linked dirs live in one tagged block of info/exclude, rewritten when linkDirs change', async () => {
+    const r = rig({}, (config) => {
+      config.floors.mobile.linkDirs = ['node_modules', 'vendor'];
+      config.worktrees.maxActivePerFloor = 10;
+    });
+    const file = join(r.repo, '.git', 'info', 'exclude');
+    writeFileSync(file, '# mio\n/tmp-local\n');
+    await created(r, order(r, 'uno-1111'));
+    expect(readFileSync(file, 'utf8')).toBe('# mio\n/tmp-local\n/.claude/worktrees/\n# agent-office linkDirs\n/node_modules\n/vendor\n# agent-office linkDirs end\n');
+    r.config.floors.mobile.linkDirs = ['vendor'];
+    await created(r, order(r, 'dos-2222'));
+    expect(readFileSync(file, 'utf8')).toBe('# mio\n/tmp-local\n/.claude/worktrees/\n# agent-office linkDirs\n/vendor\n# agent-office linkDirs end\n');
+    r.config.floors.mobile.linkDirs = [];
+    await created(r, order(r, 'tres-3333'));
+    expect(readFileSync(file, 'utf8')).toBe('# mio\n/tmp-local\n/.claude/worktrees/\n');
+  });
+
+  test('withExcludes keeps the lines around the block in place and is idempotent', () => {
+    const around = '/a\n# agent-office linkDirs\n/old\n# agent-office linkDirs end\n/b\n/.claude/worktrees/\n';
+    const once = withExcludes(around, ['new', 'new']);
+    expect(once).toBe('/a\n# agent-office linkDirs\n/new\n# agent-office linkDirs end\n/b\n/.claude/worktrees/\n');
+    expect(withExcludes(once, ['new'])).toBe(once);
+    expect(withExcludes('', [])).toBe('/.claude/worktrees/\n');
+    expect(withExcludes('/x', ['d'])).toBe('/x\n/.claude/worktrees/\n# agent-office linkDirs\n/d\n# agent-office linkDirs end\n');
   });
 
   test('setup runs in the background: preparando, then listo or error with the tail of its output', async () => {
@@ -767,5 +817,100 @@ describe('a branch is only deleted on facts git confirmed', () => {
     expect(receipts).toHaveLength(1);
     expect(receipts[0]?.summary).toMatchObject({ params: { branch: 'encargo/login-a1b2', sha: tip } });
     expect(renderHubText(receipts[0]?.summary)).toContain(`git branch encargo/login-a1b2 ${tip}`);
+  });
+});
+
+describe('a folder whose checks are running', () => {
+  // A check that only ends when released, or cancelled through its signal.
+  function heldChecks(): { shell: WorktreeDeskOpts['shell']; release: () => void } {
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const shell: WorktreeDeskOpts['shell'] = (_command, opts) =>
+      new Promise<ShellResult>((resolve) => {
+        const done = (cancelled: boolean) => resolve({ code: cancelled ? null : 0, timedOut: false, cancelled, tail: '', durationMs: 1 });
+        opts.signal?.addEventListener('abort', () => done(true));
+        void gate.then(() => done(false));
+      });
+    return { shell, release: () => release() };
+  }
+
+  function deskOver(d: DeskRig): WorktreeDesk {
+    return new WorktreeDesk({
+      store: d.store,
+      git: runGit,
+      now: () => d.clock.now,
+      bus: new OfficeBus(() => {}),
+      config: () => d.config,
+      hubId: 'hub-test',
+      inside: () => false,
+      changed: () => {},
+      sizeOf: async () => 1,
+      exclusive: (id, task) => d.checks.exclusive(id, task),
+      running: (id) => d.checks.isRunning(id),
+      cancelChecks: (id) => {
+        d.checks.cancel(id);
+      },
+    });
+  }
+
+  test('is busy for a removal without force, and expire leaves it for another day', async () => {
+    const held = heldChecks();
+    const d = deskRig({ checks: held.shell });
+    cleanups.push(d.cleanup);
+    const desk = deskOver(d);
+    const started = await d.checks.start(d.order.id, 'panel');
+    if (!started.ok) throw new Error(started.reason);
+    expect(await desk.remove(d.order.id, { deleteBranch: false, force: false })).toBe('busy');
+    expect(existsSync(d.path)).toBe(true);
+    d.store.update(d.order.id, { status: 'descartado', updated_at: d.clock.now - 10 * 86_400_000 });
+    expect(await desk.expire()).toMatchObject({ removed: 0 });
+    expect(existsSync(d.path)).toBe(true);
+
+    held.release();
+    expect((await started.done).status).toBe('passed');
+    expect(await desk.expire()).toMatchObject({ removed: 1 });
+    expect(existsSync(d.path)).toBe(false);
+  });
+
+  test('a forced removal of the floor waits for the start still committing, then cancels the run and removes the folder', async () => {
+    const held = heldChecks();
+    let commitHeld: (() => void) | null = null;
+    let reached = () => {};
+    const atCommit = new Promise<void>((resolve) => (reached = resolve));
+    const d = deskRig({
+      checks: held.shell,
+      checkpoints: {
+        git: async (cwd, args, ...rest) => {
+          if (args[0] === 'commit' && commitHeld === null) {
+            await new Promise<void>((resolve) => {
+              commitHeld = resolve;
+              reached();
+            });
+          }
+          return runGit(cwd, args, ...rest);
+        },
+      },
+    });
+    cleanups.push(d.cleanup);
+    const desk = deskOver(d);
+    writeFileSync(join(d.path, 'nuevo.txt'), 'x');
+    const starting = d.checks.start(d.order.id, 'listo');
+    await atCommit;
+    let settled = false;
+    const removing = desk.removeAll('mobile', true).then((n) => {
+      settled = true;
+      return n;
+    });
+    await Bun.sleep(50);
+    expect(settled).toBe(false);
+    expect(existsSync(d.path)).toBe(true);
+
+    (commitHeld as (() => void) | null)?.();
+    const started = await starting;
+    if (!started.ok) throw new Error(started.reason);
+    expect(await removing).toBe(1);
+    expect(existsSync(d.path)).toBe(false);
+    expect((await started.done).status).toBe('cancelled');
+    expect(d.notified).toEqual([]);
   });
 });

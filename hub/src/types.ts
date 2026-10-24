@@ -217,6 +217,7 @@ export type HubTextParams = {
   'hub.api.sessionNotOffice': undefined;
   'hub.api.transcriptMissing': undefined;
   'hub.api.orderFailed': undefined;
+  'hub.api.statusBusy': undefined;
   'hub.api.settingsUnavailable': undefined;
   'hub.api.floorsUnavailable': undefined;
   'hub.api.badMemoryTarget': undefined;
@@ -1180,7 +1181,7 @@ export type Recording = {
 
 export type AnswerRequest = { answers: Record<string, string> } | { release: true };
 
-export type OrderRequest = { sessionId: string; text: string };
+export type OrderRequest = { sessionId: string; text: string; broadcast?: boolean };
 
 export type PlanDecisionRequest = { path: string; decision: PlanDecision };
 

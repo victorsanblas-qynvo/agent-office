@@ -435,6 +435,59 @@ describe('the base of a fork', () => {
   });
 });
 
+describe('a fork whose folder did not get built', () => {
+  const retry = (r: Rig, id: number) => api(r)('POST', `/api/board/orders/${id}/folder`);
+  const rowOf = (r: Rig, id: number) =>
+    r.h.db.query<{ worktree_state: string | null; worktree_path: string | null; base_sha: string | null }, [number]>('SELECT worktree_state, worktree_path, base_sha FROM orders WHERE id = ?').get(id);
+
+  async function failedFork(): Promise<{ r: Rig; parent: OrderView; child: OrderView; start: string }> {
+    const { card: c, folder } = await card();
+    const r = rig as Rig;
+    const p1 = await point(r, c.id, folder, { 'a.txt': 'uno' });
+    await point(r, c.id, folder, { 'b.txt': 'dos' });
+    r.h.config.worktrees.maxActivePerFloor = 1;
+    const forked = await fork(r, c.id, p1.id);
+    expect(forked.status).toBe(200);
+    await r.h.office.idle();
+    const child = forked.body.order as OrderView;
+    expect(rowOf(r, child.id)).toMatchObject({ worktree_state: 'error', worktree_path: null });
+    r.h.config.worktrees.maxActivePerFloor = 10;
+    return { r, parent: c, child, start: p1.sha };
+  }
+
+  test('a failed build is retried on the branch claimed at the checkpoint, keeping the base of the parent', async () => {
+    const { r, parent, child, start } = await failedFork();
+    const base = baseOf(r, parent.slug);
+    expect(baseOf(r, child.slug)).toBe(base);
+
+    const retried = await retry(r, child.id);
+    expect(retried.status).toBe(200);
+    await r.h.office.idle();
+    const ready = orderOf(r, child.slug);
+    expect(ready.worktree).toMatchObject({ state: 'listo' });
+    expect(head(ready.worktree?.path ?? '')).toBe(start);
+    expect(git(r.repo, 'rev-parse', `refs/heads/encargo/${child.slug}`)).toBe(start);
+    expect(baseOf(r, child.slug)).toBe(base);
+  });
+
+  test('a fork left with no state by a hub that went down before the build can be retried too', async () => {
+    const { r, child, start } = await failedFork();
+    r.h.db.query('UPDATE orders SET worktree_state = NULL, setup_error = NULL WHERE id = ?').run(child.id);
+    expect((await retry(r, child.id)).status).toBe(200);
+    await r.h.office.idle();
+    expect(head(orderOf(r, child.slug).worktree?.path ?? '')).toBe(start);
+  });
+
+  test('a card still waiting for its brief, or a discarded fork, is not built from the retry', async () => {
+    const { r, child } = await failedFork();
+    r.h.db.query("UPDATE orders SET worktree_state = NULL, setup_error = NULL, status = 'descartado' WHERE id = ?").run(child.id);
+    expect(await retry(r, child.id)).toMatchObject({ status: 409, body: { error: { key: 'hub.api.orderBadState' } } });
+    r.h.db.query("UPDATE orders SET status = 'pendiente', source = 'panel-director' WHERE id = ?").run(child.id);
+    expect(await retry(r, child.id)).toMatchObject({ status: 409, body: { error: { key: 'hub.api.orderBadState' } } });
+    expect(rowOf(r, child.id)).toMatchObject({ worktree_state: null, worktree_path: null });
+  });
+});
+
 describe('preview of a restore', () => {
   const preview = (r: Rig, id: number, cp: number) => api(r)('GET', `/api/board/orders/${id}/checkpoints/${cp}/preview`);
   const refs = (folder: string) => git(folder, 'for-each-ref', '--format=%(refname) %(objectname)');
@@ -485,6 +538,38 @@ describe('preview of a restore', () => {
       status: 200,
       body: { dropped: [], droppedTotal: 0, stat: { files: 0, adds: 0, dels: 0 }, dirty: [], blocked: { key: 'hub.api.restorePrOpen' } },
     });
+  });
+
+  test('a file the checkpoint would leave out blocks it as the restore would, without committing anything', async () => {
+    const { card: c, folder } = await card({ configure: (config) => { checksConfig(['uno', 'exit 0'])(config); config.checkpoints.maxFileKb = 1; } });
+    const r = rig as Rig;
+    const p1 = await point(r, c.id, folder, { 'a.txt': 'uno' });
+    await point(r, c.id, folder, { 'b.txt': 'dos' });
+    writeFileSync(join(folder, 'grande.bin'), Buffer.alloc(2048, 1));
+    write(folder, 'c.txt', 'sin guardar');
+    const status = git(folder, 'status', '--porcelain');
+    const before = { head: head(folder), checkpoints: r.h.office.orderCheckpoints(c.id)?.checkpoints.length };
+
+    const result = await preview(r, c.id, p1.id);
+
+    expect(result.body).toMatchObject({ dirty: ['c.txt', 'grande.bin'], blocked: { key: 'hub.api.restoreLeftovers', params: { files: 'grande.bin' } } });
+    expect(head(folder)).toBe(before.head);
+    expect(git(folder, 'status', '--porcelain')).toBe(status);
+    expect(r.h.office.orderCheckpoints(c.id)?.checkpoints.length).toBe(before.checkpoints);
+  });
+
+  test('merge commits after the checkpoint are dropped too, so they are listed and counted', async () => {
+    const { card: c, folder } = await card();
+    const r = rig as Rig;
+    const p1 = await point(r, c.id, folder, { 'a.txt': 'uno' });
+    await point(r, c.id, folder, { 'b.txt': 'dos' });
+    const side = git(folder, 'commit-tree', `${p1.sha}^{tree}`, '-p', p1.sha, '-m', 'lado');
+    git(folder, 'merge', '-q', '--no-ff', '-m', 'une lado', side);
+
+    const result = await preview(r, c.id, p1.id);
+
+    expect(result.body.droppedTotal).toBe(3);
+    expect([...result.body.dropped].sort()).toEqual([`encargo(${c.slug}): comprobación (panel)`, 'lado', 'une lado'].sort());
   });
 
   test('an order already done is not blocked, a missing order or checkpoint is a 404 and a bad id a 400', async () => {

@@ -56,7 +56,7 @@ import {
   type SessionRuntime,
   type TmuxFn,
 } from './office-state';
-import { isUserPrompt, roleLabel, taskLine } from './office-texts';
+import { isBroadcast, isUserPrompt, roleLabel, taskLine } from './office-texts';
 import { OrderDesk } from './order-desk';
 import { OrderStore } from './order-store';
 import { isPrivate, publicDetail, publicSummary, publicText, storedPayload, visibleKind } from './privacy';
@@ -389,6 +389,11 @@ export class Office {
       inside: (path) => this.sessionInside(path),
       changed: (order) => this.bus.emit({ type: 'worktrees', floor: order.floor }),
       forkPoint: (order, sha) => order.parent_id !== null && this.checkpoints.list(order.parent_id).some((point) => point.sha === sha),
+      exclusive: (id, task) => this.checks.exclusive(id, task),
+      running: (id) => this.checks.isRunning(id),
+      cancelChecks: (id) => {
+        this.checks.cancel(id);
+      },
     });
     this.branches = new BranchRestoreDesk({ db: opts.db, git: this.git, now: this.now, bus: this.bus, config: () => this.config });
     this.orphans = new OrphanBranchDesk({ db: opts.db, git: this.git, now: this.now, config: () => this.config });
@@ -601,7 +606,7 @@ export class Office {
         agent.task = task;
         this.stall.openTask(agent, now);
       }
-      const plan = planSlugIn(text(e.prompt));
+      const plan = isBroadcast(text(e.prompt)) ? null : planSlugIn(text(e.prompt));
       if (plan) this.setPlan(agent, plan);
       if (isUserPrompt(text(e.prompt))) this.gates.userInstructed(session.sessionId, now);
     }
@@ -718,11 +723,11 @@ export class Office {
     return this.context.report(agentKey);
   }
 
-  order(sessionId: string, body: string): Promise<OrderResult> {
-    return this.orders.order(sessionId, body);
+  order(sessionId: string, body: string, opts: { broadcast?: boolean } = {}): Promise<OrderResult> {
+    return this.orders.order(sessionId, body, opts);
   }
 
-  requestStatus(sessionId: string): Promise<OrderResult> {
+  requestStatus(sessionId: string): Promise<OrderResult | 'busy'> {
     return this.orders.requestStatus(sessionId);
   }
 
@@ -961,7 +966,7 @@ export class Office {
   }
 
   removeWorktree(orderId: number, opts: { deleteBranch: boolean; force: boolean }): Promise<RemoveResult> {
-    return this.checks.exclusive(orderId, () => this.worktrees.remove(orderId, opts));
+    return this.worktrees.remove(orderId, opts);
   }
 
   keepWorktree(orderId: number): boolean {
