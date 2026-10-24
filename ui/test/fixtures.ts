@@ -80,6 +80,7 @@ export const order = (slug: string, extra: Partial<OrderView> = {}): OrderView =
   source: 'panel-lead',
   planSlug: null,
   parentId: null,
+  parentSlug: null,
   lead: null,
   branch: null,
   base: null,

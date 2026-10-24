@@ -13,6 +13,7 @@ function order(id: number, status: OrderStatus, over: Partial<OrderView> = {}): 
     source: 'director',
     planSlug: null,
     parentId: null,
+    parentSlug: null,
     lead: 'lead-mobile',
     branch: `encargo/o-${id}`,
     base: 'origin/develop',

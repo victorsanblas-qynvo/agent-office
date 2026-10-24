@@ -103,6 +103,7 @@ export class BoardDesk {
       source: row.source,
       planSlug: row.plan_slug,
       parentId: row.parent_id,
+      parentSlug: row.parent_id === null ? null : (this.opts.store.get(row.parent_id)?.slug ?? null),
       lead: `lead-${row.floor}`,
       branch: row.branch,
       base: row.base_ref,

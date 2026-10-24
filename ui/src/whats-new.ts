@@ -61,6 +61,7 @@ export const WHATS_NEW: readonly WhatsNewSection[] = [
       'whatsNew.board.spend',
       'whatsNew.board.compose',
       'whatsNew.board.templates',
+      'whatsNew.board.compare',
     ],
   },
   {

@@ -83,7 +83,10 @@ export function mountBoard(host: HTMLElement, store: Store, api: OfficeApi | nul
     if (openId === order.id) return;
     closeDetail();
     openId = order.id;
-    open = mountOrderDetail(drawerHost, store, api, order.id, closeDetail);
+    open = mountOrderDetail(drawerHost, store, api, order.id, closeDetail, (id) => {
+      const target = store.orders.find((o) => o.id === id);
+      if (target) openDetail(target);
+    });
   };
 
   const move = async (order: OrderView, to: OrderStatus): Promise<void> => {
