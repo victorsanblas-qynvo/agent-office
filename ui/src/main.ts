@@ -28,6 +28,8 @@ import { mountBudgetWatch } from './budgets';
 import { UsageToday } from './usage-today';
 import { mountBoard } from './board/board';
 import { mountChat, type ChatHandle } from './chat/chat';
+import { mountAway } from './away-card';
+import { EMPTY_FILTERS } from './table/history';
 import { mountTable } from './table/table';
 import { mountToasts } from './toasts';
 import { readWhatsNewSeen, shouldShowWhatsNew } from './whats-new';
@@ -65,6 +67,7 @@ async function boot(): Promise<void> {
   const view = new URLSearchParams(location.search).get('view') === '3d' ? '3d' : '2d';
   const notice = el('div', 'notice');
   notice.hidden = true;
+  const awayHost = el('div', 'away-host');
   const panelHost = el('aside', 'panel');
   const toastHost = el('div', 'toasts');
   const finishedHost = el('div', 'finished-host');
@@ -98,7 +101,7 @@ async function boot(): Promise<void> {
   const topbar = mountTopbar(store, showTab, (need) => goToNeed(nav, need), (key) => goToAgent(nav, key), (floor) => focusFloor(nav, floor));
   root.replaceChildren(
     topbar.root,
-    el('main', 'main', officeHost, tableHost, boardHost, plansHost, chatHost, settingsHost, notice),
+    el('main', 'main', officeHost, tableHost, boardHost, plansHost, chatHost, settingsHost, notice, awayHost),
     panelHost,
     toastHost,
     finishedHost,
@@ -162,6 +165,19 @@ async function boot(): Promise<void> {
     notifier.openTarget = open;
     topbar.notices.bind(notifier.notices, open);
     window.addEventListener('pagehide', () => notifier.flushNotices());
+  }
+  if (api && notifier) {
+    mountAway(awayHost, {
+      store,
+      api,
+      notices: notifier.notices,
+      openMessages: (query, fromDay) => {
+        showTab('table');
+        table.showSearch({ name: '', filters: { ...EMPTY_FILTERS, kind: 'message', q: query, from: fromDay } });
+      },
+      openBoard: () => showTab('board'),
+      openNotices: () => topbar.notices.open(),
+    });
   }
   restoreFocus(nav);
   const palette = mountPalette(overlayHost, { context: () => paletteContext(nav), run: (entry) => runEntry(nav, entry) });

@@ -44,6 +44,7 @@ export const WHATS_NEW: readonly WhatsNewSection[] = [
       'whatsNew.notices.inbox',
       'whatsNew.notices.muted',
       'whatsNew.notices.checks',
+      'whatsNew.notices.away',
     ],
   },
   {
