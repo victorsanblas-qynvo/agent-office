@@ -17,6 +17,7 @@ const session = (sessionId: string, extra: Partial<SessionView> = {}): SessionVi
   canRelaunch: true,
   relaunchResumes: true,
   office: true,
+  cwd: null,
   ...extra,
 });
 

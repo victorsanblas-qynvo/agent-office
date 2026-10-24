@@ -236,6 +236,7 @@ export class SessionBook {
 
   sessionView(session: SessionRuntime): SessionView {
     const { rulesPending, canRelaunch, relaunchResumes } = this.opts.flags(session);
+    const office = this.sessionInOffice(session);
     return {
       sessionId: session.sessionId,
       agentKey: session.sessionId,
@@ -248,7 +249,8 @@ export class SessionBook {
       rulesPending,
       canRelaunch,
       relaunchResumes,
-      office: this.sessionInOffice(session),
+      office,
+      cwd: office ? session.cwd : null,
     };
   }
 
@@ -561,5 +563,5 @@ export class SessionBook {
 }
 
 function flagsOf(view: SessionView): string {
-  return `${view.needsRelaunch}|${view.rulesPending}|${view.canRelaunch}|${view.relaunchResumes}|${view.canReceive}|${view.office}`;
+  return `${view.needsRelaunch}|${view.rulesPending}|${view.canRelaunch}|${view.relaunchResumes}|${view.canReceive}|${view.office}|${view.cwd}`;
 }

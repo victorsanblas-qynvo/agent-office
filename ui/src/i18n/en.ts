@@ -352,6 +352,10 @@ export const en: Messages = {
   'floors.askStatus': 'Ask for status',
   'floors.askStatusHint': 'Asks how the brief is going and tells them to declare whether they are waiting for something',
   'floors.relaunch': 'Relaunch',
+  'now.copy.tmux': 'Copy tmux command',
+  'now.copy.tmuxHint': 'Copies the command that opens this session\'s tmux window in a terminal',
+  'now.copy.resume': 'Copy resume command',
+  'now.copy.resumeHint': 'Copies the command that resumes this Claude Code session in its folder',
   'floors.relaunchHint': 'Closes the session and opens it again with the new launcher',
   'floors.relaunchBusy': 'It cannot be relaunched now: the lead or its team is working, a question is pending or the launcher is missing',
   'floors.relaunchConfirm': 'Relaunch {name}? Its team is closed.',
@@ -1525,4 +1529,5 @@ export const en: Messages = {
   'whatsNew.safety.git': 'The output of git and gh is bounded and killed with its whole process group. Automatic.',
   'whatsNew.safety.deletes': 'A branch is only deleted on facts git confirmed, after a fetch. Automatic.',
   'whatsNew.safety.controls': 'Control characters are neutralised in commands and messages. Automatic.',
+  'whatsNew.panel.commands': 'Copy tmux command and Copy resume command, in the agent panel, to jump into its session from a terminal.',
 };
