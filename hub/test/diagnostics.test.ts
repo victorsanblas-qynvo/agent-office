@@ -106,6 +106,54 @@ describe('redaction', () => {
     expect(out).not.toContain('-----BEGIN');
   });
 
+  test('hides credentials behind an auth scheme, quoted values, curl -u and a PEM block without its END line', () => {
+    const cases: [string, string][] = [
+      ['authorization: basic dXNlcjpwYXNz', 'authorization: [redactado]'],
+      ['Authorization: Token abc123def', 'Authorization: [redactado]'],
+      ['-H "Authorization: Digest abc123"', '-H "Authorization: [redactado]'],
+      ['DB_PASSWORD="my secret" next', 'DB_PASSWORD=[redactado] next'],
+      ["pwd: 'two words' x", 'pwd: [redactado] x'],
+      ['config: token=abc', 'config: token=[redactado]'],
+      ['env=PASSWORD=x', 'env=PASSWORD=[redactado]'],
+      ['curl -u admin:hunter2 https://x', 'curl -u [redactado] https://x'],
+      ['curl --user admin:pw x', 'curl --user [redactado] x'],
+      ['curl --user=admin:pw x', 'curl --user=[redactado] x'],
+      ['-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAABG5vbmU\nAAAAAAAABAAABlwAAAAdzc2gtcn\nnext line', '[redactado]\nnext line'],
+      ['git push -u origin main', 'git push -u origin main'],
+      ['password=\nnext line', 'password=\nnext line'],
+      ['a basic understanding of Basic Authentication', 'a basic understanding of Basic Authentication'],
+    ];
+    for (const [text, expected] of cases) expect(redactLog(text, KEY)).toBe(expected);
+  });
+
+  test('keeps real paths readable and still hides base64 secrets that carry slashes', () => {
+    const kept = [
+      '/Users/v/.claude/worktrees/office-fix-login-a1b2/lib/a.dart',
+      '~/Projects/agent-office/hub/src/delivery2-desk.ts:12',
+      'ui/src/components/session-panel2.model.ts',
+      '/Users/Someone/Library/Caches/com.app2/data/file9.json',
+      'v1.2.3-some-long-package-name.with.dots2.tar.gz',
+    ];
+    for (const path of kept) expect(redactLog(`at ${path}`, KEY)).toBe(`at ${path}`);
+    const SLACK_HOOK = ['https://hooks', 'slack', 'com/services/T0ABCD123/B0ABCD123'].join('.');
+    const hidden: [string, string][] = [
+      ['bare wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY', 'bare [redactado]'],
+      ['APP_KEY=base64:Ab3/dEf9+gH1jK2lM3nO4pQ5rS6tU7vW8xY9zA0bC1d=', 'APP_KEY=base64:[redactado]'],
+      [`${SLACK_HOOK}/abcdEFGHijkl7NOPqrstUVWX`, `${SLACK_HOOK}/[redactado]`],
+      [`export GITHUB_TOKEN ${'gh' + 'p_'}abcdefghijklmnop1234567890ABCDEFGH`, 'export GITHUB_TOKEN [redactado]'],
+    ];
+    for (const [text, expected] of hidden) expect(redactLog(text, KEY)).toBe(expected);
+  });
+
+  test('stays linear on long runs that look like the start of a key', () => {
+    const inputs = ['token'.repeat(2000), 'a'.repeat(64 * 1024), 'a.'.repeat(32 * 1024), 'mysql '.repeat(10_000), '-----BEGIN A-----\n'.repeat(3000), `${'a'.repeat(127)} `.repeat(500)];
+    for (const input of inputs) {
+      const start = performance.now();
+      redactLog(input, KEY);
+      expect(performance.now() - start).toBeLessThan(50);
+    }
+  });
+
   test('tailLines keeps the last lines', () => {
     expect(tailLines('a\nb\nc\n', 2)).toEqual(['b', 'c']);
   });
