@@ -36,7 +36,7 @@ describe('buildEntries', () => {
   test('live, it offers every action, tab, floor, agent and plan', () => {
     const entries = buildEntries(context());
     const actions = entries.filter((entry) => entry.group === 'action').map((entry) => entry.target.type);
-    expect(actions).toEqual(['reply', 'status', 'relaunch', 'newOrder', 'focus', 'lang', 'history', 'whatsNew', 'mute', 'muteSound', 'theme', 'theme', 'theme', 'motion', 'motion', 'motion', 'pin', 'pin']);
+    expect(actions).toEqual(['reply', 'status', 'relaunch', 'newOrder', 'focus', 'lang', 'history', 'whatsNew', 'mute', 'muteSound', 'theme', 'theme', 'theme', 'motion', 'motion', 'motion', 'contrast', 'contrast', 'contrast', 'pin', 'pin']);
     expect(entries.filter((entry) => entry.group === 'tab')).toHaveLength(6);
     expect(entries.filter((entry) => entry.group === 'floor')).toHaveLength(2);
     expect(entries.filter((entry) => entry.group === 'agent')).toHaveLength(2);
@@ -46,14 +46,14 @@ describe('buildEntries', () => {
   test('in a replay, the actions that write are left out and the rest stay', () => {
     const entries = buildEntries(context({ live: false }));
     const actions = entries.filter((entry) => entry.group === 'action').map((entry) => entry.target.type);
-    expect(actions).toEqual(['focus', 'lang', 'history', 'whatsNew', 'mute', 'muteSound', 'theme', 'theme', 'theme', 'motion', 'motion', 'motion']);
+    expect(actions).toEqual(['focus', 'lang', 'history', 'whatsNew', 'mute', 'muteSound', 'theme', 'theme', 'theme', 'motion', 'motion', 'motion', 'contrast', 'contrast', 'contrast']);
     expect(entries.some((entry) => entry.write)).toBe(false);
     expect(entries.filter((entry) => entry.group !== 'action')).toHaveLength(6 + 2 + 2 + 1);
   });
 
   test('an action with nothing to act on is not offered', () => {
     const entries = buildEntries(context({ reply: null, status: null, relaunch: null, newOrder: false, mute: false, muteSound: false }));
-    expect(entries.filter((entry) => entry.group === 'action').map((entry) => entry.target.type)).toEqual(['focus', 'lang', 'history', 'whatsNew', 'theme', 'theme', 'theme', 'motion', 'motion', 'motion', 'pin', 'pin']);
+    expect(entries.filter((entry) => entry.group === 'action').map((entry) => entry.target.type)).toEqual(['focus', 'lang', 'history', 'whatsNew', 'theme', 'theme', 'theme', 'motion', 'motion', 'motion', 'contrast', 'contrast', 'contrast', 'pin', 'pin']);
   });
 
   test('every agent can be pinned, and a pinned one can be unpinned', () => {

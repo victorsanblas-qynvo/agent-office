@@ -21,6 +21,7 @@ const SAME_KEYS: MessageKey[] = [
   'needs.kind.context',
   'needs.kind.budget',
   'settings.notifications.context.pct',
+  'settings.contrast.normal',
   'needs.snooze.15m',
   'needs.snooze.1h',
   'settings.notifications.hung.minutes',
