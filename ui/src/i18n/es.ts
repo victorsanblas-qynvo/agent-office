@@ -351,6 +351,10 @@ export const es = {
   'floors.askStatus': 'Pedir estado',
   'floors.askStatusHint': 'Le pregunta cómo va el encargo y le pide que declare si espera algo',
   'floors.relaunch': 'Relanzar',
+  'now.copy.tmux': 'Copiar comando de tmux',
+  'now.copy.tmuxHint': 'Copia el comando que abre la ventana de tmux de esta sesión en una terminal',
+  'now.copy.resume': 'Copiar comando de reanudar',
+  'now.copy.resumeHint': 'Copia el comando que reanuda esta sesión de Claude Code en su carpeta',
   'floors.relaunchHint': 'Cierra la sesión y la vuelve a abrir con el lanzador nuevo',
   'floors.relaunchBusy': 'Ahora no se puede relanzar: el jefe o su equipo están trabajando, hay una pregunta pendiente o falta el lanzador',
   'floors.relaunchConfirm': '¿Relanzar a {name}? Se cierra su equipo.',
@@ -1526,6 +1530,7 @@ export const es = {
   'whatsNew.safety.git': 'La salida de git y gh está acotada y se corta con todo su grupo de procesos. Automático.',
   'whatsNew.safety.deletes': 'Una rama solo se borra con hechos que git confirmó, tras un fetch. Automático.',
   'whatsNew.safety.controls': 'Los caracteres de control se neutralizan en comandos y mensajes. Automático.',
+  'whatsNew.panel.commands': 'Copiar comando de tmux y de reanudar, en el panel del agente, para saltar a su sesión desde una terminal.',
 } as const;
 
 export type Messages = { [K in keyof typeof es]: string };

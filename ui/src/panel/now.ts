@@ -1,4 +1,5 @@
 import type { OfficeApi } from '../api';
+import { copyText } from '../clipboard';
 import { append, button, el, setStateColor } from '../dom';
 import { t } from '../i18n';
 import { hubText } from '../i18n/hub';
@@ -8,7 +9,8 @@ import { clockTime, relativeTime } from '../time';
 import type { ActivityView, AgentView, TranscriptEntry } from '../types';
 import { panelSection } from './section';
 import { tailDue, tailIcon, TAIL_LIMIT, type TailMark } from './tail-model';
-import { canAskStatus, runSessionAction, stalledText, statusButton } from './session-controls';
+import { sessionCommands, type SessionCommands } from './session-commands';
+import { canAskStatus, mainSession, runSessionAction, stalledText, statusButton } from './session-controls';
 
 const STEP_LIMIT = 5;
 
@@ -68,6 +70,18 @@ function contextRow(agent: AgentView): HTMLElement | null {
   return row;
 }
 
+function commandsRow(store: Store, agent: AgentView): HTMLElement | null {
+  const commands = sessionCommands(mainSession(store, agent), agent);
+  const items: HTMLButtonElement[] = [];
+  for (const kind of ['tmux', 'resume'] as const satisfies readonly (keyof SessionCommands)[]) {
+    if (commands[kind] === undefined) continue;
+    const control = button(t(`now.copy.${kind}`), 'session-action', t(`now.copy.${kind}Hint`));
+    control.dataset.copy = kind;
+    items.push(control);
+  }
+  return items.length > 0 ? el('div', 'now-actions', ...items) : null;
+}
+
 function stalledLine(store: Store, agent: AgentView, now: number, times: TimeNode[]): HTMLElement | null {
   const since = agent.stalledSince;
   if (since === null) return null;
@@ -122,7 +136,7 @@ export function mountNow(host: HTMLElement, store: Store, api: OfficeApi | null)
     paintTail(agent.key);
   };
 
-  store.watch(['selection', 'agents', 'activity', 'lang'], () => {
+  store.watch(['selection', 'agents', 'sessions', 'activity', 'lang'], () => {
     times = [];
     const key = store.selectedKey;
     const agent = key === null ? undefined : store.agents.get(key);
@@ -156,6 +170,7 @@ export function mountNow(host: HTMLElement, store: Store, api: OfficeApi | null)
       contextRow(agent),
       tokensRow(agent),
       stalledLine(store, agent, now, times),
+      commandsRow(store, agent),
       agent.task ? el('p', 'now-task', el('span', 'muted', `${t('now.task')} `), agent.task) : null,
       el('h4', 'now-steps-title section-title', t('now.steps')),
       steps.length > 0 ? el('ul', 'now-steps', ...steps.map(stepItem)) : el('p', 'muted hint', t('now.noActivity')),
@@ -176,6 +191,13 @@ export function mountNow(host: HTMLElement, store: Store, api: OfficeApi | null)
   });
 
   host.addEventListener('click', (event) => {
+    const copy = event.target instanceof Element ? event.target.closest<HTMLButtonElement>('button[data-copy]') : null;
+    const selected = store.selectedKey === null ? undefined : store.agents.get(store.selectedKey);
+    if (copy && selected) {
+      const command = sessionCommands(mainSession(store, selected), selected)[copy.dataset.copy === 'tmux' ? 'tmux' : 'resume'];
+      if (command !== undefined) void copyText(command).then((done) => store.toast(t(done ? 'board.pr.copied' : 'board.pr.copyFailed'), done ? 'ok' : 'error'));
+      return;
+    }
     const action = event.target instanceof Element ? event.target.closest<HTMLButtonElement>('button[data-action]') : null;
     if (action) void runSessionAction(api, store, action);
   });

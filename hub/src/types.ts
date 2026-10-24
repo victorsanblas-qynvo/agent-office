@@ -662,6 +662,7 @@ export type SessionView = {
   canRelaunch: boolean;
   relaunchResumes: boolean;
   office: boolean;
+  cwd: string | null;
 };
 
 export type ActivityView = {
