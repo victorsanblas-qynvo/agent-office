@@ -9,6 +9,7 @@ import { createTranslator, interpolate } from '../src/i18n/index';
 
 // Keys whose text is legitimately the same in both languages: proper names, words shared by both, symbols.
 const SAME_KEYS: MessageKey[] = [
+  'whatsNew.replay.title',
   'orders.brief.count',
   'board.spend.line',
   'digest.range',

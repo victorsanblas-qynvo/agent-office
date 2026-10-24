@@ -29,6 +29,8 @@ import { mountBoard } from './board/board';
 import { mountChat, type ChatHandle } from './chat/chat';
 import { mountTable } from './table/table';
 import { mountToasts } from './toasts';
+import { readWhatsNewSeen, shouldShowWhatsNew } from './whats-new';
+import { mountWhatsNew } from './whats-new-dialog';
 import { mountTopbar, type Tab } from './topbar';
 import type { FinishedView } from './types';
 
@@ -139,6 +141,7 @@ async function boot(): Promise<void> {
   mountSettings(settingsHost, store, api, notifier, sound);
   mountToasts(toastHost, store);
 
+  const whatsNew = mountWhatsNew(overlayHost);
   const nav: Nav = {
     store,
     api,
@@ -150,6 +153,7 @@ async function boot(): Promise<void> {
     board: () => board,
     chat: () => chat,
     table: () => table,
+    whatsNew: () => whatsNew,
   };
   if (notifier) {
     const open = (target: NoticeTarget): void => openNoticeTarget(nav, target);
@@ -159,14 +163,16 @@ async function boot(): Promise<void> {
   }
   restoreFocus(nav);
   const palette = mountPalette(overlayHost, { context: () => paletteContext(nav), run: (entry) => runEntry(nav, entry) });
-  const help = mountHelp(overlayHost);
+  const help = mountHelp(overlayHost, whatsNew.open);
   const cursor = new NeedCursor();
   mountKeys({
     run: (action) => runKey(nav, action, cursor, { palette: palette.open, help: help.toggle }),
-    layers: [palette.close, help.close, topbar.needs.close, topbar.notices.close, closeDocument, () => tab === 'board' && board.clearHighlight()],
+    layers: [palette.close, help.close, whatsNew.close, topbar.needs.close, topbar.notices.close, closeDocument, () => tab === 'board' && board.clearHighlight()],
     boardReady: (move) => boardKeysReady(tab === 'board', document.querySelector('.order-drawer-backdrop') !== null, move === 'open', board.hasHighlight()),
-    modalOpen: () => palette.isOpen() || help.isOpen() || document.querySelector('.dialog-backdrop, .modal-backdrop') !== null,
+    modalOpen: () => palette.isOpen() || help.isOpen() || whatsNew.isOpen() || document.querySelector('.dialog-backdrop, .modal-backdrop') !== null,
   });
+
+  if (shouldShowWhatsNew(readWhatsNewSeen(), api !== null)) whatsNew.open();
 
   const hooks: OfficeHooks = { openTab: showTab, usageToday: () => usageToday?.latest ?? null };
   const mountView: Promise<OfficeHandle> =
