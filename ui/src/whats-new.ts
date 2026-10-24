@@ -1,7 +1,7 @@
 import type { MessageKey } from './i18n';
 import { readJson, writeJson } from './prefs';
 
-export const WHATS_NEW_VERSION = '2026-10-24';
+export const WHATS_NEW_VERSION = '2026-10-24b';
 export const WHATS_NEW_KEY = 'agent-office.whatsNewSeen';
 
 export type WhatsNewSection = { id: string; title: MessageKey; items: readonly MessageKey[] };
@@ -13,11 +13,9 @@ export const WHATS_NEW: readonly WhatsNewSection[] = [
     items: [
       'whatsNew.review.diff',
       'whatsNew.review.comments',
-      'whatsNew.review.prDraft',
-      'whatsNew.review.gh',
       'whatsNew.review.criteria',
+      'whatsNew.review.prDraft',
       'whatsNew.review.points',
-      'whatsNew.review.preview',
       'whatsNew.review.rounds',
     ],
   },
@@ -25,13 +23,13 @@ export const WHATS_NEW: readonly WhatsNewSection[] = [
     id: 'needs',
     title: 'whatsNew.needs.title',
     items: [
+      'whatsNew.needs.floor',
+      'whatsNew.needs.snooze',
       'whatsNew.needs.limits',
+      'whatsNew.needs.budgets',
+      'whatsNew.needs.context',
       'whatsNew.needs.hung',
       'whatsNew.needs.collisions',
-      'whatsNew.needs.context',
-      'whatsNew.needs.budgets',
-      'whatsNew.needs.snooze',
-      'whatsNew.needs.floor',
       'whatsNew.needs.stale',
     ],
   },
@@ -39,13 +37,12 @@ export const WHATS_NEW: readonly WhatsNewSection[] = [
     id: 'notices',
     title: 'whatsNew.notices.title',
     items: [
+      'whatsNew.notices.inbox',
+      'whatsNew.notices.away',
       'whatsNew.notices.quiet',
       'whatsNew.notices.reminders',
-      'whatsNew.notices.recap',
-      'whatsNew.notices.inbox',
       'whatsNew.notices.muted',
       'whatsNew.notices.checks',
-      'whatsNew.notices.away',
     ],
   },
   {
@@ -53,27 +50,25 @@ export const WHATS_NEW: readonly WhatsNewSection[] = [
     title: 'whatsNew.board.title',
     items: [
       'whatsNew.board.filter',
-      'whatsNew.board.age',
       'whatsNew.board.keys',
-      'whatsNew.board.export',
       'whatsNew.board.lanes',
+      'whatsNew.board.age',
       'whatsNew.board.activity',
       'whatsNew.board.spend',
-      'whatsNew.board.compose',
-      'whatsNew.board.templates',
       'whatsNew.board.compare',
+      'whatsNew.board.export',
+      'whatsNew.board.compose',
     ],
   },
   {
     id: 'table',
     title: 'whatsNew.table.title',
     items: [
-      'whatsNew.table.history',
-      'whatsNew.table.searches',
-      'whatsNew.table.spend',
       'whatsNew.table.digest',
       'whatsNew.table.metrics',
+      'whatsNew.table.history',
       'whatsNew.table.timeline',
+      'whatsNew.table.spend',
       'whatsNew.table.scoreboard',
     ],
   },
@@ -83,10 +78,9 @@ export const WHATS_NEW: readonly WhatsNewSection[] = [
     items: [
       'whatsNew.palette.orders',
       'whatsNew.palette.recent',
-      'whatsNew.palette.pins',
       'whatsNew.palette.relaunch',
       'whatsNew.palette.statusAll',
-      'whatsNew.palette.messageAll',
+      'whatsNew.palette.pins',
     ],
   },
   {
@@ -94,38 +88,52 @@ export const WHATS_NEW: readonly WhatsNewSection[] = [
     title: 'whatsNew.panel.title',
     items: [
       'whatsNew.panel.focus',
-      'whatsNew.panel.theme',
-      'whatsNew.panel.motion',
-      'whatsNew.panel.contrast',
+      'whatsNew.panel.floorHeaders',
+      'whatsNew.panel.notes',
       'whatsNew.panel.tail',
-      'whatsNew.panel.diagnostics',
-      'whatsNew.panel.prefs',
+      'whatsNew.panel.commands',
       'whatsNew.panel.report',
       'whatsNew.panel.lessons',
-      'whatsNew.panel.notes',
-      'whatsNew.panel.commands',
-      'whatsNew.panel.floorHeaders',
+      'whatsNew.panel.theme',
+      'whatsNew.panel.contrast',
+      'whatsNew.panel.motion',
+      'whatsNew.panel.prefs',
+      'whatsNew.panel.diagnostics',
+    ],
+  },
+  {
+    id: 'chat',
+    title: 'whatsNew.chat.title',
+    items: [
+      'whatsNew.chat.unread',
+      'whatsNew.chat.search',
     ],
   },
   {
     id: 'branches',
     title: 'whatsNew.branches.title',
-    items: ['whatsNew.branches.deleted', 'whatsNew.branches.restore', 'whatsNew.branches.orphans'],
+    items: [
+      'whatsNew.branches.deleted',
+      'whatsNew.branches.orphans',
+    ],
   },
   {
     id: 'replay',
     title: 'whatsNew.replay.title',
-    items: ['whatsNew.replay.seek', 'whatsNew.replay.export'],
-  },
-  {
-    id: 'chat',
-    title: 'whatsNew.chat.title',
-    items: ['whatsNew.chat.unread', 'whatsNew.chat.search'],
+    items: [
+      'whatsNew.replay.seek',
+      'whatsNew.replay.export',
+    ],
   },
   {
     id: 'safety',
     title: 'whatsNew.safety.title',
-    items: ['whatsNew.safety.redaction', 'whatsNew.safety.git', 'whatsNew.safety.deletes', 'whatsNew.safety.controls'],
+    items: [
+      'whatsNew.safety.redaction',
+      'whatsNew.safety.git',
+      'whatsNew.safety.deletes',
+      'whatsNew.safety.controls',
+    ],
   },
 ];
 
