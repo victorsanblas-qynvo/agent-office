@@ -22,6 +22,7 @@ import { mountPanel } from './panel/panel';
 import { mountPlans } from './plans/plans';
 import { loadRecording, mountReplayControls, replayFetchUrl, ReplayPlayer } from './replay';
 import { Store } from './store';
+import { motion } from './motion';
 import { theme } from './theme';
 import { mountBudgetWatch } from './budgets';
 import { UsageToday } from './usage-today';
@@ -40,6 +41,7 @@ function messageOf(error: unknown): string {
 
 async function boot(): Promise<void> {
   theme.apply();
+  motion.apply();
   applyLang(readStoredLang());
   const root = document.getElementById('app');
   if (!root) return;

@@ -1,5 +1,6 @@
 import { Application, Container, Graphics } from 'pixi.js';
 import { ambient, coffeePlan, daylightFor, type CoffeeVisit } from '../ambient';
+import { ambientInterval } from '../motion';
 import { effectiveTheme, theme } from '../theme';
 import { paletteRole, resolveOverride } from '../layouts';
 import { LiftController, linkLift } from '../lift';
@@ -132,6 +133,7 @@ class OfficeView {
   private coffee = new Map<string, CoffeeVisit>();
   private dark = false;
   private darkTimer = 0;
+  private backdropTimer = Infinity;
   private seenCounter = 0;
   private primed = false;
   private scrollY = 0;
@@ -215,7 +217,7 @@ class OfficeView {
       this.sync();
     }
     this.darkTimer += dt;
-    if (this.darkTimer >= DARK_CHECK_S) {
+    if (this.darkTimer >= ambientInterval(DARK_CHECK_S)) {
       this.darkTimer = 0;
       if (this.isDark() !== this.dark) this.dirty = true;
     }
@@ -226,7 +228,11 @@ class OfficeView {
     }
     this.liftLink.deliver(this.lift.tick(dt));
     this.garden.tick(dt, this.elapsed);
-    this.backdrop.tick(this.elapsed);
+    this.backdropTimer += dt;
+    if (this.backdropTimer >= ambientInterval(0)) {
+      this.backdropTimer = 0;
+      this.backdrop.tick(this.elapsed);
+    }
     this.animate(dt);
     this.paintBoards();
     this.repath();

@@ -91,6 +91,7 @@ export const WHATS_NEW: readonly WhatsNewSection[] = [
     items: [
       'whatsNew.panel.focus',
       'whatsNew.panel.theme',
+      'whatsNew.panel.motion',
       'whatsNew.panel.tail',
       'whatsNew.panel.diagnostics',
       'whatsNew.panel.prefs',

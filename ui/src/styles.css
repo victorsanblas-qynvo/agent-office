@@ -2835,9 +2835,13 @@ button.board-arrow {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .spinner {
+  :root:not([data-motion="full"]) .spinner {
     animation-duration: 3s;
   }
+}
+
+:root[data-motion="reduced"] .spinner {
+  animation-duration: 3s;
 }
 
 .floors-summary .checks-badge,

@@ -4,6 +4,7 @@ import { noteTitle, type Notes } from '../notes';
 import { canPin } from '../pins';
 import { currentLang, plural, t } from '../i18n';
 import type { SavedSearch } from '../table/history';
+import { MOTION_OPTIONS, type MotionPref } from '../motion';
 import { THEME_OPTIONS, type ThemePref } from '../theme';
 import { agentName, documentStatusLabel, floorKindLabel, floorLabel, roleLabel } from '../labels';
 import type { AgentView, DocumentView, FloorView, OrderView } from '../types';
@@ -34,6 +35,7 @@ export type PaletteTarget =
   | { type: 'mute' }
   | { type: 'muteSound' }
   | { type: 'theme'; theme: ThemePref }
+  | { type: 'motion'; motion: MotionPref }
   | { type: 'search'; name: string }
   | { type: 'clearRecent' };
 
@@ -97,6 +99,7 @@ function actions(context: PaletteContext): PaletteEntry[] {
   if (context.muteSound) add('muteSound', t('palette.action.muteSound'), t('palette.hint.sound'), { type: 'muteSound' }, false);
   if (context.recent.length > 0) add('clearRecent', t('palette.action.clearRecent'), t('palette.hint.recent'), { type: 'clearRecent' }, false);
   for (const option of THEME_OPTIONS) add(`theme:${option}`, t(`palette.action.theme.${option}`), t('palette.hint.theme'), { type: 'theme', theme: option }, false);
+  for (const option of MOTION_OPTIONS) add(`motion:${option}`, t(`palette.action.motion.${option}`), t('palette.hint.motion'), { type: 'motion', motion: option }, false);
   return out;
 }
 
