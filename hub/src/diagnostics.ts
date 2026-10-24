@@ -40,20 +40,78 @@ export function percentiles(samples: readonly number[], points: readonly number[
   return points.map((point) => sorted[Math.min(sorted.length - 1, Math.max(0, Math.ceil((point / 100) * sorted.length) - 1))] ?? null);
 }
 
-// The office key, the key header, bearer tokens, password-like key=value pairs, a mysql -p password, the
-// credentials of a url, PEM blocks and long hex or base64 runs never leave the hub. A run that starts with a slash is an absolute path, kept readable.
+const SECRET_KEY = /(?<![\w-])(?=[\w-]{0,128}?(?:pass(?:word)?|passwd|pwd|secret|token|api[_-]?key|private[_-]?key|auth))([\w-]{1,128})(["']?[ \t]*[:=][ \t]*)(?:(?:basic|bearer|token|digest)[ \t]+)?(?:"[^"\n]*"|'[^'\n]*'|\S+)/gi;
+const LONG_RUN = /[A-Za-z0-9+/_.~-]{32,}={0,2}/g;
+const BASE64_RUN = /[A-Za-z0-9+/_-]{32,}={0,2}/g;
+const PEM_BEGIN = /-----BEGIN [A-Z ]{1,40}-----/g;
+const PEM_END = /-----END [A-Z ]{1,40}-----/g;
+const PEM_BODY = /(?:\r?\n[A-Za-z0-9+/=]{16,}(?![^\r\n]))*/y;
+
+// A PEM block goes up to its END line, or without one through the base64 lines after its BEGIN. Once no END is left it
+// is not searched for again, so the scan stays linear.
+function redactPem(text: string): string {
+  let out = '';
+  let from = 0;
+  let endLeft = true;
+  PEM_BEGIN.lastIndex = 0;
+  for (let begin = PEM_BEGIN.exec(text); begin !== null; begin = PEM_BEGIN.exec(text)) {
+    let stop = -1;
+    if (endLeft) {
+      PEM_END.lastIndex = PEM_BEGIN.lastIndex;
+      if (PEM_END.exec(text) === null) endLeft = false;
+      else stop = PEM_END.lastIndex;
+    }
+    if (stop < 0) {
+      PEM_BODY.lastIndex = PEM_BEGIN.lastIndex;
+      PEM_BODY.exec(text);
+      stop = PEM_BODY.lastIndex;
+    }
+    out += text.slice(from, begin.index) + REDACTED;
+    from = stop;
+    PEM_BEGIN.lastIndex = stop;
+  }
+  return out + text.slice(from);
+}
+
+function secretRun(run: string): string {
+  return /\d/.test(run) && /[A-Za-z]/.test(run) ? REDACTED : run;
+}
+
+// Base64 has no dot, dash, underscore or tilde, so a relative path without any of them is not told apart from it.
+function pathLike(run: string): boolean {
+  return run.includes('/') && !/[+=]/.test(run) && (/^[/~.]/.test(run) || /[._~-]/.test(run));
+}
+
+// A path stays readable except for a long mixed-case segment with a digit, as the secret of a webhook url.
+function redactRun(run: string): string {
+  if (!pathLike(run)) return run.replace(BASE64_RUN, secretRun);
+  return run
+    .split('/')
+    .map((segment) => (segment.length >= 20 && /^[A-Za-z0-9]+$/.test(segment) && /\d/.test(segment) && /[a-z]/.test(segment) && /[A-Z]/.test(segment) ? REDACTED : segment))
+    .join('/');
+}
+
+function encodedCredential(match: string, credential: string): string {
+  return /[0-9+/=]/.test(credential) || (/[a-z]/.test(credential) && /[A-Z]/.test(credential.slice(1))) ? REDACTED : match;
+}
+
+// The office key, the key header, bearer and basic credentials, password-like key=value pairs (with a quoted value or
+// an auth scheme), curl -u and mysql -p passwords, the credentials of a url, PEM blocks and long hex or base64 runs
+// never leave the hub; paths stay readable. Every rule is linear in the text: quantifiers that could rescan a run are
+// bounded and a key name must start its run.
 export function redactLog(text: string, key: string): string {
   let out = key.length > 0 ? text.split(key).join(REDACTED) : text;
-  out = out.replace(/-----BEGIN [A-Z ]+-----[\s\S]*?-----END [A-Z ]+-----/g, REDACTED);
+  out = redactPem(out);
   out = out.replace(/x-office-(?:key|panel)\s*[:=]\s*\S+/gi, REDACTED);
   out = out.replace(/Bearer\s+\S+/gi, REDACTED);
-  out = out.replace(/\bBasic\s+[A-Za-z0-9+/_-]{8,}={0,2}/g, REDACTED);
+  out = out.replace(/\bbasic\s+([A-Za-z0-9+/_-]{8,}={0,2})/gi, encodedCredential);
   out = out.replace(/--password(?:=|\s+)\S+/gi, `--password ${REDACTED}`);
-  out = out.replace(/\b([a-z][a-z0-9+.-]*:\/\/)[^\s/@:]+:[^\s/]+@/gi, `$1${REDACTED}@`);
-  out = out.replace(/([\w-]*(?:pass(?:word)?|passwd|pwd|secret|token|api[_-]?key|private[_-]?key|auth)[\w-]*)(["']?\s*[:=]\s*)\S+/gi, `$1$2${REDACTED}`);
-  out = out.replace(/(\b(?:mysql\w*|mariadb[\w-]*)\b[^\n]*?\s-p)\S+/g, `$1${REDACTED}`);
+  out = out.replace(/(\s-u\s*|--user[= ])\S+:\S+/g, `$1${REDACTED}`);
+  out = out.replace(/\b([a-z][a-z0-9+.-]{0,31}:\/\/)[^\s/@:]+:[^\s/]+@/gi, `$1${REDACTED}@`);
+  out = out.replace(SECRET_KEY, `$1$2${REDACTED}`);
+  out = out.replace(/(\b(?:mysql\w*|mariadb[\w-]*)\b[^\n]{0,256}?\s-p)\S+/g, `$1${REDACTED}`);
   out = out.replace(/[0-9a-fA-F]{32,}/g, REDACTED);
-  return out.replace(/[A-Za-z0-9+/_-]{32,}={0,2}/g, (run) => (/\d/.test(run) && /[A-Za-z]/.test(run) && !run.startsWith('/') ? REDACTED : run));
+  return out.replace(LONG_RUN, redactRun);
 }
 
 export function tailLines(text: string, count: number): string[] {

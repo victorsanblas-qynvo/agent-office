@@ -146,6 +146,22 @@ describe('transcript tail', () => {
     expect(all).toContain('[redactado]');
   });
 
+  test('a secret is redacted before the cut, so the cut cannot leave a short piece of it', async () => {
+    const secret = 'wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY';
+    const call = rig([
+      assistant([{ type: 'text', text: `${'x'.repeat(480)} ${secret}` }, { type: 'tool_use', name: 'Bash', input: { command: `${'y'.repeat(180)} ${secret}` } }]),
+      user([{ type: 'tool_result', content: `${'z'.repeat(180)} ${secret}` }]),
+      user(`${'f'.repeat(4070)} ${secret}`),
+    ]);
+    const { body } = await call('/api/sessions/s-1/tail');
+    expect(body.entries.map((e: any) => e.text)).toEqual([
+      `${'x'.repeat(480)} [redactado]`,
+      `Bash: ${'y'.repeat(180)} [redactado]`,
+      `↳ ${'z'.repeat(180)} [redactado]`,
+      '[redactado]',
+    ]);
+  });
+
   test('a session outside the office is hidden', async () => {
     const call = rig([user('privado')], { office: false });
     const { status, body } = await call('/api/sessions/s-1/tail');
