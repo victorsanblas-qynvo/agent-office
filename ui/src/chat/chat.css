@@ -108,6 +108,50 @@ button.chat-channel.active {
   gap: 4px 12px;
 }
 
+.chat-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.chat-search {
+  flex: 1;
+}
+
+.chat-results {
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.chat-new {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.chat-new::before,
+.chat-new::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--accent);
+}
+
+.chat-msg-mention {
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface-2));
+}
+
+.chat-match {
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
+  color: inherit;
+}
+
 .chat-messages {
   display: flex;
   flex: 1;

@@ -4,6 +4,7 @@ import { emptyLayouts } from './layouts';
 import { liveFocus } from './focus';
 import { readNotes, setNote, writeNotes, type Notes } from './notes';
 import { readFocus, readPins, writeFocus, writePins } from './prefs';
+import { readChatRead, unreadCounts, writeChatRead, type ChatRead } from './chat/unread';
 import { applyLang, currentLang, plural, storeLang, t, type Lang, type MessageKey } from './i18n';
 import type {
   ActivityView,
@@ -103,9 +104,8 @@ export class Store {
   delivery: { seq: number; floors: string[] } = { seq: 0, floors: [] };
   readonly checkRuns = new Map<number, CheckRunView>();
   worktreeVersion = 0;
-  // Last id seen with the Chat tab open, per channel; what came in the snapshot counts as seen.
-  chatSeen = 0;
-  private readonly chatSeenIn = new Map<string, number>();
+  // Last id read per channel (kept in the browser); a channel never read before counts as read up to its snapshot.
+  private chatRead: ChatRead = {};
   memoryVersion = new Map<string, number>();
   toasts: Toast[] = [];
   selectedKey: string | null = null;
@@ -339,8 +339,7 @@ export class Store {
     this.finished = [];
     this.layouts = emptyLayouts();
     this.checkRuns.clear();
-    this.chatSeen = 0;
-    this.chatSeenIn.clear();
+    this.chatRead = {};
     this.debouncer.clear();
     this.markAll();
   }
@@ -421,20 +420,36 @@ export class Store {
     return this.chat.filter((message) => message.channel === channel);
   }
 
-  // Messages of the agents not seen yet with the tab open, in one channel or in all of them.
+  private chatChannels(): Set<string> {
+    return new Set(['global', ...this.floorList().filter((floor) => floor.kind === 'managed').map((floor) => floor.slug)]);
+  }
+
+  private seedChatRead(): void {
+    const stored = this.replay ? {} : readChatRead(this.chatChannels());
+    const read: ChatRead = {};
+    for (const message of this.chat) read[message.channel] = Math.max(read[message.channel] ?? 0, stored[message.channel] ?? message.id);
+    for (const [channel, id] of Object.entries(stored)) read[channel] ??= id;
+    this.chatRead = read;
+  }
+
+  // Messages of the agents after the last read one, in one channel or in all of them.
   unreadChat(channel?: string): number {
-    let count = 0;
-    for (const message of this.chat) {
-      if (message.origin !== 'agent' || (channel !== undefined && message.channel !== channel)) continue;
-      if (message.id > Math.max(this.chatSeen, this.chatSeenIn.get(message.channel) ?? 0)) count += 1;
-    }
-    return count;
+    const counts = unreadCounts(this.chat, this.chatRead);
+    if (channel !== undefined) return counts.get(channel) ?? 0;
+    let total = 0;
+    for (const count of counts.values()) total += count;
+    return total;
+  }
+
+  chatReadId(channel: string): number {
+    return this.chatRead[channel] ?? 0;
   }
 
   markChatSeen(channel: string): void {
     const last = this.chatOf(channel).at(-1)?.id ?? 0;
-    if (last <= Math.max(this.chatSeen, this.chatSeenIn.get(channel) ?? 0)) return;
-    this.chatSeenIn.set(channel, last);
+    if (last <= this.chatReadId(channel)) return;
+    this.chatRead[channel] = last;
+    if (!this.replay) writeChatRead(this.chatRead);
     this.mark('chat');
   }
 
@@ -467,8 +482,7 @@ export class Store {
     this.orders = snapshot.orders ?? [];
     this.finished = snapshot.finished ?? [];
     this.layouts = snapshot.layouts ?? emptyLayouts();
-    this.chatSeen = this.chat.at(-1)?.id ?? 0;
-    this.chatSeenIn.clear();
+    this.seedChatRead();
     this.markAll();
   }
 

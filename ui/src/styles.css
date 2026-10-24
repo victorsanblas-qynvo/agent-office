@@ -2212,6 +2212,16 @@ button.doc-discard:hover:not(:disabled) {
   text-align: center;
 }
 
+.tab-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: #a855f7;
+  vertical-align: middle;
+}
+
 .plans-view {
   overflow: auto;
   padding: 16px;

@@ -61,6 +61,7 @@ const SAME_KEYS: MessageKey[] = [
   'history.kind.chat',
   'chat.title',
   'chat.global',
+  'whatsNew.chat.title',
   'usage.spend.total',
   'timeline.hours',
   'tokens.row',
